@@ -180,7 +180,10 @@ sem problema.
 Engine, hooks, agentes e CLI **NUNCA** rodam `git add/commit/push` em projetos UiPath.
 Edits ficam locais; usuário commita manualmente.
 
-`.uipath-rules/` em si não é repo git — edições aqui são locais sem commit.
+`.uipath-rules/` é repo git próprio (`mucunfo/uipath-rules`, branch `main`) com
+CI windows-latest rodando `cli validate` + `pytest` em push/PR. Branch
+protection desativada (private free tier). Mudanças no engine seguem fluxo
+PR padrão.
 
 ## Suppressões inline
 
