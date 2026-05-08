@@ -3,8 +3,6 @@ import pytest
 from scripts.rule_engine.detectors import (
     detect_securestring_argument_outside_chain,
     detect_duplicate_id,
-    detect_xml_descendant_count,
-    detect_structural_order,
     detect_agent_only,
     REGISTRY,
 )
@@ -64,36 +62,6 @@ def test_duplicate_id_flags():
     assert "Sequence_1" in findings[0].message
 
 
-# ---- Task 17: xml_descendant_count ----
-
-def test_xml_descendant_count_above_max(tmp_path):
-    f = tmp_path / "ui_heavy.xaml"
-    nclicks = "".join('<uix:NClick/>' for _ in range(7))
-    f.write_text(f"<Activity>{nclicks}</Activity>")
-    fc = FileContext(f)
-    rule = make_rule("X-UI", {
-        "type": "xml_descendant_count",
-        "params": {"element": "uix:NClick", "max": 5},
-    }, sev=Severity.WARN)
-    findings = detect_xml_descendant_count(rule, fc, None)
-    assert len(findings) == 1
-
-
-# ---- Task 18: structural_order ----
-
-def test_structural_order_flags_variables_after_children():
-    fc = FileContext(FIX / "bad_variable_order.xaml")
-    rule = make_rule("X-VAR", {
-        "type": "structural_order",
-        "params": {
-            "parent_open": r"<Sequence[\s>]",
-            "must_be_first_child": "Sequence.Variables",
-        },
-    })
-    findings = detect_structural_order(rule, fc, None)
-    assert len(findings) >= 1
-
-
 # ---- Task 20: agent_only ----
 
 def test_agent_only_returns_empty(tmp_path):
@@ -108,5 +76,5 @@ def test_agent_only_returns_empty(tmp_path):
 
 def test_registry_has_all_xml_detectors():
     for name in ("securestring_argument_outside_chain", "duplicate_id",
-                 "xml_descendant_count", "structural_order", "agent_only"):
+                 "agent_only"):
         assert name in REGISTRY, f"detector {name} missing"

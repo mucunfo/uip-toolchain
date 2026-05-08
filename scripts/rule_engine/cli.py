@@ -624,8 +624,11 @@ def _cmd_fix(args) -> int:
                 continue
             if ar.status == "regression-cascade":
                 iter_cascade_regressions += 1
-                print(f"  [REGRESSION cascade — manual review needed] [{f.rule_id}] {f.file}: {ar.error}")
-                iter_applied += 1
+                print(f"  [REGRESSION cascade rolled back] [{f.rule_id}] {f.file}: {ar.error}")
+                continue
+            if ar.status == "regression-cascade-vb":
+                iter_cascade_regressions += 1
+                print(f"  [REGRESSION cascade-VB rolled back] [{f.rule_id}] {f.file}: {ar.error}")
                 continue
             if ar.changed:
                 if dry_run:

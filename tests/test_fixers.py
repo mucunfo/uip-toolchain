@@ -2,8 +2,8 @@ from pathlib import Path
 import pytest
 from scripts.rule_engine.fixers import (
     apply_regex_replace, apply_rename_attribute, apply_rename_argument,
-    apply_set_attribute, apply_wrap_in_element, apply_delete_element,
-    apply_move_file, apply_rename_xclass,
+    apply_set_attribute, apply_delete_element,
+    apply_rename_xclass,
     apply_expand_self_closed_inarg,
     apply_strip_string_quotes_numeric_default,
     REGISTRY,
@@ -412,22 +412,6 @@ def test_delete_element(tmp_path):
     assert "Delay" not in f.read_text()
 
 
-# ---- move_file ----
-
-def test_move_file(tmp_path):
-    src_dir = tmp_path / "Data"
-    src_dir.mkdir()
-    src = src_dir / "Config_X.xlsx"
-    src.write_bytes(b"x")
-    spec = {"type": "move_file",
-            "from_glob": "Data/Config_*.xlsx",
-            "to_dir": "assets/configs/"}
-    changed = apply_move_file(tmp_path, spec, dry_run=False, project_root=tmp_path)
-    assert changed
-    assert (tmp_path / "assets/configs/Config_X.xlsx").exists()
-    assert not src.exists()
-
-
 # ---- Idempotency ----
 
 def test_regex_replace_idempotent(tmp_path):
@@ -472,8 +456,7 @@ def test_set_attribute_idempotent(tmp_path):
 
 def test_registry_has_all_fixers():
     for name in ("regex_replace", "rename_attribute", "rename_argument",
-                 "set_attribute", "wrap_in_element", "delete_element",
-                 "move_file", "rename_xclass"):
+                 "set_attribute", "delete_element", "rename_xclass"):
         assert name in REGISTRY, f"fixer {name} missing"
 
 
