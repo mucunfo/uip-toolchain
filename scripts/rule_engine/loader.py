@@ -1,6 +1,8 @@
 """Parse rules.yaml + schema validation."""
 from __future__ import annotations
 
+import importlib
+import inspect
 import re
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,34 @@ from ._types import Rule, Severity, Category, Target
 
 class SchemaError(Exception):
     pass
+
+
+# Detecta atribuição `fix_mechanical=...` com valor que NÃO seja literal None.
+# Casa: `fix_mechanical=mech`, `fix_mechanical={"type": ...}`, `fix_mechanical=fix_mech_spec`.
+# Não casa: `fix_mechanical=None`, `fix_mechanical=(rule.fix or {}).get("mechanical")`
+# (esta última deriva apenas do YAML — não emit dinâmico).
+_RE_DYN_FIX_MECH = re.compile(
+    r"fix_mechanical\s*=\s*(?!None\b)"
+    r"(?!\(rule\.fix\s*or\s*\{\}\)\.get\(['\"]mechanical['\"]\))"
+    r"[A-Za-z_{]"
+)
+
+
+def _python_detector_emits_dynamic_mech(detect: dict) -> bool:
+    """True se função Python referenciada por detector emite fix_mechanical
+    dinâmico (não derivado de `rule.fix.mechanical` do YAML)."""
+    params = detect.get("params") or {}
+    mod_name = params.get("module")
+    fn_name = params.get("function")
+    if not mod_name or not fn_name:
+        return False
+    try:
+        mod = importlib.import_module(mod_name)
+        fn = getattr(mod, fn_name)
+        src = inspect.getsource(fn)
+    except Exception:
+        return False
+    return bool(_RE_DYN_FIX_MECH.search(src))
 
 
 _SEVERITY_MAP = {
@@ -109,6 +139,22 @@ def _parse_rule(
             raise SchemaError(
                 f"rule[{rid}]: unknown fix.mechanical.type '{mech['type']}'"
             )
+
+    # Python detector + heuristic-emitted fix_mechanical sem `mechanical:` no
+    # YAML DEVE declarar `apply_class` (ARCHITECTURE p.121). Default contextual
+    # bloqueia silente. Validar para falhar fast em CI.
+    if detect_type == "python":
+        has_yaml_mech = bool(fix_raw and (fix_raw.get("mechanical") or {}))
+        has_apply_class = bool(fix_raw and fix_raw.get("apply_class"))
+        if (not has_yaml_mech) and (not has_apply_class):
+            if _python_detector_emits_dynamic_mech(detect):
+                raise SchemaError(
+                    f"rule[{rid}]: python detector emite fix_mechanical "
+                    f"dinâmico mas YAML não tem `mechanical:` nem "
+                    f"`apply_class`. Default contextual bloqueia auto-apply "
+                    f"silente. Declarar `fix.apply_class: deterministic` "
+                    f"(ou contextual/structural) explicitamente."
+                )
 
     return Rule(
         id=rid,

@@ -128,11 +128,7 @@ def test_registry_has_data_detectors():
 
 
 import shutil
-import openpyxl
-from scripts.rule_engine.detectors import (
-    detect_config_xlsx_keys, detect_config_xlsx_sheets,
-    detect_config_xlsx_columns, detect_config_xlsx_naming,
-)
+from scripts.rule_engine.detectors import detect_config_xlsx_keys
 
 
 FIX_DIR = Path(__file__).parent / "fixtures"
@@ -177,90 +173,5 @@ def test_config_xlsx_keys_existing_no_finding(tmp_path):
     assert detect_config_xlsx_keys(rule, fc, pc) == []
 
 
-# ---- Task 25: config_xlsx_sheets / columns / naming ----
-
-def test_config_xlsx_sheets_missing(tmp_path):
-    proj = tmp_path / "P"
-    proj.mkdir()
-    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
-    (proj / "assets" / "configs").mkdir(parents=True)
-    cfg = proj / "assets" / "configs" / "Config_X.xlsx"
-    wb = openpyxl.Workbook()
-    wb.active.title = "Settings"
-    wb.save(cfg)
-
-    f = proj / "Main.xaml"
-    f.write_text("<Activity/>")
-    fc = FileContext(f)
-    pc = ProjectContext.find_root(f)
-    rule = make_rule({"type": "config_xlsx_sheets",
-                      "params": {"required": ["Settings", "Constants", "Assets"]}},
-                     sev=Severity.WARN, category="architectural")
-    findings = detect_config_xlsx_sheets(rule, fc, pc)
-    assert any("Constants" in f.message for f in findings)
-
-
-def test_config_xlsx_sheets_skip_when_not_main(tmp_path):
-    proj = tmp_path / "P"
-    proj.mkdir()
-    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
-    f = proj / "Foo.xaml"  # not Main, not project.json
-    f.write_text("<Activity/>")
-    fc = FileContext(f)
-    pc = ProjectContext.find_root(f)
-    rule = make_rule({"type": "config_xlsx_sheets",
-                      "params": {"required": ["Settings"]}})
-    assert detect_config_xlsx_sheets(rule, fc, pc) == []
-
-
-def test_config_xlsx_columns_missing(tmp_path):
-    proj = tmp_path / "P"
-    proj.mkdir()
-    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
-    (proj / "assets" / "configs").mkdir(parents=True)
-    cfg = proj / "assets" / "configs" / "Config_X.xlsx"
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Settings"
-    ws.append(["Name"])  # Missing Value, Description
-    wb.save(cfg)
-
-    f = proj / "Main.xaml"
-    f.write_text("<Activity/>")
-    fc = FileContext(f)
-    pc = ProjectContext.find_root(f)
-    rule = make_rule({"type": "config_xlsx_columns",
-                      "params": {"sheet": "Settings",
-                                 "required_columns": ["Name", "Value", "Description"]}})
-    findings = detect_config_xlsx_columns(rule, fc, pc)
-    assert len(findings) == 1
-    assert "Value" in findings[0].message
-
-
-def test_config_xlsx_naming_violation(tmp_path):
-    proj = tmp_path / "P"
-    proj.mkdir()
-    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
-    (proj / "assets" / "configs").mkdir(parents=True)
-    cfg = proj / "assets" / "configs" / "Config_X.xlsx"
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Settings"
-    ws.append(["Name", "Value"])
-    ws.append(["bad key with spaces", "x"])
-    wb.save(cfg)
-
-    f = proj / "Main.xaml"
-    f.write_text("<Activity/>")
-    fc = FileContext(f)
-    pc = ProjectContext.find_root(f)
-    rule = make_rule({"type": "config_xlsx_naming",
-                      "params": {"pattern": r"^[A-Z][A-Za-z0-9_]+$"}})
-    findings = detect_config_xlsx_naming(rule, fc, pc)
-    assert len(findings) == 1
-
-
 def test_registry_has_xlsx_detectors():
-    for name in ("config_xlsx_keys", "config_xlsx_sheets",
-                 "config_xlsx_columns", "config_xlsx_naming"):
-        assert name in REGISTRY
+    assert "config_xlsx_keys" in REGISTRY

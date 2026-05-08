@@ -11,6 +11,7 @@ def test_cli_help_runs():
     proc = subprocess.run(
         [sys.executable, "-m", "scripts.rule_engine.cli", "--help"],
         cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
     )
     assert proc.returncode == 0
     assert "review" in proc.stdout.lower()
@@ -29,6 +30,7 @@ def test_cli_review_empty_rules_returns_zero(tmp_path):
         [sys.executable, "-m", "scripts.rule_engine.cli", "review",
          str(proj), "--rules-file", str(rules_file)],
         cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
     )
     assert proc.returncode == 0
 
@@ -46,6 +48,7 @@ def test_cli_review_format_json(tmp_path):
         [sys.executable, "-m", "scripts.rule_engine.cli", "review",
          str(proj), "--rules-file", str(rules_file), "--format", "json"],
         cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
     )
     assert proc.returncode == 0
     out = json.loads(proc.stdout)
@@ -62,5 +65,6 @@ def test_cli_validate_command_checks_schema(tmp_path):
         [sys.executable, "-m", "scripts.rule_engine.cli", "validate",
          "--rules-file", str(bad)],
         cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
     )
     assert proc.returncode >= 10  # internal error range

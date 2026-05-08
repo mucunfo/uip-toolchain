@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,6 +14,28 @@ def register(name: str):
         REGISTRY[name] = fn
         return fn
     return decorator
+
+
+_BOM = b"\xef\xbb\xbf"
+
+
+def _file_has_bom(path: Path) -> bool:
+    """True se arquivo começa com UTF-8 BOM. Studio gera XAML com BOM
+    e re-adiciona BOM no save — write sem BOM dispara churn no git +
+    diff noise no Studio. Helper preserva estado original."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(3) == _BOM
+    except OSError:
+        return False
+
+
+def _write_preserving_bom(path: Path, content: str, had_bom: bool) -> None:
+    """Write `content` (utf-8) preservando BOM se `had_bom`."""
+    if had_bom:
+        path.write_bytes(_BOM + content.encode("utf-8"))
+    else:
+        path.write_text(content, encoding="utf-8")
 
 
 def _format_property_element_value(prop_type: str | None, default) -> str:
@@ -129,7 +150,7 @@ def apply_add_property_element(file: Path, spec: dict[str, Any], dry_run: bool =
     if new_content is None or new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -169,11 +190,33 @@ def apply_regex_replace(file: Path, spec: dict[str, Any], dry_run: bool = True) 
     if n == 0 or new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
 _RE_ELEMENT_NAME_CTX = re.compile(r'</?[A-Za-z_][\w.\-]*:?$')
+
+
+def _is_element_name_context(content: str, s: int) -> bool:
+    """True se posição `s` em `content` é início de nome-de-elemento XML
+    (precedido por `<`, `</`, ou `<prefix:`).
+
+    Busca para trás até encontrar `<` ou `>`. Janela fixa anterior (64 chars)
+    falhava quando atributo precedente era longo (>64 chars de DisplayName,
+    Annotation.AnnotationText, etc) — `<` ficava fora do scope, match dentro
+    de attribute value pulado erroneamente E (mais grave) match dentro de
+    nome de element era renomeado, corrompendo XML.
+    """
+    # Boundary: até primeiro < ou > anterior, OU início de file.
+    lt = content.rfind("<", 0, s)
+    gt = content.rfind(">", 0, s)
+    if lt < 0 or lt < gt:
+        # Estamos dentro de text/attribute-value content, não em element name.
+        return False
+    # Há `<` mais recente que `>`. Se substring de lt até s casa com regex de
+    # element-name-prefix (`<NAME` ou `</NAME` ou `<NAME:`), é element ctx.
+    fragment = content[lt:s]
+    return bool(_RE_ELEMENT_NAME_CTX.match(fragment))
 
 
 def _whole_word_sub_skip_tags(
@@ -191,6 +234,8 @@ def _whole_word_sub_skip_tags(
 
     2026-05-01: regression fix — antes era case-sensitive, deixando refs VB
     com case diferente da declaração órfãs (Studio: BC30451 var não declarada).
+    2026-05-07: element-context detection passou de janela 64-char para
+    busca-até-`<` (atributos longos quebravam detecção).
     """
     flags = re.IGNORECASE if case_insensitive else 0
     pattern = re.compile(rf"\b{re.escape(from_name)}\b", flags)
@@ -199,8 +244,7 @@ def _whole_word_sub_skip_tags(
     count = 0
     for m in pattern.finditer(content):
         s = m.start()
-        ctx = content[max(0, s - 64):s]
-        if _RE_ELEMENT_NAME_CTX.search(ctx):
+        if _is_element_name_context(content, s):
             continue  # skip — match é nome de element/tag
         out_parts.append(content[last:s])
         out_parts.append(to_name)
@@ -223,8 +267,7 @@ def _has_orphan_ref(content: str, name: str, exclude: str | None = None) -> bool
     pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
     for m in pattern.finditer(content):
         s = m.start()
-        ctx = content[max(0, s - 64):s]
-        if _RE_ELEMENT_NAME_CTX.search(ctx):
+        if _is_element_name_context(content, s):
             continue
         if exclude is not None and m.group(0) == exclude:
             continue
@@ -249,7 +292,7 @@ def apply_rename_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool
         print(f"  [NEEDS_REVIEW] rename_attribute: orphan refs '{from_name}' em {file.name} — fix abortado")
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -284,7 +327,7 @@ def apply_rename_argument(
         print(f"  [NEEDS_REVIEW] rename_argument (callee): orphan refs '{from_name}' em {file.name} — fix abortado")
         return False
     if changed and not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
 
     if project_root is None or not target_wf:
         return changed
@@ -361,7 +404,7 @@ def apply_rename_argument(
                 continue
             changed = True
             if not dry_run:
-                xaml.write_text(new_c, encoding="utf-8")
+                _write_preserving_bom(xaml, new_c, _file_has_bom(xaml))
 
     return changed
 
@@ -407,7 +450,7 @@ def apply_rename_xclass(
 
     changed = new_content != content
     if changed and not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
 
     if project_root is None:
         return changed
@@ -455,7 +498,7 @@ def apply_rename_xclass(
         if new != c:
             changed = True
             if not dry_run:
-                xaml.write_text(new, encoding="utf-8")
+                _write_preserving_bom(xaml, new, _file_has_bom(xaml))
 
     return changed
 
@@ -490,7 +533,7 @@ def apply_dedupe_idref(file: Path, spec: dict, dry_run: bool = True) -> bool:
     # conter IdRef como key — handled implicit (ViewState entry permanece com
     # old value, mas é só rendering hint; orphan key tolerado por Studio).
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return new_content != content
 
 
@@ -555,7 +598,7 @@ def apply_xmlns_assembly_resolve(file: Path, spec: dict, dry_run: bool = True,
         if new_content == content:
             return False
         if not dry_run:
-            file.write_text(new_content, encoding="utf-8")
+            _write_preserving_bom(file, new_content, _file_has_bom(file))
         return True
     return False
 
@@ -607,7 +650,7 @@ def apply_arg_default_to_element_form(file: Path, spec: dict, dry_run: bool = Tr
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -637,7 +680,7 @@ def apply_delete_empty_element(file: Path, spec: dict, dry_run: bool = True) -> 
     if (n_oc + n_sc) == 0 or new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -668,7 +711,7 @@ def apply_delete_variable(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -836,7 +879,7 @@ def apply_force_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -868,23 +911,7 @@ def apply_set_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
-    return True
-
-
-@register("wrap_in_element")
-def apply_wrap_in_element(file: Path, spec: dict, dry_run: bool = True) -> bool:
-    pattern = spec.get("target_pattern")
-    wrapper_open = spec.get("wrapper_open")
-    wrapper_close = spec.get("wrapper_close")
-    if not all([pattern, wrapper_open, wrapper_close]):
-        return False
-    content = file.read_text(encoding="utf-8-sig")
-    new_content, n = re.subn(pattern, lambda m: f"{wrapper_open}{m.group(0)}{wrapper_close}", content)
-    if n == 0 or new_content == content:
-        return False
-    if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -898,7 +925,7 @@ def apply_delete_element(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if n == 0 or new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -949,7 +976,7 @@ def apply_rename_invoke_arg_key(
     if not changed[0]:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -1008,7 +1035,7 @@ def apply_expand_self_closed_inarg(file: Path, spec: dict, dry_run: bool = True)
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -1073,28 +1100,7 @@ def apply_strip_string_quotes_numeric_default(
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
-    return True
-
-
-@register("move_file")
-def apply_move_file(
-    file: Path, spec: dict, dry_run: bool = True, project_root: Path | None = None
-) -> bool:
-    if project_root is None:
-        return False
-    from_glob = spec.get("from_glob")
-    to_dir = spec.get("to_dir")
-    if not from_glob or not to_dir:
-        return False
-    target_dir = project_root / to_dir
-    sources = list(project_root.glob(from_glob))
-    if not sources:
-        return False
-    if not dry_run:
-        target_dir.mkdir(parents=True, exist_ok=True)
-        for src in sources:
-            shutil.move(str(src), str(target_dir / src.name))
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -1377,7 +1383,7 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -1450,7 +1456,7 @@ def apply_remove_anticipatory_log(file: Path, spec: dict, dry_run: bool = True,
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 
@@ -1676,5 +1682,5 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
     if new_content == content:
         return False
     if not dry_run:
-        file.write_text(new_content, encoding="utf-8")
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True

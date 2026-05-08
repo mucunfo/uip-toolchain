@@ -86,9 +86,7 @@ Fixers disponíveis (`scripts/rule_engine/fixers.py` REGISTRY):
 - `dedupe_idref` — renomeia IdRefs duplicados (suffix `_dedup_<n>`).
 - `xmlns_assembly_resolve` — add_package em project.json (versão D-1*) ou remove xmlns+activities.
 - `arg_default_to_element_form` — converte `this:Class.arg="value"` em element form com type lookup.
-- `wrap_in_element` — envolver target em parent.
 - `delete_element` — remover elementos por pattern.
-- `move_file` — mover arquivos por glob.
 
 ## Naming wrong_prefix_map convention
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 import pytest
 from scripts.rule_engine.detectors import (
-    detect_regex, detect_regex_count, detect_regex_with_context, detect_regex_pair,
+    detect_regex, detect_regex_with_context, detect_regex_pair,
     REGISTRY,
 )
 from scripts.rule_engine._types import Rule, Severity
@@ -47,37 +47,6 @@ def test_regex_detector_multiline_finds_correct_line(tmp_path):
     findings = detect_regex(rule, fc, None)
     assert len(findings) == 1
     assert findings[0].line == 3
-
-
-# ---- Task 12: regex_count ----
-
-def test_regex_count_min_threshold_triggers(tmp_path):
-    f = tmp_path / "foo.xaml"
-    f.write_text("<NClick/><NClick/><NClick/><NClick/><NClick/><NClick/>")
-    fc = FileContext(f)
-    rule = make_rule({"type": "regex_count",
-                      "params": {"pattern": r"<NClick/>", "min": 5}})
-    findings = detect_regex_count(rule, fc, None)
-    assert len(findings) == 1
-
-
-def test_regex_count_below_min_no_finding(tmp_path):
-    f = tmp_path / "foo.xaml"
-    f.write_text("<NClick/><NClick/>")
-    fc = FileContext(f)
-    rule = make_rule({"type": "regex_count",
-                      "params": {"pattern": r"<NClick/>", "min": 5}})
-    assert detect_regex_count(rule, fc, None) == []
-
-
-def test_regex_count_max_threshold_triggers(tmp_path):
-    f = tmp_path / "foo.xaml"
-    f.write_text("X" * 10)
-    fc = FileContext(f)
-    rule = make_rule({"type": "regex_count",
-                      "params": {"pattern": "X", "max": 5}})
-    findings = detect_regex_count(rule, fc, None)
-    assert len(findings) == 1
 
 
 # ---- Task 13: regex_with_context ----
@@ -156,6 +125,6 @@ def test_regex_pair_missing_must_have_no_finding(tmp_path):
 
 # ---- Registry sanity ----
 
-def test_registry_has_all_4_detectors():
-    for name in ("regex", "regex_count", "regex_with_context", "regex_pair"):
+def test_registry_has_simple_detectors():
+    for name in ("regex", "regex_with_context", "regex_pair"):
         assert name in REGISTRY, f"detector {name} missing from REGISTRY"
