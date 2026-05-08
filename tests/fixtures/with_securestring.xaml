@@ -1,0 +1,9 @@
+<Activity x:Class="Login"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          xmlns:ss="clr-namespace:System.Security;assembly=System.Private.CoreLib">
+  <x:Members>
+    <x:Property Name="in_SsSenha" Type="InArgument(ss:SecureString)" />
+  </x:Members>
+  <Sequence/>
+</Activity>

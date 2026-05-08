@@ -1,0 +1,4765 @@
+# C:/Users/lisan/OneDrive - Sicoob/Projects/.uipath-rules/rules.yaml
+# Single source of truth — edit aqui adiciona/modifica/remove regra.
+# Schema: ARCHITECTURE.md.
+version: 1
+metadata:
+  generated_at: 2026-04-28
+  description: |
+    Single source of truth for UiPath rules at Sicoob.
+    Edit this file to add/modify/remove rules.
+    See ARCHITECTURE.md for schema reference.
+  rule_count: 0  # auto-update at validation
+rules:
+
+# ============================================================
+# Batch 1 — Breaking (Studio compile / runtime / Orchestrator)
+# ============================================================
+
+# ---- S — Sintaxe XAML breaking ----
+
+  - id: S-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "<x:Members /> nunca self-closed"
+    description: |
+      Self-closing `<x:Members />` quebra o parser XAML 2009/2010 do Studio
+      com `Unexpected 'PROPERTYELEMENT'` porque o parser trata
+      `<mva:VisualBasic.Settings>` seguinte como property-element.
+      Sempre usar `<x:Members></x:Members>` mesmo vazio.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<x:Members\s*/>'
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '<x:Members\s*/>'
+        replacement: '<x:Members></x:Members>'
+      prose: |
+        Trocar `<x:Members />` por `<x:Members></x:Members>`.
+    examples:
+      bad: '<x:Members />'
+      good: '<x:Members></x:Members>'
+
+  - id: S-2
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "<ui:Switch>/<ui:SwitchCase> não existem"
+    description: |
+      `Switch` é do namespace default (sem prefixo `ui:`).
+      Não existe `<ui:Switch>` nem `<ui:SwitchCase>`. Cases são
+      elementos com `x:Key="valor"` como filhos diretos.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:Switch[Cc]?ase|<ui:Switch[\s>]'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: '(</?)ui:(Switch(?:[Cc]ase)?)\b'
+        replacement: '\1\2'
+      prose: |
+        Remover prefixo `ui:`. `<Switch>` + cases com `x:Key=` como filhos diretos.
+    examples:
+      bad: '<ui:Switch x:TypeArguments="x:String"></ui:Switch>'
+      good: '<Switch x:TypeArguments="x:String"></Switch>'
+
+  - id: S-3
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "<ui:Assign> não existe"
+    description: |
+      `Assign` é do namespace default. `ui:` só hospeda `MultipleAssign`
+      e `AssignOperation`. `<ui:Assign>` quebra parse.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:Assign[\s>](?!Operation)'
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '<ui:Assign(\s|>)'
+        replacement: '<Assign\1'
+      prose: |
+        Remover prefixo `ui:` em `Assign`. Manter em `MultipleAssign`/`AssignOperation`.
+
+# ---- W — Windows target migration breaking ----
+
+  - id: W-1
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "InArgument self-closed proibido em caller"
+    description: |
+      `<InArgument x:Key="..." />` self-closed transmite Nothing ao callee.
+      Em Windows target o caller binding explícito vence sempre, mesmo vazio,
+      diferente do Legacy onde default declarado no callee era aplicado.
+      Sintoma: `Value cannot be null. (Parameter 'source')` em runtime quando
+      callee aplica LINQ.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<InArgument\s+[^/>]*x:Key="[^"]+"[^/>]*/>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: expand_self_closed_inarg
+      prose: |
+        Expansão automática:
+          - Tipos primitivos → <Literal x:TypeArguments="<T>" Value="<default>" />
+          - Tipos complexos (Tuple, Dict, custom) → <x:Null />
+        Default por tipo: String="" / Boolean=False / Int*=0 / Double|Decimal|Single=0.
+
+  - id: W-2
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "LINQ sobre arg referência sem null guard"
+    description: |
+      LINQ (`.Contains`, `.Any`, `.Where`, `.Select`, `.First`, `.Single`, `.All`)
+      sobre argumento `in_*`/`io_*` de tipo referência sem null guard próximo
+      crasha runtime Windows com ArgumentNullException quando arg é Nothing.
+      Heurística: warn quando não há `Is Nothing`/`If(<arg> Is Nothing` nas
+      ~200 chars antes da chamada.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_w2_linq_no_guard
+    fix:
+      prose: |
+        Guardar antes do LINQ: `[arg Is Nothing OrElse Not arg.Contains(x)]`,
+        `[If(arg Is Nothing, defaultExpr, arg.Where(...))]`.
+
+  - id: W-3
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "Default value de argumento via element form"
+    description: |
+      Defaults declarados como atributo na tag `<Activity>` raiz
+      (`this:Workflow.in_X="..."`) só aplicam quando caller omite o `x:Key`.
+      Preferir element form: `<this:Workflow.in_X><InArgument x:TypeArguments="...">[expr]</InArgument></this:Workflow.in_X>`.
+
+      Auto-fix mecânico converte attribute form → element form usando type
+      do `<x:Property>` declaration. Mantém value (literal text vira
+      `[&quot;value&quot;]`; `[expr]` permanece direct).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.arg_default
+        function: detect_w3_arg_default_attribute_form
+    fix:
+      apply_class: deterministic
+      # Detector resolve type via lookup `<x:Property Name="...">`.
+      # Mechanical injetada per-finding com class_name + arg_name + arg_type + value.
+      prose: |
+        Mover default-value do attribute root para element form com tipo
+        explícito derivado de <x:Property>.
+
+  - id: W-4
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Namespace mscorlib em xmlns Windows target"
+    description: |
+      Cabeçalho XAML migrado deve usar `assembly=System.Private.CoreLib`.
+      `assembly=mscorlib` em `xmlns:` indica migração incompleta.
+      mscorlib continua válido apenas em `TextExpression.ReferencesForImplementation`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'xmlns:\w+="clr-namespace:[^;]+;assembly=mscorlib"'
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '(xmlns:\w+="clr-namespace:[^;]+;assembly=)mscorlib"'
+        replacement: '\1System.Private.CoreLib"'
+
+  - id: W-10
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "NetworkCredential exige caminho System.Net. completo"
+    description: |
+      Windows target exige `New System.Net.NetworkCredential(...)`.
+      Sem o prefixo (ou com prefixo parcial `Net.`) o resolvedor de namespace
+      VB falha mesmo com `System.Net` em NamespacesForImplementation.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex_with_context
+      params:
+        pattern: '\bNew\s+(?:Net\.)?NetworkCredential\s*\('
+        safe_prefix: ['System\.Net\.']
+        prefix_window: 12
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '\bNew\s+(?:Net\.)?NetworkCredential\s*\('
+        replacement: 'New System.Net.NetworkCredential('
+
+  - id: W-11a
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Main.xaml falta AssemblyReference System.Security"
+    description: |
+      `Main.xaml` Windows target deve ter `<AssemblyReference>System.Security</AssemblyReference>`
+      em `TextExpression.ReferencesForImplementation`. Sem isso, expressões
+      em sub-workflows que dependem de `SecureString` falham com tipo não-resolvido.
+    applies_to:
+      include: ["Main.xaml"]
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Security</AssemblyReference>'
+
+  - id: W-11b
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Main.xaml falta AssemblyReference System.Runtime.InteropServices"
+    description: |
+      `Main.xaml` Windows target deve ter
+      `<AssemblyReference>System.Runtime.InteropServices</AssemblyReference>`
+      em `TextExpression.ReferencesForImplementation`. Sem isso, marshaling COM
+      em sub-workflows pode falhar em runtime.
+    applies_to:
+      include: ["Main.xaml"]
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Runtime\.InteropServices</AssemblyReference>'
+
+  - id: W-12
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Array literal sem tipo explícito"
+    description: |
+      Inferência de array em Windows com Option Strict é mais rigorosa.
+      Casos que quebram: array vazio `[{}]` (`BC36914`), `ArrayRow="[{...}]"`
+      em AddDataRow (target `Object()` heterogêneo, `BC36914`).
+      Defesa: prefixar com tipo explícito — `[New String() {...}]`,
+      `[New Object() {...}]`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'ArrayRow="\[\{(?!New\s)|>\[\{\}\]<|"\[\{\}\]"'
+
+  - id: W-13
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "SendMail sem UseISConnection=\"False\""
+    description: |
+      Default em `UiPath.Mail.Activities` pós-migração tenta rotear pelo
+      Integration Service e falha com NullReferenceException sem ele configurado.
+      Aplicar via Studio property panel "Use Integration Service" = False.
+      Studio serializa o toggle + ConnectionDetailsBackupSlot/AttachmentsBackup.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_w13_sendmail
+    fix:
+      prose: |
+        Studio: abrir XAML, property panel `Send SMTP Mail Message`,
+        desmarcar "Use Integration Service", salvar. NÃO editar manualmente
+        — Studio garante backup slots e namespaces consistentes.
+
+  - id: W-14
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "GenerateDataTableFromText quebra com CSV em Windows"
+    description: |
+      Combinação `Generate Data Table From Text` + `Read Text File` retorna
+      `Could not load type 'CsvHelper.ReadingContext'` em Windows target.
+      Substituir por `Read CSV` (atividade dedicada com CsvHelper correto).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'GenerateDataTableFromText|Generate Data Table From Text'
+
+  - id: W-15
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "Encrypt/Decrypt Text com Key SecureString"
+    description: |
+      `Encrypt Text`/`Decrypt Text` perderam suporte a `Key=SecureString`
+      pós-migração. Só aceitam `Key=String`. Para extrair String de SecureString
+      usar padrão de W-10 — `[New System.Net.NetworkCredential("", vSStKey).Password]`.
+      Heurística: flag toda Encrypt/Decrypt para review manual de tipo.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:(?:EncryptText|DecryptText)\b[^>]*>'
+
+  - id: W-16
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: ".IsNullOrEmpty extension instance quebra em VB Windows"
+    description: |
+      Forma `vStTexto.IsNullOrEmpty` quebra em Windows target.
+      Usar `String.IsNullOrEmpty(vStTexto)` (chamada estática).
+      Detector heurístico ignora chamada estática em qualquer caixa
+      (`String.`, `string.`, `x:String.`, `s:String.`).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_w16_isnullorempty
+        static_class_names: [string, "s:string", "x:string"]
+        last_segment_skip: [string]
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '(?<![A-Za-z_:.])(?![Ss]tring\.IsNullOrEmpty\b)([a-zA-Z_]\w*)\.IsNullOrEmpty\b'
+        replacement: 'String.IsNullOrEmpty(\1)'
+      prose: |
+        Trocar `<expr>.IsNullOrEmpty` por `String.IsNullOrEmpty(<expr>)`.
+        Mechanical fix cobre só identificador simples; chains
+        multi-part (`obj.Field.IsNullOrEmpty`) requerem fix manual.
+
+  - id: W-17
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: ".ToInt32 extension instance quebra em VB Windows"
+    description: |
+      Forma `vStVariavel.ToInt32` quebra em Windows.
+      Usar `Integer.Parse(vStVariavel)` (parse estrito) ou
+      `Convert.ToInt32(vStVariavel)` (tolerante a Nothing/erro).
+      Detector heurístico ignora chamada estática (`Convert.`,
+      `System.Convert.`, `Integer.`) em qualquer caixa.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_w17_toint32
+        static_class_names:
+          - convert
+          - "system.convert"
+          - integer
+          - "system.integer"
+          - "s:convert"
+          - "x:convert"
+          - "s:int32"
+          - "x:int32"
+        last_segment_skip: [convert, integer, int32, system]
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '(?<![A-Za-z_:.])(?![Cc]onvert\.ToInt32\b)(?![Ii]nteger\.ToInt32\b)([a-zA-Z_]\w*)\.ToInt32\b'
+        replacement: 'Convert.ToInt32(\1)'
+      prose: |
+        Trocar `<expr>.ToInt32` por `Convert.ToInt32(<expr>)` (tolerante a
+        Nothing) ou `Integer.Parse(<expr>)` (parse estrito).
+        Mechanical fix cobre só identificador simples.
+
+  # W-5..W-9, W-18 — agent_only (heurística manual, não detectável estaticamente)
+
+  - id: W-5
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "AssemblyReferences System.ServiceModel em XAML migrado"
+    description: |
+      WCF stack não é usado pelos pacotes pinados (D-1) em runtime.
+      Permanece em XAML como herança do template Legacy. Não bloqueia
+      execução, mas é noise. Studio remove em "Save All" após abrir.
+      Cleanup opcional, recomendado para reduzir surface de auditoria.
+      Agent: revisar manualmente em projetos migrados.
+    detect:
+      type: agent_only
+
+  - id: W-6
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "DataContract serializer + persistence diverge Legacy↔Windows"
+    description: |
+      Comportamento do DataContract serializer diverge entre Legacy e Windows
+      em campos sem `[DataMember]` explícito e em ordem de propriedades.
+      Se projeto usa `Suspend/Resume`, `WaitForFormTaskAndResume`,
+      `WaitForExternalTaskAndResume` ou cross-process state, validar que
+      estado serializado de Legacy é desserializável em Windows runtime
+      antes de migrar processos in-flight.
+    detect:
+      type: agent_only
+
+  - id: W-7
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "Mensagens de exception mudam entre Legacy e Windows"
+    description: |
+      Mensagens mudam mesmo com tipo mantido. `Try/Catch` que decide caminho
+      via `.Message.Contains("...")` em SystemException pode quebrar silenciosamente.
+      Refatorar para checar `.GetType()` ou property específica do exception.
+      Agent: grep por `BusinessException.Message.Contains` ou `SystemException.Message.Contains`.
+    detect:
+      type: agent_only
+
+  - id: W-8
+    severity: INFO
+    category: breaking
+    target: windows
+    title: "Encoding default mudou de ANSI para UTF-8"
+    description: |
+      .NET Framework: `Encoding.Default` = ANSI/CP1252.
+      .NET 6+: `Encoding.Default` = UTF-8. `File.ReadAllText(path)` ou
+      `StreamReader(path)` sem encoding explícito lê bytes diferente.
+      Em PT-BR com acentos, isso quebra silenciosamente (mojibake).
+      Sempre passar encoding explícito em File I/O — relevante para `InvokeCode`.
+    detect:
+      type: agent_only
+
+  - id: W-9
+    severity: INFO
+    category: breaking
+    target: windows
+    title: "InvokeCode VB compilation runtime mudou (Roslyn)"
+    description: |
+      .NET 6 usa Roslyn vs CodeDom .NET Framework. APIs `System.IO`,
+      `System.Text.RegularExpressions`, `System.Collections.Generic` continuam.
+      Quebram: `System.Web.HttpUtility`, `System.Configuration.ConfigurationManager`,
+      COM dynamic dispatch específico. Validar conteúdo de cada `InvokeCode`.
+    detect:
+      type: agent_only
+
+  - id: W-18
+    severity: INFO
+    category: breaking
+    target: windows
+    title: "Studio Modern quirks pós-migração"
+    description: |
+      Não-determinísticos, não detectáveis estaticamente:
+      (a) `Invoke Workflow` retorna "Não é possível localizar o fluxo de
+      trabalho" em runtime — recriar a atividade Invoke Workflow apontando
+      para o mesmo arquivo e remover a antiga.
+      (b) `Invoke Workflow` acusa "argumentos nulos" no build — clicar
+      botão "refresh" da atividade no Studio para sincronizar argumentos.
+      (c) `Get Asset` falha em produção — verificar Proxy da máquina robô.
+    detect:
+      type: agent_only
+
+# ---- J — project.json ----
+
+  - id: J-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "studioVersion deve ser \"23.10.13\""
+    description: |
+      Diretriz Sicoob: Studio alvo é 2023.10.13 (LTS). Toda criação ou edição
+      de `project.json` deve gravar `"studioVersion": "23.10.13"`. Outras
+      versões (21.x, 24.x, 25.x) = violação. Reavaliar somente quando o
+      usuário sinalizar mudança de diretriz, não com base em versão local.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: json_field_check
+      params:
+        path: studioVersion
+        expected: "23.10.13"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_json_field
+        path: studioVersion
+        value: "23.10.13"
+      prose: |
+        Editar `project.json` setando `"studioVersion": "23.10.13"`.
+
+  - id: J-4
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "targetFramework ∈ {Windows, Legacy}"
+    description: |
+      `targetFramework` deve ser exatamente `"Windows"` ou `"Legacy"`.
+      Outros valores quebram resolução de namespace e referências.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: json_field_check
+      params:
+        path: targetFramework
+        expected_in: ["Windows", "Legacy"]
+
+  - id: J-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "expressionLanguage = VisualBasic"
+    description: |
+      Padrão Sicoob: VB.NET. `expressionLanguage` deve ser `"VisualBasic"`.
+      C# em projetos Sicoob viola padrão arquitetural.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: json_field_check
+      params:
+        path: expressionLanguage
+        expected: VisualBasic
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_json_field
+        path: expressionLanguage
+        value: VisualBasic
+      prose: |
+        Setar `expressionLanguage: "VisualBasic"` em `project.json`.
+
+  - id: J-2
+    severity: WARN
+    category: breaking
+    target: all
+    title: "studioVersion vs packages — consistência semver"
+    description: |
+      Pacotes pinados em D-1 são compatíveis com Studio 23.10.13.
+      Se `studioVersion` < 23.10 e packages 25.x são usados, há risco
+      de incompat. REF tem studio 21.x e packages 25.x — provável bug.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: json_version_compare
+      params:
+        path: studioVersion
+        min: "23.10.0"
+
+  - id: J-3
+    severity: WARN
+    category: breaking
+    target: all
+    title: "Packages obrigatórios mínimos"
+    description: |
+      Todo projeto deve incluir UiPath.System.Activities como base.
+      Faltar essas indica template incompleto.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.json_checks
+        function: detect_j3_required_packages
+        packages:
+          - UiPath.System.Activities
+        skip_when:
+          designOptions.outputType: [Library]
+
+  - id: J-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "excludedLoggedData inclui *password* e Private:*"
+    description: |
+      `excludedLoggedData` deve filtrar campos sensíveis dos logs do Robot.
+      Padrão mínimo: incluir `"*password*"` e `"Private:*"`.
+      Campo vive em `runtimeOptions.excludedLoggedData` (UiPath schema).
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.json_checks
+        function: detect_j6_excluded_logged
+        path: runtimeOptions.excludedLoggedData
+        required_patterns:
+          - "*password*"
+          - "Private:*"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: json_array_ensure
+        path: runtimeOptions.excludedLoggedData
+        values:
+          - "*password*"
+          - "Private:*"
+      prose: |
+        Append `"*password*"` e `"Private:*"` em `runtimeOptions.excludedLoggedData`.
+
+  - id: J-7
+    severity: INFO
+    category: architectural
+    target: all
+    title: "requiresUserInteraction consistente com tipo"
+    description: |
+      Performer unattended não deve ter `requiresUserInteraction: true`.
+      Attended automation não deve ter `requiresUserInteraction: false`.
+      Markers de performer/attended e paths em params.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.json_checks
+        function: detect_j7_user_interaction_consistency
+        name_path: name
+        flag_path: requiresUserInteraction
+        performer_markers: [performer, unattended]
+        attended_markers: [attended]
+        attended_negative_markers: [unattended]
+
+# ---- X — Compile/runtime preventers (extraídos de lints atuais) ----
+
+  - id: X-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Duplicate IdRef em XAML"
+    description: |
+      `IdRef` duplicado dentro do mesmo XAML quebra o XAML 2009/2010 ID
+      resolution e causa Studio compile error
+      `Duplicate identifier 'X' detected`. Cada `IdRef` precisa ser único
+      dentro do `<x:Members>` ou no `<sap:WorkflowViewStateService.ViewState>`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: duplicate_id
+      params:
+        attribute: IdRef
+        # Skip patterns: IdRefs auto-gerados por Studio (formato
+        # `<TypeName>``<Arity>_<Index>`) são scope-local — dups tolerados.
+        # Validado contra Studio Analyzer (silent em REF: 3 dups VBValue).
+        skip_patterns:
+          - "^[A-Za-z][A-Za-z0-9]*`\\d+_\\d+$"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: dedupe_idref
+      prose: |
+        Renomear IdRefs duplicados: manter primeira ocorrência, sufixar
+        subsequentes com `_dedup_<n>`. ViewState dict references de IdRef
+        antigo são tolerados (rendering hint).
+
+# ============================================================
+# Batch 2 — Architectural (Sicoob standards)
+# ============================================================
+
+  - id: A-1
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "InitAllApplications scope — apps abrem aqui, Process só faz attach"
+    description: |
+      TODAS as apps abrem em `Framework/InitAllApplications.xaml`
+      (`OpenMode="Always"`). Process.xaml SOMENTE faz attach
+      (`OpenMode="Never"`). Inverter esta divisão fragmenta sessão e
+      multiplica overhead de open/close.
+      Agent: revisar `OpenMode` em NApplicationCard de cada app.
+    detect:
+      type: agent_only
+
+  - id: A-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Persistence activities em Main.xaml"
+    description: |
+      `WaitForFormTaskAndResume` e `CreateFormTask` DEVEM ficar em
+      `Main.xaml`. Workflows com UI/DB/browser não podem ser persistidos.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Main.xaml", "Framework/**", "Tests/**"]
+    detect:
+      type: regex
+      pattern: '<ui:(?:WaitForFormTaskAndResume|CreateFormTask)\b'
+
+  - id: A-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Credenciais nunca como argumento (exceto chain Sicoob)"
+    description: |
+      Workflows recebem `in_StCredentialAssetName: String`, recuperam credencial
+      no próprio workflow via `GetRobotCredential`. NUNCA passar SecureString
+      direta como argumento.
+
+      Exceção arquitetural Sicoob: REFramework Sicoob coleta TODAS as credenciais
+      uma única vez em `InitAllApplications` (via `GetAllCredentials`), armazena
+      em `in_Credenciais` (`Dictionary(String, Tuple(String, SecureString))`)
+      e propaga (ou Tuple/SecureString derivados) ao longo da cadeia. Workflows
+      que recebem `InArgument(SecureString)`, `InArgument(Tuple(String, SecureString))`
+      ou `InArgument(Dictionary(String, Tuple(String, SecureString)))` derivados
+      de `in_Credenciais` são parte do padrão — não violação.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**", "**/*Launch.xaml"]
+    detect:
+      type: securestring_argument_outside_chain
+      params:
+        chain_marker_args: [in_Credenciais, in_Credentials]
+        chain_marker_types: [Tuple, Dictionary]
+    fix:
+      prose: |
+        Trocar argumento por `in_StCredentialAssetName: String`.
+        Chamar `GetRobotCredential` dentro do workflow.
+
+  - id: A-4
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "NUNCA modificar Framework/SetTransactionStatus.xaml"
+    description: |
+      `Framework/SetTransactionStatus.xaml` é REFramework padrão.
+      Modificações quebram contrato com Process/Main e dificultam updates
+      futuros do template. Ajustes específicos vão em workflows wrappers.
+      Agent: comparar contra REFramework template; sinalizar diff.
+    detect:
+      type: agent_only
+
+  - id: A-5
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Decomposição modular por conceito (1 workflow = 1 conceito)"
+    description: |
+      Cada workflow trata exatamente UM conceito (uma validação, uma
+      integração, uma transformação). Workflow com múltiplos conceitos
+      misturados é violação independente do tamanho. Exceção: workflows
+      originais REFramework (Main, Process, SetTransactionStatus,
+      InitAllApplications, GetTransactionData).
+    detect:
+      type: agent_only
+
+  - id: A-6
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Navegação separada da ação (browser e desktop)"
+    description: |
+      Workflow de navegação retorna `UiElement` do destino;
+      workflow de ação recebe como `in_UI`. Misturar quebra reuso e
+      complica retry granular.
+    detect:
+      type: agent_only
+
+  - id: A-7
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Logs sem bookends [INICIO]/[FIM]"
+    description: |
+      Robot já loga entrada/saída em cada `InvokeWorkflowFile` —
+      bookends `[INICIO]`/`[FIM]` são ruído duplicado. Workflows na cadeia
+      de Process recebem `in_StPrefixoLog` e prependam em mensagens reais.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '\[INICIO\]|\[FIM\]'
+
+  - id: A-8
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Config path nunca hardcoded"
+    description: |
+      Workflow lê path de Config.xlsx via Orchestrator asset (Initialization
+      obtém asset string com path NAS). Path literal hardcoded em
+      `WorkbookPath="..."` é violação. Aceito: `WorkbookPath="[expr]"`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'WorkbookPath="(?!\[)[^"]*\.xlsx"'
+    fix:
+      prose: |
+        Substituir por `WorkbookPath="[in_StConfigPath]"` — `in_StConfigPath`
+        vem de `GetRobotAsset` em `InitAllSettings`.
+
+  - id: A-9
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Browser/Desktop config padrão"
+    description: |
+      Browser: `IsIncognito="True"`, `InteractionMode="Simulate"`,
+      `AttachMode="SingleWindow"`. Desktop: sem IsIncognito,
+      `AttachMode="ByInstance"`. Sessão descartada ao fechar (sem logout).
+      Agent: revisar NApplicationCard / Use Application.
+    detect:
+      type: agent_only
+
+  - id: A-10
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Uma única NApplicationCard por web app"
+    description: |
+      UiElement distinto por app. Múltiplas NApplicationCard para o mesmo
+      app fragmenta UI state e duplica retry de attach.
+      Agent: count per app target.
+    detect:
+      type: agent_only
+
+  - id: A-11
+    severity: WARN
+    category: architectural
+    target: all
+    title: "API/network em RetryScope (3 retries, 5s)"
+    description: |
+      Wrap API/network em `RetryScope` (3 retries, 5s). Exceções:
+      `NetHttpRequest` tem retry builtin; HTTP dentro de `DoWhile` de
+      polling não deve ter RetryScope próprio (loop já é o retry).
+    detect:
+      type: agent_only
+
+  - id: A-12
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Extração separada de filtragem"
+    description: |
+      Extração retorna TODOS os dados; filtragem é separada
+      (em `Process/` ou transformação dedicada).
+    detect:
+      type: agent_only
+
+  - id: A-13
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Mensagens de exception nunca hardcoded"
+    description: |
+      Mensagens de exception de nível de processo vivem em
+      `Config.xlsx` (aba Constants ou sheet dedicada). Workflow lê via
+      `in_Config("ChaveDaMensagem").ToString`. Hardcodar mensagem em
+      `Throw.Exception` é violação.
+      Escopo: workflows da cadeia Process e abaixo.
+      Framework/, Tests/, integrações de infra (DB, Orchestrator) podem
+      manter mensagens inline.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**", "DB2/**", "Orquestradora/**", "Orquestrador/**"]
+    detect:
+      type: regex
+      pattern: 'Exception="\[New\s+\w*Exception\("([^"]{4,})"'
+
+  - id: A-13b
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Chaves usadas em XAML existem em Config.xlsx"
+    description: |
+      Toda chave `in_Config("Chave")` referenciada em XAML deve existir em
+      pelo menos uma sheet de `assets/configs/Config_<Role>.xlsx` (fallback
+      `Data/Config_*.xlsx` deprecated path).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: config_xlsx_keys
+      params:
+        mode: missing
+
+  - id: A-14
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Progress counter pattern \"Nr - Desc\" em Main.xaml"
+    description: |
+      Variável `Progress` (String) atualizada a cada etapa com formato
+      numerado + descrição (`"01 - <etapa A>"`, `"02 - <etapa B>"`).
+      Usado em resume após crash e em `SetTransactionStatus.Reason`.
+      Nunca pipe `Progress` como parte de mensagem — é estado, não log.
+    applies_to:
+      include: ["Main.xaml"]
+    detect:
+      type: agent_only
+
+  - id: A-15
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Output do TransactionItem reinicializado por transação"
+    description: |
+      `io_TransactionItem.Output = New Dictionary(Of String, Object)` no
+      primeiro workflow da cadeia Process. Output é working state do ciclo
+      atual; fonte da verdade é DB queue/Orchestrator queue.
+    detect:
+      type: agent_only
+
+  - id: A-16
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Pastas por sistema externo na raiz (sem numeração)"
+    description: |
+      Pastas raiz do projeto: `DB2/`, `Orquestrador/`, `Utils/`,
+      `[SistemaExterno]/`. Sem numeração tipo `01-Folder/` nem prefixos
+      como `R2D2/`. Nome em PT-BR descrevendo sistema ou finalidade.
+      Agent: revisar layout do projeto.
+    detect:
+      type: agent_only
+
+  - id: A-17
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Max ~150 linhas por workflow (indicador, não hard limit)"
+    description: |
+      A-5 (um conceito por workflow) prevalece sobre tamanho. Se workflow
+      > 150 linhas E trata múltiplos conceitos, extrair sub-workflows.
+    detect:
+      type: agent_only
+
+  - id: A-18
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Sem UI activities em workflows de dados"
+    description: |
+      Pastas `DB2/`, `Orquestrador/`, `Process/` não contém
+      `NApplicationCard`, `NClick`, `NTypeInto`, `NGetText`. Dados
+      entram/saem via argumentos tipados (DataTable, String, Boolean).
+    applies_to:
+      include: ["DB2/**/*.xaml", "Orquestrador/**/*.xaml", "Orquestradora/**/*.xaml", "Process/**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:(?:NApplicationCard|NClick|NTypeInto|NGetText|NHover|NCheck|NSelectItem)\b'
+
+  - id: A-19
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Refatoração preserva contrato io_TransactionItem"
+    description: |
+      Sub-workflow que MODIFICA `io_TransactionItem.Output(...)`:
+      (a) declara `<x:Property Name="io_TransactionItem"
+      Type="InOutArgument(ui:QueueItem)"/>`;
+      (b) TODO caller passa via `<InOutArgument x:Key="io_TransactionItem">`.
+      Detector heurístico: só dispara quando callee escreve em
+      `io_TransactionItem.Output` E caller invoca callee SEM bind.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.transaction_item
+        function: detect_a19_io_transaction_item
+
+  - id: A-19b
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Caller falta argumento In declarado pelo callee"
+    description: |
+      `InvokeWorkflowFile` sem bind para argumento `In` (ou `InOut`)
+      declarado pelo callee transmite `Nothing`. Argumentos `Out`
+      faltando são descarte legítimo (output ignorado).
+      Heurística: filtra por direction=In/InOut.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.transaction_item
+        function: detect_a19b_in_args_missing
+
+  - id: A-19c
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Caller passa x:Key divergente do callee (cascade rename perdida)"
+    description: |
+      `InvokeWorkflowFile` passa `x:Key="X"` em `<InArgument>`/`<OutArgument>`/
+      `<InOutArgument>` mas callee não declara propriedade `X`. Detector busca
+      candidato no callee com mesma direção e alta similaridade de tokens
+      (Jaccard ≥ threshold após normalização: strip direção + strip type-prefix
+      + tokenize CamelCase + lowercase).
+
+      Causa típica: rename N-2/N-11 cascateou para callers que usavam o nome
+      ANTIGO exato, mas falhou para callers cujo `x:Key` já era divergente
+      (corrupção pré, refactor de contrato, typo histórico).
+
+      Auto-fix `rename_invoke_arg_key`: renomeia `x:Key` SOMENTE no bloco
+      `<ui:InvokeWorkflowFile>` que aponta para o callee identificado
+      (via `WorkflowFileName` basename + opcional `IdRef` para disambiguar
+      múltiplas chamadas ao mesmo callee no mesmo caller).
+
+      Threshold default 0.5 (Jaccard). Ajustável via params. Casos ambíguos
+      (≥2 candidatos com mesmo score) NÃO disparam fix — só report.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.transaction_item
+        function: detect_a19c_caller_arg_misnamed
+        similarity_threshold: 0.5
+    fix:
+      apply_class: deterministic
+      # Heuristic-emitted mechanical (rename_invoke_arg_key). Defesas:
+      # consumed_candidates tracking (cada callee prop só é alvo de 1 caller
+      # key) + single_unmatched fallback (multi-unmatched = mismatch
+      # estrutural, abortado). Post-fix XAML+VB+duplicate-key gate.
+      prose: |
+        Auto-fix mecânico via `rename_invoke_arg_key`: renomeia x:Key no
+        bloco InvokeWorkflowFile que aponta ao callee. Limitado a casos
+        com candidato único de alta similaridade.
+
+# ---- S — Sintaxe (estilo) ----
+
+  - id: S-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Acrônimos UPPERCASE em identificadores"
+    description: |
+      Acrônimos uppercase sempre. Compostos preservam:
+      `ValidarXML.xaml`, `in_StURLBase`, `vDTabRPAUsuarios`.
+
+      Auto-fix mecânico per-finding: rename `vDtXmlData` → `vDtXMLData`.
+      - Variables (`<Variable Name="...">`): rename via `rename_attribute`
+        (whole-word VB case-insensitive, skip element tags).
+      - Arguments (`<x:Property Name="...">`): rename via `rename_argument`
+        (callee declaração + body refs + cascade cross-file InvokeWorkflowFile
+        x:Key + this:Class.arg PropertyElement).
+      Defesas: VB orphan gate + XML well-formed gate + fixpoint loop. Falhas
+      rolam back para review manual.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming
+        function: detect_s4_acronyms
+        acronyms:
+          - XML
+          - RPA
+          - DB2
+          - XSD
+          - API
+          - URL
+          - HTTP
+          - HTTPS
+          - JSON
+          - CSV
+          - SQL
+          - UI
+          - CPF
+          - CNPJ
+          - HTML
+    fix:
+      apply_class: deterministic
+      # Detector emite mechanical per-finding com type=rename_argument (args)
+      # ou rename_attribute (vars). Cascade callers tratado por rename_argument.
+      # VB orphan/XML gates rolam back se rename quebra refs.
+      prose: |
+        Renomear identificador para versão com acrônimo UPPERCASE
+        (ex: `vDtXmlData` → `vDtXMLData`). Args cascade callers automaticamente.
+
+  - id: S-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Sem annotations em XAML (DisplayName + nomes claros)"
+    description: |
+      Código deve ser auto-explicativo via `DisplayName` descritivo +
+      nomes de variáveis claros. `sap2010:Annotation.AnnotationText`
+      só quando absolutamente imprescindível. Exceção: workflows
+      REFramework original (Main, Process, etc.).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Main.xaml", "Framework/Process.xaml", "Framework/InitAllApplications.xaml", "Framework/InitAllSettings.xaml", "Framework/SetTransactionStatus.xaml", "Framework/CloseAllApplications.xaml", "Framework/GetTransactionData.xaml", "Framework/KillAllProcesses.xaml"]
+    detect:
+      type: regex
+      pattern: 'sap2010:Annotation\.AnnotationText'
+
+  - id: S-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "x:Class igual filename sem extensão"
+    description: |
+      `Login.xaml` deve ter `x:Class="Login"`. Studio permite divergência
+      mas causa confusão. Exceção: workflows REFramework padrão.
+
+      ATENÇÃO ao aplicar fix manual: rename de x:Class TEM efeitos colaterais
+      que quebram compile no Studio ("Cannot set unknown member"):
+        1. Mesmo arquivo: blocos `<this:OldClass.argName>...</this:OldClass.argName>`
+           (PropertyElement default-values, preferidos por W-3) usam `this:`
+           prefix bound ao próprio x:Class. Renomear x:Class sem propagar
+           → Studio falha ao abrir.
+        2. Callers: raramente referenciam `<this:OldClass.*` ou
+           `x:Key="OldClass.argName"` em InvokeWorkflowFile. Quando ocorre,
+           também precisa propagação cross-project.
+      O fixer mecânico `rename_xclass` cobre ambos pontos automaticamente.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Main.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming
+        function: detect_s6_xclass_filename
+    fix:
+      mechanical:
+        type: rename_xclass
+      prose: |
+        Trocar `x:Class="OldName"` para `x:Class="<filename sem .xaml>"` e
+        propagar para todos `this:OldName.` no arquivo + callers cross-project.
+
+  - id: S-7
+    severity: INFO
+    category: architectural
+    target: all
+    title: "InvokeCode omite Language (default VB.NET)"
+    description: |
+      Padrão do projeto é VB.NET via default. Omitir é preferível a
+      `Language="VisualBasic"`. Se presente com valor diferente de
+      `VisualBasic` ou `CSharp`, é erro.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:InvokeCode[^>]*Language="(?!VisualBasic|CSharp)[^"]*"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: '(<ui:InvokeCode\b[^>]*?)\s+Language="(?!VisualBasic|CSharp)[^"]*"'
+        replacement: '\1'
+      prose: |
+        Remover atributo `Language="..."` inválido — InvokeCode default é VB.NET.
+    examples:
+      bad: '<ui:InvokeCode Language="Python" />'
+      good: '<ui:InvokeCode />'
+
+  - id: S-8
+    severity: WARN
+    category: architectural
+    target: all
+    title: "InvokeWorkflowFile DisplayName = nome do workflow apenas"
+    description: |
+      Studio gera por default `DisplayName="Path\To\Workflow.xaml - Invoke
+      Workflow File"` (verboso). Renomear para apenas o nome do arquivo
+      sem extensão e sem path: `DisplayName="Workflow"`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:InvokeWorkflowFile\b[^>]*DisplayName="[^"]*\.xaml\s*-\s*Invoke Workflow File"'
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: 'DisplayName="(?:[^"\\/]*[\\/])*([^"\\/]+)\.xaml\s*-\s*Invoke Workflow File"'
+        replacement: 'DisplayName="\1"'
+      prose: |
+        Renomear DisplayName para apenas o nome do workflow (sem path,
+        sem extensão, sem " - Invoke Workflow File").
+
+  - id: S-9
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Identificadores em PT-BR (não inglês)"
+    description: |
+      Variáveis e arguments em PT-BR. Listas de palavras EN proibidas e
+      exceções declaradas em params (REFramework standard ignorado).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming
+        function: detect_s9_pt_br
+        forbidden:
+          - User
+          - Password
+          - File
+          - Open
+          - Close
+          - Get
+          - Set
+          - Path
+          - Data
+          - Source
+          - Target
+          - Value
+          - Result
+          - List
+          - Array
+          - Number
+          - Count
+          - Size
+          - Length
+          - Empty
+          - Null
+          - Save
+          - Load
+          - Read
+          - Write
+          - Send
+          - Receive
+          - Start
+          - End
+          - Begin
+          - Finish
+          - Stop
+          - Run
+          - Execute
+          - Action
+          - Method
+          - Function
+        exceptions:
+          - TransactionItem
+          - TransactionNumber
+          - Config
+          - Item
+          - Row
+          - Element
+          - FileInfo
+          - DirectoryInfo
+          - Process
+
+  - id: S-10
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "LogMessage como filho direto de parent restritivo quebra compile no Studio"
+    description: |
+      `<ui:LogMessage>` NÃO pode ser filho direto de:
+        - `ActivityFunc` / `ActivityAction` (aceita 1 handler)
+        - Qualified-property elements: `<*.Then>`, `<*.Else>`, `<*.ActivityBody>`,
+          `<*.Condition>`, `<*.Handler>`, `<*.Argument>`, `<*.Default>`
+          (aceitam 1 child)
+        - `<scg:List x:TypeArguments="ui:AssignOperation">` (collection tipada
+          — só AssignOperation entra)
+        - `<scg:Dictionary>` (só entradas chave-valor)
+
+      Studio falha em compile-time com mensagens como "Then property has already
+      been set on If", "Handler property has already been set on ActivityFunc",
+      "Add value to collection of type 'List(AssignOperation)' threw an exception".
+
+      Causa histórica (2026-04-30): agente uipath-creator aplicou N-5 (Trace log)
+      sem checar contexto do parent, injetando `<ui:LogMessage Level="Trace"
+      Message="Iniciando: ui:X" />` em qualquer lugar antes da activity-alvo.
+      101 inserções inválidas em 1 projeto.
+
+      Para satisfazer N-5 dentro desses parents: envolver o conteúdo em
+      `<Sequence>` e mover a LogMessage pra dentro do Sequence.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_s10_logmessage_in_restrictive_parent
+    fix:
+      prose: |
+        Remover a LogMessage OU envolver o filho atual + a LogMessage em
+        `<Sequence>...</Sequence>` (Sequence aceita N filhos). Não há fix
+        mecânico seguro — decisão depende da intenção do log.
+
+  - id: S-11
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "xmlns prefix usa assembly não declarado em project.json (activities unresolved)"
+    description: |
+      `xmlns:<prefix>="clr-namespace:<NS>;assembly=<Assembly>"` referencia
+      assembly que NÃO está em `project.json::dependencies`. Studio mostra
+      activities como "unresolved" e falha compile/run.
+
+      Causa histórica (2026-04-30): agente uipath-creator inseriu
+      `<uta:VerifyExpression>` em TestCases (39 ocorrências em 14 arquivos),
+      mas convenção Sicoob (REF importar-cadastro-avais-fiancas-honrados-performer)
+      é TestCase só executar `<ui:InvokeWorkflowFile>` do workflow-alvo —
+      sem dependência de `UiPath.Testing.Activities`.
+
+      Whitelist: assemblies sempre disponíveis no runtime UiPath
+      (System.Private.CoreLib, mscorlib, System.Data.Common, e a própria
+      `UiPath.System.Activities`/`UiPath.Core.Activities`/sub-pacotes do
+      core já incluídos via `UiPath.System.Activities`). Nesses casos não
+      flag.
+
+      Correções possíveis:
+        (a) declarar dependência em `project.json` com versão compatível;
+        (b) remover activities + xmlns órfão (preferido se inserção indevida).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.testing
+        function: detect_s11_xmlns_assembly_missing
+        whitelist_assemblies:
+          - System.Private.CoreLib
+          - mscorlib
+          - System
+          - System.Data
+          - System.Data.Common
+          - System.Xml.Linq
+          - System.Linq
+          - PresentationCore
+          - PresentationFramework
+          - WindowsBase
+          - UiPath.System.Activities
+          - UiPath.Core.Activities
+          - UiPath.UIAutomation.Activities
+          # Transitivos comuns vindos do core UiPath (não precisam em project.json)
+          - Newtonsoft.Json
+          - Microsoft.VisualBasic
+          - System.Activities
+        # Se assembly tem mesmo prefixo de um package declarado, ignora
+        # (ex.: UiPathTeam.SharePoint subset de UiPathTeam.SharePoint.Activities)
+        accept_subset_of_declared: true
+        # prefixes irrelevantes (sem assembly=)
+        skip_prefixes:
+          - this
+          - x
+          - mc
+          - sap
+          - sap2010
+          - scg
+          - sco
+          - ss
+          - s
+          - ui
+          - uix
+    fix:
+      apply_class: deterministic
+      # Detector enriquece mechanical per-finding: se assembly tem pin em
+      # D-1*, mechanical=add_package (auto-add em project.json com versão
+      # pinada). Se não há pin, mechanical=None (cai como no-fix, alertado
+      # via prose).
+      prose: |
+        Resolução automática (quando assembly tem pin em D-1*):
+        adicionar package em project.json com versão pinada do batch
+        D — Dependências.
+
+        Manual (quando assembly não está em D-1*): decidir entre
+        (a) adicionar package + criar D-1* pin OU
+        (b) remover activities + xmlns:<prefix>.
+
+  - id: S-13
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Tag XML com nome local em lowercase (provável corrupção por rename fixer)"
+    description: |
+      Activities XAML têm tag local em PascalCase (`<ui:LogMessage>`,
+      `<ui:ShouldStop>`). Tag começando com lowercase indica corrupção:
+      whole-word rename de variável/argumento pegou também o nome do
+      element XML.
+
+      Causa histórica (2026-04-30): fixer `rename_attribute`/`rename_argument`
+      usava `re.sub(r'\\b<from>\\b', to, content)` sem excluir nomes de
+      element. Variável `ShouldStop` renomeada → `vBlShouldStop` corrompeu
+      `<ui:ShouldStop>` em `<ui:vBlShouldStop>`. Studio: activity unresolved
+      e cascade unresolved no resto do arquivo.
+
+      Whitelist de prefixos próprios do XAML (qualified-property children:
+      ex. `<If.Then>`, `<ui:RetryScope.ActivityBody>`) já tem ponto, não
+      lowercase isolado.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex_with_context
+      params:
+        pattern: '<[A-Za-z_][\w\-]*:[a-z][\w]*\b'
+        message_suffix: "Element name começando com lowercase — provável corrupção por rename fixer."
+    fix:
+      prose: |
+        Identificar nome correto da activity e renomear tag manualmente.
+        Casos comuns: `<ui:vBlX>` → `<ui:ShouldStop>` ou similar.
+
+  - id: S-12
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Activity genérica sem bind placeholders nullable (Studio reporta unresolved)"
+    description: |
+      Activities genéricas (`<TResult>`) precisam de declaração explícita de
+      todos os bind arguments mesmo quando nullable, senão Studio falha
+      ao inferir tipo e mostra activity como unresolved.
+
+      Caso conhecido — `<ui:DeserializeJson x:TypeArguments="...">`:
+        - Designer-generated: `JsonSample="{x:Null}" Settings="{x:Null}"`
+        - Agente-generated (incompleto): faltam ambos → unresolved.
+
+      Causa histórica (2026-04-30): agente uipath-creator gerou DeserializeJson
+      manualmente em 7 arquivos sem bind placeholders. Regra cobre
+      `ui:DeserializeJson` por enquanto; expandir conforme outros casos
+      surgirem (`ui:DeserializeXml`, etc.).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex_with_context
+      params:
+        pattern: '<ui:DeserializeJson\b(?:(?!JsonSample=)[^>])*?/?>'
+        # match DeserializeJson sem JsonSample (Settings é menos crítico mas também)
+    fix:
+      mechanical:
+        type: set_attribute
+        tag: ui:DeserializeJson
+        attribute: JsonSample
+        value: "{x:Null}"
+      # 2026-05-01: anterior tentou adicionar tb `Settings="{x:Null}"` —
+      # UiPath rejeita ("Cannot set unknown member ... DeserializeJson(JObject)
+      # .Settings") em pacote atual. Mantemos só `JsonSample`. Estrutural
+      # via `set_attribute` (idempotente, suporta self-close, validado por
+      # post-fix XAML parse gate em `safety.apply_with_gate`).
+      prose: |
+        Adicionar `JsonSample="{x:Null}"` no opening tag de `<ui:DeserializeJson>`.
+        NÃO adicionar `Settings="{x:Null}"` (rejeitado pelo compilador).
+        Padrão seguro:
+          <ui:DeserializeJson x:TypeArguments="njl:JObject"
+            JsonSample="{x:Null}"
+            DisplayName="..." JsonObject="..." JsonString="..." />
+
+  - id: S-15
+    severity: WARN
+    category: architectural
+    target: all
+    title: "<Sequence> vazio fora de parent required — remover"
+    description: |
+      `<Sequence>` sem children (self-close ou whitespace-only) é dead structure
+      EXCETO quando parent é property element que requer 1 child activity:
+      If.Then/Else, While.Body, ForEach.Body, TryCatch.Try, ActivityAction,
+      ActivityFunc, RetryScope.ActivityBody, etc.
+
+      Detector identifica parent via stack-scan e PULA quando required. Auto-fix
+      aplicado SÓ em escopos seguros (ex: empty Sequence dentro de outra
+      Sequence — dead nested code).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.empty_sequence
+        function: detect_empty_sequence
+    fix:
+      apply_class: deterministic
+      # Detector emite mechanical regex_replace per-finding com pattern escaped
+      # do tag text exato. Idempotente. Parent-guard skipa Required parents.
+      prose: |
+        Remover `<Sequence>` vazio quando parent não exige child activity.
+        Detector escolhe automaticamente.
+
+  - id: S-16
+    severity: WARN
+    category: architectural
+    target: all
+    title: "<ui:CommentOut> — dead code, remover bloco inteiro"
+    description: |
+      `<ui:CommentOut>` é dead code: lógica que ficou desligada como debug ou
+      "talvez precise depois". Polui leitura, esconde bloat, não executa nada.
+      Política Sicoob: remover. Histórico fica em git.
+
+      Auto-fix remove `<ui:CommentOut ...>...</ui:CommentOut>` inteiro,
+      incluindo `<ui:CommentOut.Body>` e Sequence/atividades aninhadas dentro.
+      Self-closing `<ui:CommentOut .../>` também coberto.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:CommentOut\b(?:[^>]*?/>|[^>]*>[\s\S]*?</ui:CommentOut>)'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: '<ui:CommentOut\b(?:[^>]*?/>|[^>]*>[\s\S]*?</ui:CommentOut>)\s*'
+        replacement: ''
+      prose: |
+        Deletar `<ui:CommentOut>...</ui:CommentOut>` (incluindo `.Body` e
+        children). Se precisar reativar, recuperar via `git log`.
+    examples:
+      bad: |
+        <ui:CommentOut DisplayName="Comment Out">
+          <ui:CommentOut.Body>
+            <Sequence><ui:LogMessage Message="velho" /></Sequence>
+          </ui:CommentOut.Body>
+        </ui:CommentOut>
+      good: ""
+
+  - id: S-14
+    severity: WARN
+    category: architectural
+    target: all
+    title: "<Sequence.Variables> vazio — remover container"
+    description: |
+      `<Sequence.Variables>` vazio (sem `<Variable>` declarations dentro) é
+      ruído — Studio aceita Sequence sem Variables block. Comum surgir após
+      U-1 deletar todas as vars do escopo. Limpeza puramente cosmética,
+      sem efeito semântico.
+
+      NÃO trata `<Sequence>` (corpo de activity) vazio — esse é placeholder
+      potencialmente required em parents tipo `<If.Then>`, `<If.Else>`,
+      `<While.Body>`, etc. Remoção indevida quebra a parent activity.
+
+      Cobre formas:
+        ✗ <Sequence.Variables></Sequence.Variables>  (whitespace-only inside)
+        ✗ <Sequence.Variables />                       (self-close)
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<Sequence\.Variables\b[^>]*?(?:/>|>\s*</Sequence\.Variables>)'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: delete_empty_element
+        tag: Sequence.Variables
+      prose: |
+        Remover `<Sequence.Variables>` vazio. Studio tolera Sequence sem o
+        bloco. Idempotente — no-op se já removido.
+
+  - id: S-8b
+    severity: WARN
+    category: architectural
+    target: all
+    title: "InvokeWorkflowFile DisplayName != basename(WorkflowFileName)"
+    description: |
+      DisplayName de `<ui:InvokeWorkflowFile>` deve ser o nome do workflow
+      sem path nem extensão. Sufixo entre parênteses permitido para
+      desambiguar múltiplas invocações no mesmo escopo:
+      `DisplayName="Workflow"` ou `DisplayName="Workflow (Cooperativa)"`.
+      Studio default verboso (`*.xaml - Invoke Workflow File`) é coberto
+      por S-8 — esta regra cobre nomes arbitrários divergentes.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.displayname
+        function: detect_s8b_displayname_mismatch
+    fix:
+      apply_class: deterministic
+      # Heuristic-emitted mechanical. Basename derivation canonical.
+      prose: |
+        Renomear DisplayName para basename(WorkflowFileName) sem extensão.
+        Se houver múltiplas invocações do mesmo workflow no mesmo escopo,
+        sufixar com contexto entre parênteses.
+
+# ---- N — Naming/Logs/Limites (extraídos da seção Nomenclatura RULES.md) ----
+
+  - id: N-1
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Variável usa prefixo v[Tipo][Nome]"
+    description: |
+      Variáveis `<Variable>` seguem `v[Prefixo][Nome]`. Mapping tipo→prefixo
+      em params.type_prefix. Bare-special e REFramework vars em params.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming_prefix
+        function: detect_n1_variable_prefix
+        type_prefix: &type_prefix
+          - {type: SecureString, prefix: SSt}
+          - {type: DataTable,    prefix: DTab}
+          - {type: DataRow,      prefix: Row}
+          - {type: DateTime,     prefix: Dt}
+          - {type: Dictionary,   prefix: Dict}
+          - {type: JObject,      prefix: JObj}
+          - {type: JArray,       prefix: JArr}
+          - {type: QueueItem,    prefix: null}
+          - {type: UiElement,    prefix: UI}
+          - {type: Boolean,      prefix: Bl}
+          - {type: Double,       prefix: Dbl}
+          - {type: Int32,        prefix: Int}
+          - {type: Int64,        prefix: Lng}
+          - {type: String,       prefix: St}
+          - {type: Object,       prefix: Obj}
+        wrong_prefix_map: &wrong_prefix_map
+          Bool: Bl
+          Boolean: Bl
+          DTime: Dt
+          DateTime: Dt
+          Decimal: Dbl
+          Str: St
+          String: St
+          Integer: Int
+          Number: Int
+          DT: DTab
+          Tab: DTab
+          # `Dt` Hungarian-legacy para DataTable (ex.: `dt_Credentials`).
+          # Only matched quando expected != Dt (DateTime). Para DateTime
+          # type, `vDtNascimento` permanece (Dt é prefix válido lá).
+          Dt: DTab
+          Dic: Dict
+          Dicio: Dict
+          Dictio: Dict
+          # Array variants. Convenção Sicoob:
+          #   - Array nativo `T[]` → `Arr` + prefix(T) (ex.: ArrSt, ArrObj)
+          #   - `List<T>`         → `Lst` + prefix(T) (ex.: LstSt, LstObj, LstDict)
+          # `Ar` é wrong (deve ser `Arr`). `List`/`Lst` NÃO são wrong — são prefixos
+          # válidos para List<T>; engine detecta via _expected_prefix composto.
+          Ar: Arr
+          # SecureString legado
+          SS: SSt
+          SecureStr: SSt
+          # DataRow legado
+          DRow: Row
+          DataRow: Row
+          # UiElement legado (lowercase i quebrava prefix detection,
+          # produzia double-prefix vUIUiElementX em vez de vUIElementX).
+          Ui: UI
+          UIE: UI
+          UIElement: UI
+          # Nu = "Numero" — prefixo genérico legado Sicoob para qualquer
+          # numérico. Convenção atual: tipo-específico (Int/Lng/Dbl).
+          # CamelCase boundary protege `vNumeroX` (Nu seguido de lowercase
+          # 'm' = sem strip; `vNuTimeout` Nu seguido de 'T' upper = strip).
+          # Mapeamento value usado só em double-stack guard; Int é
+          # placeholder — rename real usa expected_prefix do tipo.
+          Nu: Int
+          Num: Int
+          Numero: Int
+        bare_special: &bare_special
+          - type_substring: QueueItem
+            name_in: [TransactionItem, io_TransactionItem, in_TransactionItem, out_TransactionItem]
+          # UiElement agora tem prefix oficial `UI` em type_pairs.
+          # Detector exige `vUI[Nome]`, `in_UI[Nome]`, etc.
+          # Mantemos só `uiApp*` (REFramework global var convention) como bare.
+          - type_substring: UiElement
+            name_starts_with: [uiApp, in_uiApp, out_uiApp, io_uiApp]
+        reframework_main_vars: &reframework_main_vars
+          - TransactionNumber
+          - RetryNumber
+          - Config
+          - Credentials
+          - in_Credenciais
+          - TransactionField1
+          - TransactionField2
+          - TransactionField3
+          - BusinessException
+          - SystemException
+          - in_BusinessException
+          - in_SystemException
+          - in_Exception
+          - ConsecutiveSystemExceptions
+          - TransactionID
+          - Reference
+          - Progress
+          - Item
+          - Row
+          - Element
+          - QueueName
+          - in_OrchestratorQueueName
+          - in_OrchestratorQueueFolder
+          - in_TransactionField1
+          - in_TransactionField2
+          - in_TransactionField3
+    fix:
+      apply_class: deterministic
+      # 2026-05-01: rename_attribute corrigido — agora case-insensitive (VB-aware)
+      # com orphan-detection pós-substituição. Se sobra ref do nome antigo
+      # fora de element-name context, fix é abortado (NEEDS_REVIEW). Post-fix
+      # XAML parse gate em `safety.apply_with_gate` captura corrupção estrutural.
+      prose: |
+        Renomear `<Variable Name="...">` declaração + todos os usos:
+        `[varname]` em attrs (DataTable=, Result=, StatusCode=, etc.),
+        dentro de `<InArgument>`/`<OutArgument>` bodies, `Expression=`,
+        e VB literals. Auto-fix mecânico cobre tudo case-insensitive.
+
+  - id: N-2
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Argumento usa prefixo (in_|out_|io_)[Tipo][Nome]"
+    description: |
+      Argumentos `<x:Property>` seguem `(in_|out_|io_)[Prefixo]Nome`. Mapping
+      em params.type_prefix (compartilhado com N-1 via YAML anchor).
+      Bare permitido em params.bare_arg_names.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming_prefix
+        function: detect_n2_argument_prefix
+        type_prefix: *type_prefix
+        wrong_prefix_map: *wrong_prefix_map
+        bare_special: *bare_special
+        reframework_main_vars: *reframework_main_vars
+        bare_arg_names:
+          - in_Config
+          - out_Config
+          - io_Config
+          - in_Credenciais
+          - in_Credentials
+          - in_TransactionItem
+          - io_TransactionItem
+          - out_TransactionItem
+    fix:
+      apply_class: deterministic
+      # 2026-05-01: Audit dos 13 repos Sicoob: dispatcher↔performer comunicam
+      # via Orchestrator queue (BulkAddQueueItems + SpecificContent dict keys),
+      # NÃO via cross-repo InvokeWorkflowFile. Zero
+      # `WorkflowFileName="..\<outro-repo>\.."`. Scan dentro de project_root
+      # é suficiente. Defesas: case-insensitive whole-word + orphan check
+      # (callee + caller + this:Class.arg) + post-fix XAML parse gate.
+      prose: |
+        Renomear argumento + callers:
+        1. `<x:Property Name="...">` declaração no callee
+        2. `[arg]` em todos usos no body do callee (case-insensitive)
+        3. `<ui:InvokeWorkflowFile>` blocks no MESMO project_root:
+           - `<ui:Argument x:Key="<old>">` → `<ui:Argument x:Key="<new>">`
+        Auto-fix mecânico cobre tudo isso. Caso surja shared-lib repo no
+        futuro, adicionar `cross_project_root` opt-in.
+
+  - id: N-3
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Workflow cadeia Process com LogMessage usa in_StPrefixoLog"
+    description: |
+      Workflows na cadeia `Process` (não Framework, não Tests, não *Launch.xaml)
+      que tem `<ui:LogMessage>` devem declarar `in_StPrefixoLog: String`
+      e prependá-lo nas mensagens. Process inicializa
+      `in_TransactionItem.Reference + " - "` e propaga.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n3_log_prefixo
+        prefixo_arg_name: in_StPrefixoLog
+        exclude_paths: &chain_exclude_paths
+          - "framework/"
+          - "tests/"
+          - "/launch.xaml"
+          - "launch.xaml"
+    fix:
+      apply_class: structural
+      prose: |
+        Path 1 (workflow não declara in_StPrefixoLog): fixer
+        `add_prefixo_arg` adiciona x:Property + this:<Class>.in_StPrefixoLog
+        default value vazio + reescreve LogMessage Messages literais
+        `[&quot;X&quot;]` para `[in_StPrefixoLog + &quot;X&quot;]`.
+        Callers que não bindam usam default vazio (compile-safe).
+
+        Path 2 (LogMessage não usa prefixo): manual — Messages com
+        expressões complexas exigem interpretação contextual.
+
+  - id: N-4
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Workflow com > 7 argumentos — agrupar Dictionary/DataTable"
+    description: |
+      Workflow com mais de 7 argumentos é sinal pra agrupar em
+      `Dictionary(String, Object)` ou `DataTable`, ou criar workflow
+      intermediário. Threshold default: 7.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming_prefix
+        function: detect_n4_arg_count
+        threshold: 7
+
+  - id: N-5
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Toda activity precisa LogMessage Level=Trace próximo (rastreabilidade total)"
+    description: |
+      Política Sicoob: rastreabilidade TOTAL — TODA activity executável
+      dentro de Process e cadeia abaixo precisa `<ui:LogMessage Level="Trace">`
+      em proximidade (±600 chars). Inclui Assign (expor valor de variáveis).
+      Throw/Rethrow excluídos — geram log próprio via exception flow.
+
+      Excluídas (control flow / metadata / não-executável):
+      Sequence, If, ElseIf, Switch, ForEach, ForEachRow, While, DoWhile,
+      Parallel, ParallelForEach, Pick, PickBranch, Flowchart, FlowDecision,
+      FlowSwitch, FlowStep, StateMachine, State, Transition, Trigger,
+      TryCatch, Catch, Catches, ActivityAction, DelegateInArgument,
+      DelegateOutArgument, InArgument, OutArgument, InOutArgument, Variable,
+      Property, Members, Literal, Reference, LogMessage (a própria),
+      InvokeWorkflowFile (coberto por N-6), MultipleAssign (container —
+      AssignOperation individual flag), Persist, Receive, Send, NoPersistScope,
+      CompensableActivity.
+
+      Spec original RULES.md A-7 dizia "atividades significativas" — política
+      atual mais estrita.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**", "**/*Launch.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n5_trace_log_significant
+        exclude_paths: *chain_exclude_paths
+        proximity_window: 600
+        trace_level: Trace
+        include_default_activities:
+          - Assign
+          - AddDataRow
+        exclude_ui_activities:
+          - LogMessage
+          - InvokeWorkflowFile
+          - Comment
+          - CommentOut
+          - Annotation
+          # Control flow / containers (descrição da regra já lista esses;
+          # estavam ausentes do enforce — falso positivo histórico)
+          - ForEach
+          - ForEachRow
+          - ForEachFileX
+          - Break
+          - Continue
+          - InterruptibleWhile
+          # AssignOperation vive dentro de scg:List<AssignOperation>
+          # (parent restritivo — log dentro viola S-10). Cobertura via
+          # MultipleAssign pai.
+          - AssignOperation
+          - FilterOperationArgument
+          - Target
+          - TargetAnchorable
+          - TargetApp
+          - VerifyExecutionOptions
+    fix:
+      apply_class: structural
+      prose: |
+        Inserir `<ui:LogMessage Level="Trace" Message="..."/>` LOGO APÓS
+        a activity (até 600 chars depois). Logs ANTES da activity violam
+        semântica de rastreabilidade pós-execução — não satisfazem N-5.
+
+        Mensagem deve ser CONTEXTUAL, não mecânica:
+          ✗ Mecânico (template-like): `"Iniciando: ui:HttpClient"`
+          ✗ Mecânico (sem semantica): `"Executando AddDataRow"`
+          ✓ Contextual: `"Recuperou " + vIntCount.ToString + " documentos do GED"`
+          ✓ Contextual: `"Linha adicionada: " + vDtRow.Item("StPK").ToString`
+          ✓ Contextual: `"Token expira em " + vDtExpiracao.ToString("HH:mm")`
+
+        Mensagem contextual depende de INTERPRETAÇÃO do que a activity faz
+        em contexto (variáveis, fluxo). É decisão de IA/desenvolvedor.
+        Mensagem mecânica = anti-padrão (ver N-9).
+
+        Parent restritivo (ActivityFunc/ActivityAction/`*.Then`/`*.Else`,
+        collections tipadas): ver S-10. Inserir LogMessage onde parent
+        aceita só 1 child quebra compile no Studio. Solução: envolver em
+        Sequence ou aceitar que activity dentro desse parent não tem
+        log Trace dedicado.
+
+        ATENÇÃO ao FIXER (cross-rule N-3): N-5 e N-3 são regras
+        independentes mas o auto-fix de N-5 pode regredir N-3 se ignorar
+        a convenção de prefixo. Antes de inserir Trace:
+
+          1. **Workflow declara `in_StPrefixoLog`?**
+             - SIM → mensagem deve usar `[in_StPrefixoLog+"Iniciando: <X>"]`
+               para satisfazer N-3 path 3.
+             - NÃO + workflow já tem outras LogMessages → workflow já
+               viola N-3 path 1 (1 finding total). Inserir Trace sem
+               prefixo NÃO piora a contagem (ainda 1 finding). Resolver
+               N-3 separadamente.
+             - NÃO + workflow tem 0 LogMessages → inserir Trace cria
+               novo finding N-3 (de 0 para 1). Decidir:
+                 (a) declarar `in_StPrefixoLog` + propagar callers ANTES,
+                     mensagem com prefixo → 0 N-3.
+                 (b) inserir sem prefixo, aceitar +1 N-3 nesse arquivo,
+                     resolver depois em batch.
+
+          2. **Workflow está em `Framework/`/`Tests/`/`Launch.xaml`?**
+             N-3 não dispara nesses paths. Inserir sem prefixo é livre.
+
+  - id: N-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "InvokeWorkflowFile com Level=\"Info\" para log entrada/saída"
+    description: |
+      `<ui:InvokeWorkflowFile>` deve declarar `Level="Info"` (ou
+      `Level="[LogLevel.Info]"`) — Robot loga entrada/saída do sub-fluxo
+      automaticamente nesse Level via property built-in da activity.
+
+      Padrão observado no projeto modelo `importar-cadastro-avais-fiancas-honrados-performer`:
+      32/82 InvokeWorkflowFile têm Level=Info — adoção parcial.
+      Política: enforce em todos.
+
+      Auto-fix mecânico: insere `Level="Info"` se ausente; renomeia se valor
+      diferente.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n6_invoke_log_level
+        exclude_paths: *chain_exclude_paths
+        level_attribute: Level
+        canonical_value: Info
+        accepted_values:
+          - Info
+          - "[LogLevel.Info]"
+    fix:
+      apply_class: deterministic
+      # Heuristic-emitted regex_replace adicionando `Level="Info"`. Canonical.
+      prose: |
+        Adicionar atributo `Level="Info"` em `<ui:InvokeWorkflowFile>`.
+        Robot grava entry+exit log automaticamente nesse nível.
+
+  - id: N-7
+    severity: WARN
+    category: architectural
+    target: all
+    title: "InvokeWorkflowFile com LogEntry=OnlyInvocation e LogExit=OnlySuccessfulReturn"
+    description: |
+      `<ui:InvokeWorkflowFile>` deve declarar:
+        - `LogEntry="OnlyInvocation"`     — entry log dispara só na invocação
+          (não em re-entries de retry/loop interno).
+        - `LogExit="OnlySuccessfulReturn"` — exit log dispara só em retorno
+          bem-sucedido (exception não loga exit, vai pra catch).
+
+      Política Sicoob (ver Process.xaml `baixar-documentos-cobranca-ajuizada-dispatcher`):
+      InvokeWorkflowFile produtivo padroniza ambos os atributos.
+
+      Auto-fix mecânico: insere atributos se ausentes; renomeia se valor
+      diferente.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n7_invoke_log_entry_exit
+        exclude_paths: *chain_exclude_paths
+        expected_attributes:
+          LogEntry: OnlyInvocation
+          LogExit: OnlySuccessfulReturn
+    fix:
+      apply_class: deterministic
+      # Heuristic-emitted regex_replace adicionando attrs canonical.
+      prose: |
+        Adicionar `LogEntry="OnlyInvocation"` e `LogExit="OnlySuccessfulReturn"`
+        em `<ui:InvokeWorkflowFile>`. Robot grava entry/exit log com semântica
+        explícita: entry = só invocação, exit = só retorno bem-sucedido.
+
+  - id: V-1
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Value-type com Default=[Nothing] / {x:Null} (intent ambígua)"
+    description: |
+      Variable/Property de value-type (struct) com `Default="[Nothing]"` ou
+      `Default="{x:Null}"` compila em VB.NET mas vira `default(T)` implícito:
+        - Int32/Int64/Int16/Byte/SByte → `0`
+        - Double/Single/Decimal       → `0.0`
+        - Boolean                     → `False`
+        - DateTime                    → `01/01/0001 00:00:00` (MinValue)
+        - TimeSpan                    → `00:00:00`
+        - Char                        → `\0`
+
+      Anti-padrão: leitor não distingue valor real `0` de "ausente"; bugs
+      sutis em comparações (`If x Is Nothing` em Int32 sempre False após init).
+
+      Decisões corretas:
+        ✓ Default explícito (`[0]`, `[False]`, `[DateTime.Now]`, etc.)
+        ✓ Tipo Nullable (`x:Nullable(x:Int32)` com `.HasValue` check)
+        ✓ Sem Default (deixar Studio default — equivalente a 0/False)
+                       — preferível a `[Nothing]` que é ruidoso
+
+      Detecta:
+        - `<Variable x:TypeArguments="x:Int32" Default="[Nothing]" .../>`
+        - `<Variable x:TypeArguments="x:Boolean" Default="{x:Null}" .../>`
+        - `<Variable x:TypeArguments="x:DateTime"><Variable.Default>[Nothing]</Variable.Default></Variable>`
+
+      Não auto-fix mecânico — depende de intent (qual default real?).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.value_types
+        function: detect_v1_nothing_in_value_type
+        # extra_value_types: lista opcional pra estender (Guid, etc.)
+        extra_value_types: []
+    fix:
+      prose: |
+        Decidir entre:
+          (a) Remover Default= do XAML (deixa default(T) implícito mas sem ruído)
+          (b) Setar Default explícito (`[0]`, `[False]`, `[DateTime.Now]`, etc.)
+          (c) Trocar tipo para Nullable (`x:Nullable(x:Int32)`) e verificar
+              `.HasValue` antes de uso
+
+  - id: N-11
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Direção de argumento inválida (canonical: in_/out_/io_)"
+    description: |
+      Convenção Sicoob: argumento `<x:Property>` SEMPRE com direção:
+        - `in_<Nome>`  — entrada
+        - `out_<Nome>` — saída
+        - `io_<Nome>`  — entrada+saída
+
+      Qualquer outra forma = ERRO. Casos vistos por corrupção/template/typo:
+        ✗ `inout_X`, `in_out_X` (canonical é `io_`)
+        ✗ `IN_X`, `OUT_X`, `IO_X` (caps errado)
+        ✗ `In_X`, `Out_X`, `Io_X` (PascalCase errado)
+        ✗ `inOut_X`, `InOut_X`, `Inout_X`
+
+      Bare-args permitidos (sem direction): `Config`, `TransactionItem` e
+      similares declarados em `params.bare_arg_names` / `bare_special`.
+
+      Diferença N-2 vs N-11:
+        - N-11 (ERROR/breaking): direção em si está errada — independente de tipo.
+        - N-2 (WARN/architectural): direção OK, mas prefix de tipo errado/ausente.
+
+      Auto-fix: rename_argument com cascade nos callers (basename match
+      em `WorkflowFileName`).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming_prefix
+        function: detect_n11_argument_direction
+        bare_special: *bare_special
+        reframework_main_vars: *reframework_main_vars
+        bare_arg_names:
+          - in_Config
+          - out_Config
+          - io_Config
+          - in_Credenciais
+          - in_Credentials
+          - in_TransactionItem
+          - io_TransactionItem
+          - out_TransactionItem
+          - Config
+          - TransactionItem
+          - Credentials
+    fix:
+      apply_class: deterministic
+      # 2026-05-01: Mesmo audit que N-2: zero invokes cross-repo nos 13 repos
+      # Sicoob. Case-insensitive + orphan check + post-fix gate cobrem
+      # dentro do project_root.
+      prose: |
+        Renomear pra forma canonical (`in_/out_/io_` + Nome canonical capitalizado).
+        Auto-fix infere direção a partir do tipo (InArgument→in,
+        OutArgument→out, InOutArgument→io) + atualiza callers no
+        project_root via `WorkflowFileName` matching.
+
+  - id: N-12
+    severity: WARN
+    category: architectural
+    target: all
+    title: "LogMessage em cadeia Process deve ter Level=\"Trace\""
+    description: |
+      Política Sicoob: rastreabilidade total via Trace. TODO `<ui:LogMessage>`
+      em workflows da cadeia Process (e abaixo) deve declarar `Level="Trace"`.
+
+      Esta rule cobre LogMessages JÁ EXISTENTES — apenas seta/replace o
+      attribute Level para "Trace". NÃO insere logs novos (cobertura disso
+      em N-5, contextual).
+
+      Excluídos do escopo: Framework/** (REFramework templates têm logs
+      Info próprios), Tests/** (test runners), *Launch.xaml, Main.xaml
+      (top-level transaction logs Info legítimos).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "Framework/**"
+        - "Tests/**"
+        - "**/*Launch.xaml"
+        - "**/Main.xaml"
+    detect:
+      type: regex_with_context
+      params:
+        pattern: '<ui:LogMessage\b(?:(?!\bLevel="Trace")[^>])*?/?>'
+        message_suffix: 'LogMessage sem Level="Trace" — promover.'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: force_attribute
+        tag: ui:LogMessage
+        attribute: Level
+        value: Trace
+      prose: |
+        Adicionar/forçar `Level="Trace"` em `<ui:LogMessage>`. Idempotente:
+        se já é Trace, no-op; se ausente, adiciona; se outro valor, substitui.
+
+  - id: N-10
+    severity: WARN
+    category: architectural
+    target: all
+    title: "LogMessage antecipatório (sem activity executável imediatamente antes)"
+    description: |
+      Padrão Sicoob: `Activity → Log → Activity → Log → ...`. Log
+      POSICIONALMENTE documenta a activity que VEIO antes (rastreabilidade
+      pós-execução). LogMessage cujo sibling-element anterior NÃO é
+      activity executável é antecipatório (descreve intenção, não fato).
+
+      Casos detectados:
+        ✗ Sequence começa com LogMessage (sem activity precedendo)
+        ✗ Dois LogMessage seguidos sem activity entre eles
+        ✗ Log → Activity (intenção) — activity tem que vir ANTES do log
+          que a documenta
+
+      Sibling não-executável que NÃO conta como "predecessor válido":
+      LogMessage, Comment, qualified-property elements, control flow
+      containers (If/Switch/ForEach), TryCatch, ActivityAction, etc.
+      Lista completa em heuristic.
+
+      Mensagem deve ser CONTEXTUAL (ver N-9). Ordering correto NÃO basta —
+      mensagem antecipatória ("Iniciando download...") em posição
+      formalmente correta ainda viola filosofia da regra. N-10 + N-9
+      cobrem ambos eixos (posição + conteúdo).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n10_log_anticipatory
+        exclude_paths: *chain_exclude_paths
+    fix:
+      apply_class: structural
+      prose: |
+        Reposicionar log para LOGO DEPOIS da activity que ele documenta.
+        Se for primeiro elemento do Sequence sem activity precedente:
+        provavelmente log antecipatório de inserção indevida — REMOVER
+        (a activity seguinte tem seu próprio log APÓS).
+
+        Auto-fix `remove_anticipatory_log` aplica a estratégia de remoção
+        quando confirmado que é primeiro filho ou que precede outro log.
+        Cuidado: remoção pode amplificar N-5 (cobertura perdida); fixpoint
+        loop com N-5 fixer re-insere Trace contextual no próximo iter.
+
+  - id: N-9
+    severity: WARN
+    category: architectural
+    target: all
+    title: "LogMessage com mensagem mecânica/template (sem contexto)"
+    description: |
+      Mensagem de `<ui:LogMessage>` deve ser CONTEXTUAL — descrever O QUE
+      aconteceu de relevante usando variáveis/valores reais. Mensagens
+      template como "Iniciando: ui:X" não agregam informação de
+      rastreabilidade real e são sinal de log gerado sem interpretação
+      (provável agente/script).
+
+      Padrões mecânicos detectados:
+        - `Iniciando: ui:<ActivityName>` (case insensitive)
+        - `Executando ui:<ActivityName>`
+        - `Started <ui:|ActivityName>`
+        - `Iniciando: <BareActivityName>` (sem `ui:`)
+        - Static strings sem interpolação de variáveis (vague)
+        - Verbos de intenção em vez de fato: "Vai buscar", "Começando"
+
+      Anti-padrão historicamente gerado por agente uipath-creator
+      interpretando N-5 prose. Causa colateral: ver S-10 (LogMessage em
+      parent restritivo) e N-5 ordering (logs ANTES viola N-5).
+
+      ─────────────────────────────────────────────────────────────────
+      INSTRUÇÕES PARA LLM/AGENTE — como gerar Message contextual:
+      ─────────────────────────────────────────────────────────────────
+
+      Pattern obrigatório (quando workflow é da cadeia Process):
+        `[in_StPrefixoLog + "<DESCRIÇÃO_FATO> " + <VARIÁVEL>.ToString]`
+
+      Se workflow não declara `in_StPrefixoLog` (raro pós-N-3 fixer):
+        `["<DESCRIÇÃO_FATO> " + <VARIÁVEL>.ToString]`
+
+      Decisão tree para construir DESCRIÇÃO_FATO:
+
+      1. **Activity é Assign / MultipleAssign** (atribuição)?
+         → Logar variável atribuída + valor:
+           `[in_StPrefixoLog + "vEndpoint resolvido: " + vEndpoint]`
+           `[in_StPrefixoLog + "Inicializou vIntRetry com " + vIntRetry.ToString]`
+         → Se valor é SecureString ou sensitive: NÃO logar valor; só nome:
+           `[in_StPrefixoLog + "Token recuperado em vSecPassword"]`
+
+      2. **Activity é HttpClient / OrchestratorHttpRequest** (HTTP)?
+         → Logar endpoint + status + size:
+           `[in_StPrefixoLog + "GET " + vStEndpoint + " status=" + vIntStatus.ToString + " bytes=" + vStResponse.Length.ToString]`
+
+      3. **Activity é ExecuteQuery / DBCommand** (database)?
+         → Logar query identifier + row count + timing:
+           `[in_StPrefixoLog + "Query consulta_dossies retornou " + vDtRows.Rows.Count.ToString + " rows"]`
+
+      4. **Activity é DeserializeJson / ParseXml**?
+         → Logar token raiz + count de elementos top-level:
+           `[in_StPrefixoLog + "Deserializou JSON com " + vJObj.Count.ToString + " keys top-level"]`
+
+      5. **Activity é RetryScope / While / DoWhile**?
+         → Logar tentativas + condição saída:
+           `[in_StPrefixoLog + "RetryScope concluído após " + vIntAttempts.ToString + " tentativas"]`
+
+      6. **Activity é GetCredential / GetRobotAsset**?
+         → Logar identifier do asset (NUNCA o valor):
+           `[in_StPrefixoLog + "Asset 'API_GED_Token' recuperado"]`
+
+      7. **Activity é InvokeCode (VB body)**?
+         → Logar resultado/output do code, não a invocação:
+           `[in_StPrefixoLog + "Validação de placeholders: " + vStExcecao]`
+
+      8. **Activity é CheckTrue / Throw / If branch entry**?
+         → Logar condição avaliada + decisão:
+           `[in_StPrefixoLog + "Não há restrição: prosseguindo"]`
+           `[in_StPrefixoLog + "Token expirado (vDtExpira=" + vDtExpira.ToString("HH:mm") + "), renovando"]`
+
+      9. **Activity sem informação útil pós-execução**?
+         → REMOVER LogMessage. Log que não agrega = ruído.
+
+      Regras invariantes para a mensagem:
+        - SEMPRE referenciar pelo menos 1 variável de scope com `.ToString`.
+        - NUNCA começar com verbo de intenção ("Iniciando", "Vai", "Será").
+        - SEMPRE descrever fato pós-execução ("Recuperou", "Concluiu",
+          "Status=N", "Encontrou X items"). Tempo verbal: passado/presente
+          do indicativo de RESULTADO.
+        - Se o valor é PII/secret/SecureString: logar identificador, NUNCA
+          o conteúdo. Ex: `"Senha recuperada de vault 'XYZ'"`, não a senha.
+        - Tamanho útil: ≤ 200 chars decoded. Logs longos viram ilegíveis em
+          Orchestrator.
+
+      Exemplos de transformação mecânico → contextual:
+
+        ✗ "Iniciando: ui:HttpClient"
+        ✓ "[in_StPrefixoLog + &quot;GET &quot; + vStEndpoint + &quot; status=&quot; + vIntStatusCode.ToString]"
+
+        ✗ "Executando AddDataRow"
+        ✓ "[in_StPrefixoLog + &quot;Linha adicionada: PK=&quot; + vDtRow.Item(&quot;StPK&quot;).ToString]"
+
+        ✗ "Concluído: Assign"
+        ✓ "[in_StPrefixoLog + &quot;vIntCount inicializado em &quot; + vIntCount.ToString]"
+
+        ✗ "Sucesso"
+        ✓ "[in_StPrefixoLog + &quot;Dossiê &quot; + vStIdDossie + &quot; vinculado em &quot; + vDtTime.ToString(&quot;HH:mm:ss&quot;)]"
+
+      Quando o LLM não consegue identificar variável relevante na cena
+      (activity isolada, sem contexto significativo): REMOVER o
+      LogMessage em vez de gerar fluff.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n9_log_message_mechanical
+        exclude_paths: *chain_exclude_paths
+    fix:
+      prose: |
+        Substituir mensagem template por descrição usando variáveis do
+        escopo. Sem auto-fix mecânico — interpretação contextual ESTRITA
+        seguindo decisão tree na description.
+
+        LLM/agente: aplicar pattern por activity-type:
+          1. Identificar tipo da activity (Assign, HttpClient, etc.)
+          2. Identificar variáveis no scope que carregam VALOR semântico
+             após execução (count, status, identifier, valor recém-atribuído)
+          3. Construir Message: `[in_StPrefixoLog + "<fato> " + <var>.ToString]`
+          4. Se nenhuma var carrega valor útil: REMOVER LogMessage.
+
+        Tempo verbal obrigatório: passado/resultado ("Recuperou", "Status=",
+        "Encontrou"). Verbos de intenção ("Iniciando", "Vai") rejeitam.
+        SecureString/PII: nunca logar conteúdo, só identificador.
+
+  - id: N-8
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Nome de variável/argumento ≤ 30 caracteres"
+    description: |
+      Nome de `<Variable>` e `<x:Property>` deve ter no máximo 30 caracteres.
+      Limite de legibilidade — nomes longos viram ruído em expressões VB,
+      DisplayName de Assigns, e Arguments de InvokeWorkflowFile. Se o nome
+      precisa descrever muita coisa, sinal de agrupar em Dictionary/DataTable
+      (relaciona com N-4).
+
+      Threshold default: 30. Configurável em params.threshold.
+
+      Sem auto-fix mecânico: rename cruza expressões `[v...]`, Assigns,
+      InvokeWorkflowFile Arguments e workflows chamadores — risco de quebrar
+      referências cross-file. Manual.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming_prefix
+        function: detect_n8_name_length
+        threshold: 30
+    fix:
+      prose: |
+        Renomear variável/argumento para ≤ 30 caracteres. Atualizar TODAS
+        as referências: expressões VB, Assigns, InvokeWorkflowFile Arguments,
+        e workflows chamadores. Considerar agrupar em Dictionary/DataTable
+        se nome longo indicar excesso de contexto no identificador.
+
+# ============================================================
+# Batch 3 — Testing + Agent + Dependencies
+# ============================================================
+
+# ---- P — PDD ----
+
+  - id: P-1
+    severity: ERROR
+    category: agent_behavior
+    target: all
+    title: "Seguir o PDD exatamente"
+    description: |
+      PDD é contrato funcional. Implementar a abordagem especificada.
+      Desvios funcionais exigem alinhamento com analista de negócio.
+    detect:
+      type: agent_only
+
+  - id: P-2
+    severity: ERROR
+    category: agent_behavior
+    target: all
+    title: "PDD descreve leitura E processamento implica Dispatcher + Performer"
+    description: |
+      Recomendar split Dispatcher (lê fonte, enfileira) + Performer
+      (consome fila, processa) quando PDD descreve ambos.
+    detect:
+      type: agent_only
+
+  - id: P-3
+    severity: WARN
+    category: agent_behavior
+    target: all
+    title: "Melhorias técnicas OK; mudanças funcionais NÃO"
+    description: |
+      Refatoração técnica preserva contrato funcional. Mudança em comportamento
+      observável exige aprovação prévia do PDD.
+    detect:
+      type: agent_only
+
+# ---- I — Inspection (HALT/WARN para agentes inspecionando UI) ----
+
+  - id: I-1
+    severity: HALT
+    category: agent_behavior
+    target: all
+    title: "Inspeção de browser é READ-ONLY"
+    description: |
+      NUNCA digitar em campos, inserir credenciais ou clicar submit
+      durante inspeção. Inspeção é descoberta de selectors, não execução.
+    detect:
+      type: agent_only
+
+  - id: I-2
+    severity: HALT
+    category: agent_behavior
+    target: all
+    title: "PARAR em telas de login durante inspeção"
+    description: |
+      Pedir ao usuário para logar manualmente. Não preencher credenciais.
+    detect:
+      type: agent_only
+
+  - id: I-3
+    severity: HALT
+    category: agent_behavior
+    target: all
+    title: "NUNCA inventar selectors"
+    description: |
+      Selectors devem vir de inspeção real (Studio UI Explorer ou
+      `inspect-ui-tree.ps1`). Inventar = bug em produção.
+    detect:
+      type: agent_only
+
+  - id: I-4
+    severity: WARN
+    category: agent_behavior
+    target: all
+    title: "Inspecionar apps-alvo ANTES de gerar XAML"
+    description: |
+      Sem inspeção real, selectors são chute. Sempre inspecionar primeiro.
+    detect:
+      type: agent_only
+
+# ---- T — Testing ----
+
+  - id: T-1
+    severity: INFO
+    category: testing
+    target: all
+    title: "Pasta Tests/ no projeto Performer contém test cases"
+    description: |
+      Sub-estrutura (Unit/Integration/Helpers/Fixtures/Mocks) é
+      convenção de projeto — definir no CLAUDE.md do projeto.
+    detect:
+      type: agent_only
+
+  - id: T-2
+    severity: INFO
+    category: testing
+    target: all
+    title: "TC isolado (unit) usa mocks e fixtures"
+    description: |
+      Não requer sistemas externos; rodável offline.
+      Mock helper fica em `Tests/Helpers/`.
+    detect:
+      type: agent_only
+
+  - id: T-3
+    severity: WARN
+    category: testing
+    target: all
+    title: "TC de integração só para validar contratos com sistemas externos"
+    description: |
+      Credenciais via `GetRobotAsset`/`GetRobotCredential` com assets
+      de ambiente de teste, nunca produção. Workflows que escrevem em
+      sistema produtivo (APIs, filas externas) sempre mockados, inclusive
+      em integração real.
+    detect:
+      type: agent_only
+
+  - id: T-4
+    severity: ERROR
+    category: testing
+    target: all
+    title: "TC InvokeWorkflowFile com x:Key não declarado no callee"
+    description: |
+      Test case invocando workflow real deve passar exatamente os
+      argumentos declarados pelo callee. x:Key extra ou faltando =
+      bug de teste.
+    applies_to:
+      include: ["Tests/**/*.xaml"]
+    detect:
+      type: cross_file_args
+      params:
+        direction: caller_extra
+
+  - id: T-5
+    severity: ERROR
+    category: testing
+    target: all
+    title: "TC referencia arquivo inexistente"
+    description: |
+      `WorkflowFileName="Path/To/X.xaml"` deve apontar para arquivo real
+      no projeto. Path quebrado = TC não roda.
+    applies_to:
+      include: ["Tests/**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.testing
+        function: detect_t5_missing_workflow
+
+  - id: T-6
+    severity: ERROR
+    category: testing
+    target: all
+    title: "TC sem mock invoca workflow que escreve em sistema externo"
+    description: |
+      Heurística: presença de `AddQueueItem` ou `SetTransactionStatus`
+      real (não em mock helper) em test case = risco de escrita em
+      sistema produtivo durante CI/CD.
+    applies_to:
+      include: ["Tests/**/*.xaml"]
+      exclude: ["Tests/Mocks/**", "Tests/Helpers/**"]
+    detect:
+      type: regex
+      pattern: '<ui:(?:AddQueueItem|BulkAddQueueItems|SetTransactionStatus)\b'
+
+  - id: T-7
+    severity: ERROR
+    category: testing
+    target: all
+    title: "Asset name hardcoded em TC"
+    description: |
+      Asset name em TC deve vir de variável de ambiente de teste
+      (`vStAssetTeste`, `in_StConfigPath`, etc.), não literal.
+    applies_to:
+      include: ["Tests/**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'AssetName="(?!\[)[^"]+"'
+
+# ---- D — Dependencies ----
+
+  - id: D-1a
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "UiPath.System.Activities >= 25.4.4"
+    description: |
+      Pin Sicoob: `UiPath.System.Activities` versão exata `[25.4.4]`.
+      Versões anteriores não corrigem WorkerProcess.exe .NET 6 detection.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPath.System.Activities
+        min: "25.4.4"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.System.Activities
+        version: "[25.4.4]"
+      prose: |
+        Pinar `dependencies."UiPath.System.Activities" = "[25.4.4]"`.
+
+  - id: D-1b
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "UiPath.UIAutomation.Activities >= 25.10.8"
+    description: |
+      Pin Sicoob: `[25.10.8]`. Versões anteriores não têm fixes Modern
+      activities (Find Elements, ScreenPlay).
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPath.UIAutomation.Activities
+        min: "25.10.8"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.UIAutomation.Activities
+        version: "[25.10.8]"
+      prose: |
+        Pinar `dependencies."UiPath.UIAutomation.Activities" = "[25.10.8]"`.
+
+  - id: D-1c
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "UiPath.Excel.Activities >= 3.1.2"
+    description: |
+      Pin Sicoob: `[3.1.2]`.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPath.Excel.Activities
+        min: "3.1.2"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.Excel.Activities
+        version: "[3.1.2]"
+      prose: |
+        Pinar `dependencies."UiPath.Excel.Activities" = "[3.1.2]"`.
+
+  - id: D-1d
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "UiPath.Database.Activities >= 1.10.1"
+    description: |
+      Pin Sicoob: `[1.10.1]`. Pré-1.10.0 tinha bug Try/Catch em Windows
+      que corrompia routing BusinessException × SystemException.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPath.Database.Activities
+        min: "1.10.1"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.Database.Activities
+        version: "[1.10.1]"
+      prose: |
+        Pinar `dependencies."UiPath.Database.Activities" = "[1.10.1]"`.
+
+  - id: D-1e
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.WebAPI.Activities >= 1.20.1"
+    description: |
+      Pin Sicoob: `[1.20.1]`. v1.20.0 foi withdrawn. v1.20.1 corrige
+      UTF-8 file download corruption.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPath.WebAPI.Activities
+        min: "1.20.1"
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.WebAPI.Activities
+        version: "[1.20.1]"
+      prose: |
+        Pinar `dependencies."UiPath.WebAPI.Activities" = "[1.20.1]"`.
+
+  # D-1f..o: pacotes adicionais pinados (Migração - Legacy.xlsx Dependências)
+  - id: D-1f
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.Cryptography.Activities >= 1.4.2"
+    description: "Pin Sicoob: 1.4.2 (Migração Legacy)."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.Cryptography.Activities, min: "1.4.2" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.Cryptography.Activities
+        version: "[1.4.2]"
+      prose: 'Pinar `dependencies."UiPath.Cryptography.Activities" = "[1.4.2]"`.'
+
+  - id: D-1g
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.DocumentUnderstanding.OCR.LocalServer >= 1.5.1"
+    description: "Pin Sicoob: 1.5.1."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.DocumentUnderstanding.OCR.LocalServer, min: "1.5.1" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.DocumentUnderstanding.OCR.LocalServer
+        version: "[1.5.1]"
+      prose: 'Pinar `dependencies."UiPath.DocumentUnderstanding.OCR.LocalServer" = "[1.5.1]"`.'
+
+  - id: D-1h
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.IntelligentOCR.Activities >= 6.24.0"
+    description: "Pin Sicoob: 6.24.0."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.IntelligentOCR.Activities, min: "6.24.0" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.IntelligentOCR.Activities
+        version: "[6.24.0]"
+      prose: 'Pinar `dependencies."UiPath.IntelligentOCR.Activities" = "[6.24.0]"`.'
+
+  - id: D-1i
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.Mail.Activities >= 1.24.2"
+    description: "Pin Sicoob: 1.24.2."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.Mail.Activities, min: "1.24.2" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.Mail.Activities
+        version: "[1.24.2]"
+      prose: 'Pinar `dependencies."UiPath.Mail.Activities" = "[1.24.2]"`.'
+
+  - id: D-1j
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.MicrosoftOffice365.Activities >= 2.7.24"
+    description: "Pin Sicoob: 2.7.24."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.MicrosoftOffice365.Activities, min: "2.7.24" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.MicrosoftOffice365.Activities
+        version: "[2.7.24]"
+      prose: 'Pinar `dependencies."UiPath.MicrosoftOffice365.Activities" = "[2.7.24]"`.'
+
+  - id: D-1k
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.OCR.Activities >= 3.22.0"
+    description: "Pin Sicoob: 3.22.0."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.OCR.Activities, min: "3.22.0" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.OCR.Activities
+        version: "[3.22.0]"
+      prose: 'Pinar `dependencies."UiPath.OCR.Activities" = "[3.22.0]"`.'
+
+  - id: D-1l
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.PDF.Activities >= 3.22.1"
+    description: "Pin Sicoob: 3.22.1."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.PDF.Activities, min: "3.22.1" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.PDF.Activities
+        version: "[3.22.1]"
+      prose: 'Pinar `dependencies."UiPath.PDF.Activities" = "[3.22.1]"`.'
+
+  - id: D-1m
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPath.Testing.Activities >= 24.10.4"
+    description: "Pin Sicoob: 24.10.4."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPath.Testing.Activities, min: "24.10.4" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.Testing.Activities
+        version: "[24.10.4]"
+      prose: 'Pinar `dependencies."UiPath.Testing.Activities" = "[24.10.4]"`.'
+
+  - id: D-1n
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UiPathTeam.SharePoint.Activities >= 2.0.3"
+    description: "Pin Sicoob: 2.0.3."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UiPathTeam.SharePoint.Activities, min: "2.0.3" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPathTeam.SharePoint.Activities
+        version: "[2.0.3]"
+      prose: 'Pinar `dependencies."UiPathTeam.SharePoint.Activities" = "[2.0.3]"`.'
+
+  - id: D-1o
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "UipathTeam.XML.Activities >= 1.1.0"
+    description: "Pin Sicoob: 1.1.0."
+    applies_to: { include: ["project.json"] }
+    detect:
+      type: nuget_version_check
+      params: { package: UipathTeam.XML.Activities, min: "1.1.0" }
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UipathTeam.XML.Activities
+        version: "[1.1.0]"
+      prose: 'Pinar `dependencies."UipathTeam.XML.Activities" = "[1.1.0]"`.'
+
+# ============================================================
+# Batch 4 — Per-package (Windows target)
+# Maioria reference/agent_only. Pacotes pinados em D-1*.
+# ============================================================
+
+# ---- EXC — Excel ----
+
+  - id: EXC-1
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Use Excel File (Modern) em vez de Excel Application Scope (Classic)"
+    description: |
+      Em projetos Windows, usar `Use Excel File` (Modern) em vez de
+      `Excel Application Scope` (Classic). Classic mantido só por compat.
+      Modern integra com Excel Process Scope para reuso de sessão.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:ExcelApplicationScope\b'
+
+  - id: EXC-2
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Use Excel File dentro de Excel Process Scope"
+    description: |
+      Process Scope controla segurança de macros, conflitos e ciclo da sessão.
+      Sem ele cada Use Excel File abre/mata instância e vaza handles COM.
+    detect:
+      type: agent_only
+
+  - id: EXC-3
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Visible=False, ReadOnly=True quando atividade só lê"
+    description: |
+      `Config.xlsx`, listas de input do dispatcher: Visible=False evita
+      janela Excel real (custa segundos); ReadOnly=True previne escrita
+      acidental em arquivos compartilhados.
+    detect:
+      type: agent_only
+
+  - id: EXC-4
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Senhas de workbook só via Orchestrator Credential SecureString"
+    description: |
+      `Password`/`EditPassword` nunca literal nem em Config.xlsx.
+    detect:
+      type: agent_only
+
+  - id: EXC-5
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "Workbook activities preferíveis a Use Excel File para .xlsx puros"
+    description: |
+      Para leitura/escrita pura sem fórmulas/macros/formatação preferir
+      Workbook activities — não exigem Excel instalado, ~10x mais rápido.
+    detect:
+      type: agent_only
+
+  - id: EXC-6
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "Não aninhar Use Excel File para mesmo workbook"
+    description: |
+      Reusar referência IExcelWorkbook existente.
+      Aninhamento causa file-lock errors.
+    detect:
+      type: agent_only
+
+  - id: EXC-7
+    severity: INFO
+    category: architectural
+    target: windows
+    title: "AutoSave=False + Save Excel File explícito em checkpoints"
+    description: |
+      AutoSave em workbook de rede + falha mid-write produz arquivo parcial
+      que REFramework retenta, duplicando linhas.
+    detect:
+      type: agent_only
+
+# ---- DB — Database ----
+
+  - id: DB-1
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "targetFramework=Windows alinhado ao stack"
+    description: |
+      Cross-platform suportado v1.9.0+ mas não usar em Sicoob por padrão.
+      v2.0.0 dropou .NET 4.6.1 e Windows-Legacy.
+    detect:
+      type: agent_only
+
+  - id: DB-2
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Connect/Disconnect em Init/Close — não por transação"
+    description: |
+      Abrir/fechar conexão DB2/SQL por queue item esgota pool e dispara
+      ORA-12519/SQLSTATE 08001. Uma conexão por execução do Performer.
+    detect:
+      type: agent_only
+
+  - id: DB-3
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Credenciais DB via Secure connection string (SecureString)"
+    description: |
+      Nunca ConnectionString plana. SecureString é o mecanismo documentado
+      para credenciais sensíveis (DB2 mainframe).
+    detect:
+      type: agent_only
+
+  - id: DB-4
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Parameters em Execute Query/Non Query — nunca concatenar SQL"
+    description: |
+      Concatenação é SQL-injetável. Identificadores de cliente
+      (CPF, conta, agência) precisam parametrização.
+    detect:
+      type: agent_only
+
+  - id: DB-5
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "UiPath.Database.Activities >= 1.10.0"
+    description: |
+      Versões anteriores tinham bug Try/Catch em Windows que pulava Catch.
+      1.10.1 corrige adicional Studio 2023.10.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPath.Database.Activities
+        min: "1.10.0"
+
+  - id: DB-6
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Multi-statement em Start Transaction com Commit/Rollback"
+    description: |
+      Não confiar em auto-commit. Escritas parciais sem commit explícito
+      produzem registros órfãos não detectáveis pelo Performer.
+    detect:
+      type: agent_only
+
+  - id: DB-7b
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "ProviderName=IBM.Data.DB2 legacy → .Core"
+    description: |
+      `IBM.Data.DB2` (sem `.Core`) é o assembly Framework. Windows target
+      (.NET 6+) exige `IBM.Data.DB2.Core`. Provider errado causa
+      `Keyword not supported` pós-migração.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'ProviderName="IBM\.Data\.DB2(?!\.Core)"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: 'ProviderName="IBM\.Data\.DB2(?!\.Core)"'
+        replacement: 'ProviderName="IBM.Data.DB2.Core"'
+      prose: |
+        Trocar `ProviderName="IBM.Data.DB2"` por `ProviderName="IBM.Data.DB2.Core"`.
+    examples:
+      bad: 'ProviderName="IBM.Data.DB2"'
+      good: 'ProviderName="IBM.Data.DB2.Core"'
+
+  - id: DB-7c
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "ProviderName=System.Data.SqlClient → Microsoft.Data.SqlClient"
+    description: |
+      `System.Data.SqlClient` deprecated. Windows target (.NET 6+) usa
+      `Microsoft.Data.SqlClient` (pacote independente, mantido pela MS).
+      Provider errado causa `Keyword not supported` pós-migração.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'ProviderName="System\.Data\.SqlClient"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: 'ProviderName="System\.Data\.SqlClient"'
+        replacement: 'ProviderName="Microsoft.Data.SqlClient"'
+      prose: |
+        Trocar `ProviderName="System.Data.SqlClient"` por `ProviderName="Microsoft.Data.SqlClient"`.
+    examples:
+      bad: 'ProviderName="System.Data.SqlClient"'
+      good: 'ProviderName="Microsoft.Data.SqlClient"'
+
+# ---- API — WebAPI ----
+
+  - id: API-1
+    severity: HALT
+    category: architectural
+    target: windows
+    title: "Nunca ContinueOnError=True em HTTP Request POST/PUT/PATCH/DELETE"
+    description: |
+      ContinueOnError default=True engole 4xx/5xx silenciosamente.
+      Em endpoints não-idempotentes mascara falhas.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:HttpClient\b[^>]*Method="(?:POST|PUT|PATCH|DELETE)"[^>]*ContinueOnError="True"'
+
+  - id: API-2
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Retry só em verbos idempotentes"
+    description: |
+      GET, HEAD, PUT com idempotency key. POST sem retry a menos que servidor
+      documente header de idempotência. Replay em transient pode duplicar
+      lançamento financeiro.
+    detect:
+      type: agent_only
+
+  - id: API-3
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Override timeout default 10000 ms para chamadas batch"
+    description: |
+      APIs REST mainframe-backed Sicoob excedem 10s. Default dispara
+      SystemException que REFramework retenta indefinidamente.
+      Pinar valor em Config.xlsx (`API_Timeout_Ms`).
+    detect:
+      type: agent_only
+
+  - id: API-4
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Credenciais API via Orchestrator Credential"
+    description: |
+      Basic (SecureString password) ou Bearer token; nunca embedded em
+      headers como string plana.
+    detect:
+      type: agent_only
+
+  - id: API-5
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Forçar TLS 1.2/1.3, Disable SSL verification=False em prod"
+    description: |
+      Default "Automatic" pode negociar para baixo. Compliance bancária
+      e gateway Sicoob exigem TLS 1.2+ com chain validation.
+    detect:
+      type: agent_only
+
+  - id: API-6
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "SOAP Request remanescente — só Windows-Legacy"
+    description: |
+      SOAP Request 1.x não compatível com .NET 6+. Migrado vira
+      HTTP Request + body manual application/soap+xml.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:SoapRequest\b'
+
+  - id: API-7
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "JSON grande via body Stream + desserialização incremental"
+    description: |
+      Body Text default carrega resposta completa em String, estoura
+      limite 2GB CLR em response multi-MB.
+    detect:
+      type: agent_only
+
+# ---- UI — UIAutomation ----
+
+  - id: UI-1
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Modern activities (NClick/NTypeInto/NApplicationCard) — nunca Classic"
+    description: |
+      Classic Click/TypeInto/Open Browser não tem inline designers,
+      verification, Check App State Wait active, Find Elements.
+      Seletores precisam ser regerados com Modern UI Explorer.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<ui:(?:Click|TypeInto|OpenBrowser|GetText|GetAttribute|HighlightElements|MouseClick|HoverActivity)\b'
+
+  - id: UI-2
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "Sisbr (Chrome incognito) → InteractionMode=Simulate"
+    description: |
+      Simulate é background-capable, tolerante a screen-lock em robôs
+      unattended. HardwareEvents falha em sessão bloqueada.
+      ChromiumAPI só fallback.
+    detect:
+      type: agent_only
+
+  - id: UI-3
+    severity: ERROR
+    category: architectural
+    target: windows
+    title: "AttachMode=ByInstance em apps desktop/Sisbr"
+    description: |
+      Nunca ByTitle/ByProcessId. ByTitle colide com 2 janelas Sisbr/DB2 abertas.
+      ByInstance vincula ao UiElement retornado por Open e sobrevive a
+      mudanças de título mid-transaction.
+    detect:
+      type: agent_only
+
+  - id: UI-4
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "Chrome NApplicationCard com --incognito + CloseSession ao fim"
+    description: |
+      Incognito isola cookies/cache; cada browser fecha deterministicamente.
+    detect:
+      type: agent_only
+
+  - id: UI-5
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "Computer Vision desabilitado por default (data leak)"
+    description: |
+      CV vem desabilitado desde 25.10.27 para evitar leak de dado sensível.
+      Telas bancárias nunca devem sair do host. Preferir Strict/Fuzzy/Image
+      com anchors.
+    detect:
+      type: agent_only
+
+  - id: UI-6
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "Pós Legacy→Windows: regerar seletores + validar OCR/Vision"
+    description: |
+      Schemas de seletor .NET 4.6.1 ≠ .NET 6/8. Mismatch UiPath.Vision causa
+      "OCR engine not found" e ByInstance attach failure pós-migração.
+    detect:
+      type: agent_only
+
+  - id: UI-7
+    severity: INFO
+    category: architectural
+    target: windows
+    title: "Timeout explícito + DelayBefore/After=0 em Simulate"
+    description: |
+      Default 30s baixo para Sisbr. Simulate não precisa de delays
+      (são para HardwareEvents).
+    detect:
+      type: agent_only
+
+# ---- SYS — System ----
+
+  - id: SYS-1
+    severity: HALT
+    category: breaking
+    target: all
+    title: "Projeto deve targetar Windows (.NET 6+)"
+    description: |
+      System v25.2.1+ não funciona em Windows-Legacy.
+      25.4.3 corrige WorkerProcess.exe .NET 6 detection.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: json_field_check
+      params:
+        path: targetFramework
+        expected: Windows
+
+  - id: SYS-2
+    severity: HALT
+    category: architectural
+    target: all
+    title: "Credenciais via Get Credential/Get Asset (Orchestrator)"
+    description: |
+      Sem senhas/tokens hardcoded em XAML/Config.xlsx (DB2, Sisbr).
+      Activity retorna SecureString; ACLs de pasta Orchestrator aplicam.
+      Compliance Resolução BCB 4.893.
+    detect:
+      type: agent_only
+
+  - id: SYS-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "REFramework: Get Credential dentro de Init State"
+    description: |
+      (Ou per-transaction se CacheStrategy=Execution).
+      Passar SecureString — nunca converter para String plana.
+    detect:
+      type: agent_only
+
+  - id: SYS-4
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "OrchestratorFolderPath explícito (Modern)"
+    description: |
+      Quando assets vivem fora da ambient folder. Multi-tenant Sicoob
+      (DEV/HML/PRD) faz resolução ambient pegar asset errado.
+    detect:
+      type: agent_only
+
+  - id: SYS-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Throw/Rethrow business vs system explícitos no Performer"
+    description: |
+      Default ContinueOnError=False é correto. Sobrescrever esconde erros
+      e quebra retry/SystemException counter do REFramework.
+    detect:
+      type: agent_only
+
+  - id: SYS-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Persistence só em processo separado, não no Performer"
+    description: |
+      UI elements, browsers, DB connections dentro do Performer não podem
+      ser persistidos e throw em suspend. Dispatcher cria task; workflow
+      de persistence separado retoma.
+    detect:
+      type: agent_only
+
+  - id: SYS-7
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Pinar UiPath.System.Activities 25.4.4"
+    description: |
+      Evita regressão de filtro OData vista em 26.2.0.
+      25.12+ Filter Builder para reporting.
+    detect:
+      type: agent_only
+
+# ---- TEST — Testing pack ----
+
+  - id: TEST-1
+    severity: ERROR
+    category: testing
+    target: all
+    title: "Verify Expression somente em Test Cases"
+    description: |
+      `Verify Expression`/`Verify Expression With Operator`/
+      `Verify Control Attribute` SOMENTE em `Tests/`. Nunca dentro de
+      Performer/Process.xaml. Logam falhas sem throw, corrompem transações.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Tests/**"]
+    detect:
+      type: regex
+      pattern: '<ui:(?:VerifyExpression|VerifyExpressionWithOperator|VerifyControlAttribute)\b'
+
+  - id: TEST-2
+    severity: ERROR
+    category: testing
+    target: all
+    title: "Test Case segue Given-When-Then"
+    description: |
+      Given = arrange (mock data, navegar). When = Invoke do SUT.
+      Then = Verify Expression comparando output. Template TestCase do
+      Studio enforça layout; desviar quebra Test Manager.
+    detect:
+      type: agent_only
+
+  - id: TEST-3
+    severity: ERROR
+    category: testing
+    target: all
+    title: "Mockar dependências externas (DB2, API Sisbr, SMTP)"
+    description: |
+      Mock em volta do Invoke Workflow; nunca CI tocar produção bancária.
+    detect:
+      type: agent_only
+
+  - id: TEST-4
+    severity: WARN
+    category: testing
+    target: all
+    title: "TakeScreenshotIfFailed=True + AlternativeVerificationTitle"
+    description: |
+      Especialmente em data variations. Títulos aparecem em Test Manager
+      para QA identificar variação sem rerodar.
+    detect:
+      type: agent_only
+
+  - id: TEST-5
+    severity: WARN
+    category: testing
+    target: all
+    title: "Given workflows project-level + tag tests"
+    description: |
+      Setup compartilhado (login, abrir Sisbr). Uma asserção lógica por TC
+      para falha diagnosticável.
+    detect:
+      type: agent_only
+
+  - id: TEST-6
+    severity: INFO
+    category: testing
+    target: all
+    title: "Variações de dados via Data Service ou Test Data Queues"
+    description: |
+      Não Config.xlsx. Test data bancário precisa versionamento e PII control.
+    detect:
+      type: agent_only
+
+# ---- CRY — Cryptography ----
+
+  - id: CRY-1
+    severity: HALT
+    category: architectural
+    target: all
+    title: "Nunca hardcode keys/passwords em Encrypt/Hash"
+    description: |
+      Carregar de Orchestrator Asset (Credential) ou Windows Credential Store.
+    detect:
+      type: agent_only
+
+  - id: CRY-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "AES-GCM/AES-256 para simétrico; SHA256/512 para hash"
+    description: |
+      Evitar DES, RC2, MD5, SHA1, RIPEMD160. 1.4.x ainda expõe legados em
+      dropdowns mas não compliam BACEN/PCI-DSS.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'Algorithm="(?:DES|RC2|MD5|SHA1|RIPEMD160)"'
+
+  - id: CRY-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Preferir KeySecureString sobre Key (String)"
+    description: |
+      1.4.x adicionou overloads SecureString para manter keys fora de
+      memory dump e log verbose.
+    detect:
+      type: agent_only
+
+  - id: CRY-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Encrypt/Decrypt em Try/Catch sem logar inner verbatim"
+    description: |
+      CryptographicException pode ecoar IV bytes ou tamanho da key.
+    detect:
+      type: agent_only
+
+  - id: CRY-5
+    severity: WARN
+    category: breaking
+    target: all
+    title: "Migrar Hash Text/File legadas (deprecated em 1.4.0+)"
+    description: |
+      Studio marca legadas como (deprecated). Novas Hash exigem Key.
+      Verificar Key Encoding preservado na migração.
+    detect:
+      type: agent_only
+
+  - id: CRY-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Não confiar só em FIPS-only mode"
+    description: |
+      Pacote não é FIPS-validated. Usar política Windows FIPS + .NET CNG
+      providers se compliance exigir.
+    detect:
+      type: agent_only
+
+# ---- MAIL — Mail ----
+
+  - id: MAIL-1
+    severity: HALT
+    category: breaking
+    target: all
+    title: "Nunca SMTP/IMAP/POP3 com basic auth + senha hardcoded"
+    description: |
+      Microsoft desabilitou basic auth em Exchange Online. Usar Office 365
+      activities com OAuth (App ID + Certificate).
+    detect:
+      type: agent_only
+
+  - id: MAIL-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Toda credencial mail vem de Orchestrator Asset"
+    description: |
+      Nunca Config.xlsx em plaintext. SoD bancária exige rotação independente.
+    detect:
+      type: agent_only
+
+  - id: MAIL-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Não passar body/anexos em Queue Item SpecificContent"
+    description: |
+      Persistir em share seguro e armazenar só referência. Payloads de queue
+      são visíveis na UI Orchestrator — risco PII/PCI.
+    detect:
+      type: agent_only
+
+  - id: MAIL-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Save Mail Message em pasta per-transaction; limpar em Finally"
+    description: |
+      1.24.x retém file handles. Performers concorrentes causam IOException
+      e contaminação cruzada de cliente.
+    detect:
+      type: agent_only
+
+  - id: MAIL-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "MarkAsRead=True + OnlyUnreadMessages=True no Dispatcher"
+    description: |
+      Garante idempotência. Retries do REFramework podem re-enfileirar
+      o mesmo email após System Exception.
+    detect:
+      type: agent_only
+
+  - id: MAIL-6
+    severity: INFO
+    category: breaking
+    target: all
+    title: "Outlook Desktop — atenção ao New Outlook (Monarch)"
+    description: |
+      Muitas activities não suportadas. Forçar Classic Outlook ou migrar
+      para O365.
+    detect:
+      type: agent_only
+
+# ---- O365 — Office365 ----
+
+  - id: O365-1
+    severity: HALT
+    category: architectural
+    target: all
+    title: "App ID + Certificate (não Secret) em produção"
+    description: |
+      Client secrets expiram/vazam. Cert auth alinha com PKI Sicoob.
+    detect:
+      type: agent_only
+
+  - id: O365-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Scopes Graph mínimos por workflow"
+    description: |
+      Mail.Read para leitura, não Mail.ReadWrite.All. Configurar no
+      Azure App Registration antes de Microsoft Office 365 Scope.
+    detect:
+      type: agent_only
+
+  - id: O365-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Wrappar Graph em Retry Scope (HTTP 429/503 + Retry-After)"
+    description: |
+      Graph throttla por-tenant/por-app. Performer loop pode trip o limit.
+    detect:
+      type: agent_only
+
+  - id: O365-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "1 O365 Scope por transação Performer (não aninhado per-activity)"
+    description: |
+      Token cache vive no scope. Aninhar amplifica throttling.
+    detect:
+      type: agent_only
+
+  - id: O365-5
+    severity: WARN
+    category: breaking
+    target: all
+    title: "Pós Legacy→Windows recriar connection O365"
+    description: |
+      2.x targeta .NET 6, APIs cert-store diferentes da linha Legacy 1.x.
+      CryptographicException/Could not load Microsoft.Identity.Client.
+    detect:
+      type: agent_only
+
+  - id: O365-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "SharePoint/OneDrive: preferir O365 dedicadas sobre community"
+    description: |
+      Pacote first-party é Graph-based, simplifica auditoria.
+    detect:
+      type: agent_only
+
+# ---- SP — SharePoint (community) ----
+
+  - id: SP-1
+    severity: HALT
+    category: architectural
+    target: all
+    title: "UiPathTeam.SharePoint.Activities pinar exatamente 2.0.3"
+    description: |
+      Pacote community Silver-cert, não core-supported. Documentar como
+      risco de projeto. Minor updates já quebraram auth historicamente.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPathTeam.SharePoint.Activities
+        min: "2.0.3"
+
+  - id: SP-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "AppOnly (Client ID + Secret em Asset) para Performers unattended"
+    description: |
+      Nunca WebLogin fora de attended/dev. WebLogin exige sign-in interativo.
+      MFA/CA on-prem bloqueiam.
+    detect:
+      type: agent_only
+
+  - id: SP-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Wrappar file/loop ops com tratamento HTTP 429"
+    description: |
+      Retry Scope com exponential backoff respeitando Retry-After.
+    detect:
+      type: agent_only
+
+  - id: SP-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "UploadLargeFile para arquivos > 250 MB"
+    description: |
+      Chunk processing no Performer (1 arquivo = 1 transação).
+      2.0 mudou para REST API; uploads single-shot timeoutam.
+    detect:
+      type: agent_only
+
+  - id: SP-5
+    severity: WARN
+    category: breaking
+    target: all
+    title: "Linha 2.x targeta .NET 5+ e dropou CSOM"
+    description: |
+      Verificar compat Windows-target antes de upgrade de 1.x.
+      Projetos Legacy 1.x XAML (CSOM-based) não auto-migram limpo.
+    detect:
+      type: agent_only
+
+  - id: SP-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Identidade do robô precisa permissões SharePoint pretendidas"
+    description: |
+      Pacote não excede direitos. Maioria das falhas silenciosas é permissão.
+    detect:
+      type: agent_only
+
+# ---- XML — community pack ----
+
+  - id: XML-1
+    severity: HALT
+    category: architectural
+    target: all
+    title: "UiPathTeam.XML.Activities pinar 1.1.0"
+    description: |
+      Pacote community Silver-cert, último update Jan/2023, cadência baixa.
+      Risco de auditoria/SBOM em ambiente bancário. Fallback: Deserialize XML
+      + XDocument LINQ nativo.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: nuget_version_check
+      params:
+        package: UiPathTeam.XML.Activities
+        min: "1.1.0"
+
+  - id: XML-2
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Co-dependência: instalar UiPath.Web.Activities"
+    description: |
+      Para Deserialize XML. Pacote compila mas throwa em runtime na primeira
+      chamada sem o companion.
+    detect:
+      type: agent_only
+
+  - id: XML-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Validação XSD: desabilitar resolução DTD/entity externa"
+    description: |
+      XXE attacks via XML untrusted é vetor real de exfiltração.
+    detect:
+      type: agent_only
+
+  - id: XML-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Declarar/tratar XML namespaces explicitamente"
+    description: |
+      Payloads SOAP/bancários (SPB, SISBR) usam múltiplos namespaces.
+      XPath retorna vazio silenciosamente caso contrário.
+    detect:
+      type: agent_only
+
+  - id: XML-5
+    severity: WARN
+    category: breaking
+    target: all
+    title: "Verificar compat Studio/runtime (pacote stale)"
+    description: |
+      Marketplace lista Studio 22.4–22.10 com .NET 5+. Revalidar em
+      Studio atual (24.x/25.x) Windows.
+    detect:
+      type: agent_only
+
+  - id: XML-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Nunca logar body XML completo com PII"
+    description: |
+      LGPD + política Sicoob. Logar nomes de elemento e contagens, ou
+      hash de nodes sensíveis.
+    detect:
+      type: agent_only
+
+# ---- IOCR — IntelligentOCR ----
+
+  - id: IOCR-1
+    severity: HALT
+    category: breaking
+    target: all
+    title: "Pipeline obrigatório Taxonomy → Digitize → Classify → Extract → Validate → Export"
+    description: |
+      Activities downstream throwam quando DOM/TextResult ausente.
+    detect:
+      type: agent_only
+
+  - id: IOCR-2
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Document Understanding ML pack auto-instalado (não remover)"
+    description: |
+      Auto-instalado desde v6.19.0. Generative validators + Modern DU
+      consumption (v6.22.0+) dependem dele.
+    detect:
+      type: agent_only
+
+  - id: IOCR-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Validation human-in-loop para low-confidence em campos críticos"
+    description: |
+      Present Validation Station (síncrono) ou Action Center via apps
+      (v6.24.0). CPF/CNPJ/valor exigem audit trail antes de core banking.
+    detect:
+      type: agent_only
+
+  - id: IOCR-4
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Não usar CJK OCR (deprecada jan/2025)"
+    description: |
+      Migrar para UiPath Extended Languages OCR (GA desde v6.22.0).
+      PT-BR não usa CJK mas regra vale para XAML legado.
+    detect:
+      type: agent_only
+
+  - id: IOCR-5
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "ApplyOcrOnPdf substituiu ForceApplyOCR (v6.5.0+)"
+    description: |
+      XAML migrado de versão < 6.5 deve ser atualizado.
+      ForceApplyOCR não existe mais no v6.24.0.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '\bForceApplyOCR\b'
+
+  - id: IOCR-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Action Center: RuntimeTenantURL + RuntimeCredentialsAsset"
+    description: |
+      Multi-tenant Sicoob (DEV/HML/PRD) exige resolução explícita.
+    detect:
+      type: agent_only
+
+  - id: IOCR-7
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Mascarar CPF/CNPJ/conta antes de Export Extraction Results"
+    description: |
+      LGPD exige minimização. JSON raw vaza PII em logs.
+    detect:
+      type: agent_only
+
+  - id: IOCR-8
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Layouts variáveis: Machine Learning Extractor ou generative"
+    description: |
+      Multi-cooperativa Sicoob — Form Extractor exige template por layout
+      (inviável). Generative cobre variabilidade.
+    detect:
+      type: agent_only
+
+# ---- OCR — OCR pack ----
+
+  - id: OCR-1
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "PT-BR: usar UiPath Extended Languages OCR"
+    description: |
+      Única engine in-house que suporta Português explicitamente.
+      Document OCR é otimizada mas não lista PT-BR. Misuso corrompe
+      acentos (ção/são, ã, õ) em contratos.
+    detect:
+      type: agent_only
+
+  - id: OCR-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "ApiKey via Orchestrator Asset; Private=True em prod"
+    description: |
+      Project files versionados em Git; keys vazadas disparam compliance.
+    detect:
+      type: agent_only
+
+  - id: OCR-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Endpoint via Asset ou UseLocalServer=True; nunca misturar"
+    description: |
+      Endpoints mistos fragmentam audit log. Sicoob data residency pode
+      exigir on-prem.
+    detect:
+      type: agent_only
+
+  - id: OCR-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Override Timeout default 100000 ms"
+    description: |
+      Default longo mascara latência. Pinar valor adequado ao SLA do step.
+    detect:
+      type: agent_only
+
+  - id: OCR-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "UseSeparateOcrProcess=True em loop pesado"
+    description: |
+      Cria processo separado por scheduler — isolamento contra leak/crash.
+      Ignorado quando UseLocalServer=True.
+    detect:
+      type: agent_only
+
+  - id: OCR-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Uma engine OCR por projeto"
+    description: |
+      Misturar OmniPage + Document OCR/Extended produz bounding boxes
+      inconsistentes. Anchor selectors falham intermitentemente.
+    detect:
+      type: agent_only
+
+# ---- PDF — PDF pack ----
+
+  - id: PDF-1
+    severity: HALT
+    category: breaking
+    target: all
+    title: "PDF >= 3.0 exige IntelligentOCR >= 3.0 (e vice-versa)"
+    description: |
+      Pinning Sicoob (PDF 3.22.1 + IOCR 6.24.0) está alinhado.
+      Misturar major versions causa runtime errors silenciosos.
+    detect:
+      type: agent_only
+
+  - id: PDF-2
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Read PDF Text primeiro; vazio → fallback Read PDF With OCR"
+    description: |
+      Contratos scanned retornam vazio silenciosamente.
+      Performer postaria dado vazio em core banking.
+    detect:
+      type: agent_only
+
+  - id: PDF-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Password via SecureString de Orchestrator Credential"
+    description: |
+      Para PDFs protegidos (extratos do cliente). Senha plaintext em
+      arguments é logada em verbose — violação LGPD.
+    detect:
+      type: agent_only
+
+  - id: PDF-4
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Catch consolidado PdfException (v3.10.1+)"
+    description: |
+      Substituiu IncorrectPasswordException + UnexpectedStructureException.
+      Try/Catch em XAML migrado deve catchar PdfException.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'Catch\b[^>]*x:TypeArguments="(?:IncorrectPasswordException|UnexpectedStructureException)"'
+
+  - id: PDF-5
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Pós v3.19.1 re-add Read PDF With OCR (schema mudou)"
+    description: |
+      Upgrade exige remover/re-adicionar activity OU preencher manualmente
+      Image no campo OCR Image.
+    detect:
+      type: agent_only
+
+  - id: PDF-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "PreserveFormat=True só quando parsing depende de coluna"
+    description: |
+      Extratos tabulares: True. Contratos narrativos: False (whitespace
+      injetado quebra regex em campos valor/data).
+    detect:
+      type: agent_only
+
+  - id: PDF-7
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Extract PDF Page Range para fatiar antes de OCR"
+    description: |
+      Memory spike em extrato 200+ páginas crasha robô. Per-page mantém
+      retry de queue item barato.
+    detect:
+      type: agent_only
+
+  - id: PDF-8
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Pinar 3.22.1 contém fix invisible text (v3.20.2)"
+    description: |
+      Versões anteriores podiam vazar texto invisível para extração.
+    detect:
+      type: agent_only
+
+  - id: PDF-9
+    severity: INFO
+    category: architectural
+    target: all
+    title: "5 activities têm versão cross-platform (v3.14.0+)"
+    description: |
+      Via UiPath.DocumentUnderstanding.Activities. Não é caminho Sicoob,
+      mas relevante se time abrir cross-platform.
+    detect:
+      type: agent_only
+
+  - id: PDF-10
+    severity: INFO
+    category: architectural
+    target: all
+    title: "FIPS Compliance Flag (v3.1.0+)"
+    description: |
+      Algumas funcionalidades não-FIPS ainda podem throw exception.
+      Auditoria Sicoob pode requerer FIPS — testar caminho específico.
+    detect:
+      type: agent_only
+
+# ---- DULS — DocumentUnderstanding LocalServer ----
+
+  - id: DULS-1
+    severity: HALT
+    category: breaking
+    target: all
+    title: "Local Server: idioma único inglês"
+    description: |
+      Não usar para documentos PT-BR. Para PT-BR usar Extended Languages
+      OCR (cloud) ou OmniPage offline.
+    detect:
+      type: agent_only
+
+  - id: DULS-2
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "CPU com AVX2 obrigatório, mín 4 cores"
+    description: |
+      Verificar AVX2 em VMs/hipervisores. Sem AVX2 ativação falha.
+    detect:
+      type: agent_only
+
+  - id: DULS-3
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Pacote não contém activities; só habilita UseLocalServer=True"
+    description: |
+      Compatibilidade UiPath.OCR.Activities >= 3.1.0-preview.
+      Confusão comum: instalar e não setar UseLocalServer=True.
+    detect:
+      type: agent_only
+
+  - id: DULS-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Operação totalmente offline"
+    description: |
+      Sem Automation Cloud, sem API Key, sem URL externa, sem AI Center.
+      Vantagem para data residency Sicoob; exige máquina com capacidade.
+    detect:
+      type: agent_only
+
+  - id: DULS-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Resultados podem diferir do endpoint cloud"
+    description: |
+      Revalidar regex/anchors após troca de endpoint.
+    detect:
+      type: agent_only
+
+  - id: DULS-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Velocidade depende da máquina; considerar VM dedicada"
+    description: |
+      OCR pesado em farm Sicoob: dedicar VM em vez de rodar lado-a-lado
+      com UI Automation Performer.
+    detect:
+      type: agent_only
+
+# ============================================================
+# Batch — U (Unused / Undeclared) — higiene + compile safety
+# ============================================================
+
+  - id: U-1
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Variável declarada não usada"
+    description: |
+      `<Variable Name="X" />` declarado em `*.Variables` sem nenhuma
+      referência em expressões do escopo (atributos `To`/`Value`/
+      `Condition`/`[expr]` + body de `<InvokeCode><Code>`).
+      Scan case-insensitive (VB compila igual). Excluir matches em
+      `<sap2010:Annotation.AnnotationText>` e `<x:Property.Attributes>`.
+
+      Framework/* incluído no escopo (ajuste 2026-05-01) — REFramework
+      templates podem ter vars realmente unused após customização. Auto-fix
+      gate (XML well-formed + VB ref check) protege contra remoção indevida.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.unused
+        function: detect_unused_variables
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: delete_variable
+      # Detector injeta `name` per-finding antes do CLI chamar fixer.
+      # ViewState IdRef cleanup adiado — Studio tolera orphan IdRef em
+      # ViewState (rendering hint, não-breaking). Se aparecer breakage
+      # futuro, adicionar fixer secundário.
+      prose: |
+        Remover `<Variable x:TypeArguments="..." Name="X" />` declaração.
+        Auto-fix idempotente cobre self-close e open+close forms.
+    examples:
+      bad: '<Variable x:TypeArguments="x:String" Name="vStrTemp" />  <!-- never referenced -->'
+      good: '<!-- variável removida -->'
+
+  - id: U-2
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Argumento declarado não usado (callee + callers limpos)"
+    description: |
+      `<x:Property Name="in_X" />` ou `io_X` sem leitura no body do callee
+      e sem binding em nenhum caller (`InvokeWorkflowFile.Arguments`).
+      Severity sobe para WARN após sprint 2 com FP < 5%.
+      `out_X` adiado para fase 2 (lógica direção inversa).
+      Skips automáticos:
+        - Main.xaml (contrato Orchestrator/queue/job).
+        - Tests/ (runner reflection).
+        - REFramework template files.
+        - projectType=Library workflows public (API).
+      Heurística passthrough: se callee tem `InvokeWorkflowFile` que passa
+      o mesmo nome de arg → cadeia, não unused.
+      Detect aborta projeto inteiro se houver `WorkflowFileName="[expr]"`
+      dinâmico (não dá mapear caller estático).
+      Sprint 1: detect-only. Auto-fix mecânico em sprint 2 com guards
+      W-1 (caller self-closed) e default-value preservation.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/Main.xaml"
+        - "**/Tests/**/*.xaml"
+        - "Framework/InitAllSettings.xaml"
+        - "Framework/InitAllApplications.xaml"
+        - "Framework/GetTransactionData.xaml"
+        - "Framework/Process.xaml"
+        - "Framework/SetTransactionStatus.xaml"
+        - "Framework/CloseAllApplications.xaml"
+        - "Framework/KillAllProcesses.xaml"
+        - "Framework/TakeScreenshot.xaml"
+        - "Framework/RetryCurrentTransaction.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.unused
+        function: detect_unused_arguments
+    fix:
+      prose: |
+        1. Confirmar que nenhum caller passa binding com valor não-default.
+        2. Remover `<x:Property Name="in_X" .../>` do `<x:Members>` no callee.
+        3. Remover bindings `<InArgument x:Key="in_X">...</InArgument>` em
+           todos os `<ui:InvokeWorkflowFile.Arguments>` dos callers.
+        4. Limpar ViewState entries órfãs.
+        5. Validar build em todos projetos afetados.
+    examples:
+      bad: |
+        <!-- callee.xaml -->
+        <x:Property Name="in_StSenhaNaoUsada" Type="InArgument(x:String)" />
+      good: '<!-- removido callee + bindings em todos callers -->'
+
+  - id: U-3
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Identifier referenciado sem declaração no escopo"
+    description: |
+      Identifier VB usado em expressão sem declaração resolvível no
+      escopo (Variables ancestrais, Arguments do `<x:Members>`,
+      DelegateInArgument de ForEach/ForEachRow/Catch/Parallel/Pick).
+      Sintoma compile: `BC30451 'X' is not declared. ... Variable 'X'
+      is missing. Please use Data Manager to recreate it.`
+      Causa típica: variável removida do `<Variables>` mas expressões
+      remanescentes; ou shape de atividade inválido (ex: ForEachRow
+      Legacy `DataTable=` em pacote Modern que espera `Values=`) que
+      derruba DelegateInArgument do body.
+      Cascata comum: BC30035, BC30201, BC30800, BC30198, BC30370 após
+      identifier não resolvido.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.unused
+        function: detect_undeclared_identifiers
+    fix:
+      prose: |
+        Reportar local exato (xaml:linha:identifier:escopo).
+        Resolução manual:
+        1. Recriar variável faltante via Studio Data Manager OU
+        2. Renomear referência para variável existente OU
+        3. Corrigir shape de atividade que perdeu DelegateInArgument
+           (ex: migrar ForEachRow Legacy → Modern; trocar `DataTable=`
+           por `Values=`).
+    examples:
+      bad: |
+        <Sequence>
+          <Sequence.Variables />  <!-- vStReferenceTemp removido -->
+          <Assign>
+            <Assign.Value>
+              <InArgument x:TypeArguments="x:String">[vStReferenceTemp]</InArgument>
+              <!-- BC30451 -->
+            </Assign.Value>
+          </Assign>
+        </Sequence>
+      good: |
+        <Sequence>
+          <Sequence.Variables>
+            <Variable x:TypeArguments="x:String" Name="vStReferenceTemp" />
+          </Sequence.Variables>
+          ...
+        </Sequence>
+
+  - id: U-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Variable name duplicado no mesmo arquivo"
+    description: |
+      `<Variable Name="X">` declarado >1× no mesmo XAML (em scopes diferentes).
+      VB compila (case-insensitive scope-resolution OK), mas:
+        - Confunde leitor.
+        - Bloqueia U-1 detector (file-level scan): se 1 instância é usada,
+          U-1 não consegue identificar a OUTRA como unused (qualquer ref
+          casa case-insensitive com qualquer Name).
+
+      Resolução manual: renomear uma das duplicatas (escope-aware), ou
+      consolidar declarações em scope mais alto se intenção for var
+      compartilhada.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.unused
+        function: detect_duplicate_variable_names
+    fix:
+      # Mixed: same-scope duplicates → mechanical delete (deterministic).
+      # Cross-scope duplicates → prose only (contextual). Detector emite
+      # mechanical per-finding apenas pra same-scope cases.
+      apply_class: deterministic
+      prose: |
+        Same-scope (mesmo <*.Variables> block): auto-deleta duplicatas extras.
+        Cross-scope (scopes diferentes): renomear OU consolidar manual.
+
+  - id: N-13
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Identificador com verbo deve usar infinitivo (-ar/-er/-ir)"
+    description: |
+      Nomes de workflow (filename + x:Class), variáveis (`v...`) e
+      argumentos (`in_/out_/io_...`) iniciados por verbo PT-BR devem usar
+      INFINITIVO (-ar/-er/-ir), não presente do indicativo (3ª pessoa
+      singular: -a/-e/-i).
+
+      Exemplos:
+        ❌ BuscaDossieAtivo.xaml      → ✅ BuscarDossieAtivo.xaml
+        ❌ AtualizaTAGsXML            → ✅ AtualizarTAGsXML
+        ❌ ValidaRegrasNegociais      → ✅ ValidarRegrasNegociais
+        ❌ vStBuscaToken              → ✅ vStBuscarToken
+        ❌ in_StAtualizaConfig        → ✅ in_StAtualizarConfig
+
+      Exclui Main.xaml, Process.xaml e Framework/** (REFramework/template,
+      verbos em inglês imperativo aceitos).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "Main.xaml"
+        - "Process.xaml"
+        - "Framework/**"
+        - "Tests/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.naming
+        function: detect_n13_verb_infinitive
+        targets:
+          - filename
+          - xclass
+          - property_name
+          - variable_name
+        verbs:
+          - { wrong: "Busca",     right: "Buscar" }
+          - { wrong: "Atualiza",  right: "Atualizar" }
+          - { wrong: "Carrega",   right: "Carregar" }
+          - { wrong: "Extrai",    right: "Extrair" }
+          - { wrong: "Recupera",  right: "Recuperar" }
+          - { wrong: "Verifica",  right: "Verificar" }
+          - { wrong: "Valida",    right: "Validar" }
+          - { wrong: "Anexa",     right: "Anexar" }
+          - { wrong: "Salva",     right: "Salvar" }
+          - { wrong: "Lista",     right: "Listar" }
+          - { wrong: "Obtem",     right: "Obter" }
+          - { wrong: "Obtém",     right: "Obter" }
+          - { wrong: "Executa",   right: "Executar" }
+          - { wrong: "Envia",     right: "Enviar" }
+          - { wrong: "Cria",      right: "Criar" }
+          - { wrong: "Conecta",   right: "Conectar" }
+          - { wrong: "Calcula",   right: "Calcular" }
+          - { wrong: "Processa",  right: "Processar" }
+          - { wrong: "Trata",     right: "Tratar" }
+          - { wrong: "Converte",  right: "Converter" }
+          - { wrong: "Vincula",   right: "Vincular" }
+          - { wrong: "Captura",   right: "Capturar" }
+          - { wrong: "Encerra",   right: "Encerrar" }
+          - { wrong: "Inicia",    right: "Iniciar" }
+          - { wrong: "Reinicia",  right: "Reiniciar" }
+          - { wrong: "Limpa",     right: "Limpar" }
+          - { wrong: "Recebe",    right: "Receber" }
+          - { wrong: "Monta",     right: "Montar" }
+    fix:
+      apply_class: contextual
+      prose: |
+        Renomear identificador para forma infinitiva. Para filename +
+        x:Class, propaga em this:OldClass.* e InvokeWorkflowFile callers
+        (cascade S-6). Para Variable/Property: renomear referências.
+        Sem fix automático — risco semântico.
+
+  - id: N-15
+    severity: INFO
+    category: architectural
+    target: all
+    title: "LogMessage iniciada por verbo deve usar infinitivo"
+    description: |
+      Primeiro verbo da Message de `<ui:LogMessage>` deve estar no
+      INFINITIVO (-ar/-er/-ir), não gerúndio (-ando/-endo/-indo) nem
+      passado (-ou/-eu/-iu).
+
+      Padrão Sicoob: mensagens declaram intenção, não narração.
+
+      Exemplos:
+        ❌ "Conectando ao banco"           → ✅ "Conectar ao banco"
+        ❌ "Atualizando TAG do XML"        → ✅ "Atualizar TAG do XML"
+        ❌ "Recuperou dados de Controle"   → ✅ "Recuperar dados de Controle"
+
+      Skip: mensagens dinâmicas (concat com `+`), state markers
+      (Início/Fim), substantivos (Total/Status/Erro), Framework/Tests.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "Main.xaml"
+        - "Process.xaml"
+        - "Framework/**"
+        - "Tests/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n15_log_infinitive
+        exclude_paths:
+          - "framework/"
+          - "tests/"
+          - "main.xaml"
+          - "process.xaml"
+        forbidden_suffixes:
+          gerundio: ["ando", "endo", "indo"]
+          passado:  ["ou", "eu", "iu", "ei", "ava", "ia"]
+          presente: ["a", "e", "i"]
+        valid_suffixes: ["ar", "er", "ir", "or"]
+        skip_first_words:
+          - "Início"
+          - "Inicio"
+          - "Fim"
+          - "Erro"
+          - "Falha"
+          - "Sucesso"
+          - "Status"
+          - "Total"
+          - "Quantidade"
+          - "Valor"
+          - "Item"
+          - "Token"
+          - "ID"
+          - "Id"
+          - "TAG"
+          - "Log"
+          - "Dados"
+          - "Pasta"
+          - "Arquivo"
+          - "Email"
+          - "URL"
+          - "API"
+          - "DB"
+          - "XML"
+          - "JSON"
+          - "Title"
+          - "Message"
+        only_pure_literals: true
+    fix:
+      apply_class: contextual
+      prose: |
+        Reescrever Message com primeiro verbo no infinitivo.
+        Sem fix automático — mudança de tom requer revisão.
+
+  - id: U-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Variáveis com mesma origem/Default — alias provável (consolidar)"
+    description: |
+      Múltiplas `<Variable>` no mesmo arquivo com:
+        - mesmo `x:TypeArguments` + Default literal não-trivial idêntico, OU
+        - Assigns separados que populam vars distintas com expressão
+          textualmente idêntica
+
+      são candidatas a consolidação em uma única variável.
+
+      Skip:
+        - Defaults triviais ("", 0, False, Nothing)
+        - Tipos containerados (List, Dict, HashSet)
+        - Framework/Tests + Main/Process (REFramework)
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "Main.xaml"
+        - "Process.xaml"
+        - "Framework/**"
+        - "Tests/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.unused
+        function: detect_u5_variable_aliases
+        trivial_defaults:
+          - ""
+          - "0"
+          - "False"
+          - "True"
+          - "Nothing"
+          - "{x:Null}"
+        skip_types:
+          - "scg:List"
+          - "scg:Dictionary"
+          - "scg:HashSet"
+          - "scg:Queue"
+          - "scg:Stack"
+          - "ui:QueueItem"
+        min_duplicate_assigns: 2
+        normalize_whitespace: true
+    fix:
+      apply_class: structural
+      prose: |
+        Consolidar variáveis duplicadas:
+          1. Identificar nome canônico mais descritivo
+          2. Substituir referências da var redundante pela canônica
+          3. Remover declaração + Assign da var eliminada
+        Sem fix automático — requer verificação humana.
+
+  - id: V-2
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Default numérico/booleano com literal String entre aspas"
+    description: |
+      Property/InArgument de tipo `x:Int32`/`x:Int64`/`x:Boolean`/
+      `x:Double`/`x:Decimal`/`x:Single` com Default quotado como String:
+
+        ❌ this:Class.in_IntTimeout="[&quot;60&quot;]"
+        ❌ <InArgument x:TypeArguments="x:Int32">[&quot;60&quot;]</InArgument>
+
+        ✅ this:Class.in_IntTimeout="[60]"
+        ✅ <InArgument x:TypeArguments="x:Int32">[60]</InArgument>
+
+      Studio antigo (Legacy) convertia implicitamente. Windows target
+      com Option Strict On rejeita: BC30512 String→Integer.
+
+      Causa raiz comum: arquivo veio de migração Legacy, ou ferramenta
+      gerou Default literal sem resolver tipo do prop.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '<InArgument\s+x:TypeArguments="x:(?:Int32|Int64|Boolean|Double|Decimal|Single)"\s*>\[&quot;[^&]*&quot;\]</InArgument>|this:[A-Za-z_][\w]*\.in_(?:Int|Bl|Db|Dec|Dbl)[A-Za-z]*="\[&quot;[^&]*&quot;\]"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_string_quotes_numeric_default
+      prose: |
+        Stripar `&quot;...&quot;` deixando apenas conteúdo literal numérico/bool:
+          [&quot;60&quot;] → [60]
+          [&quot;True&quot;] → [True]
+        Validação parseable: float() OR true/false. Senão preserva.
+
+  - id: U-6
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Variable em scope estreito — preferir escopo maior (hoisting)"
+    description: |
+      Variável declarada em scope interno quando poderia viver no escopo
+      mais amplo do mesmo arquivo. Padrão Sicoob: declarar no scope MAIS
+      EXTERNO possível para reduzir redundância e shadowing.
+
+      Casos detectados:
+        Caso A — DUPLICATA CROSS-SCOPE:
+          Mesma <Variable Name="X" Type="T"> declarada em 2+ scopes
+          irmãos/aninhados. Hoist para ancestral comum.
+
+          Ex: Process.xaml — `vStPrefixoLog` declarado em
+            Sequence_29.Variables E Sequence_15.Variables.
+            Hoist para scope raiz do Process. → 1 declaração serve ambos.
+
+        Caso B — SCOPE ÚNICO INTERNO TRIVIAL:
+          Variable declarada em scope interno, usada apenas naquele
+          scope, com expressão de Assign sem dependência de variáveis
+          locais do scope. Pode subir um nível (no benefit forte —
+          INFO ao invés de WARN).
+
+      EXCEÇÃO (não flagar):
+        - Loop iterators (ForEach.iterator, While body var): scope-local
+          por design semântico.
+        - Variable em TryCatch.Catches scope (exception locals).
+        - Variable cujo Default/Assign depende de vars locais ao scope
+          (move quebra resolution).
+        - Variable usada em escopos disjuntos (sub-Sequences paralelas
+          que não compartilham ancestral exceto root) onde shadowing é
+          intencional.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**", "Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.unused
+        function: detect_u6_variable_hoist
+        # Loop tags onde Variable é scope-local intencional
+        loop_parents:
+          - "ForEach"
+          - "ui:ForEach"
+          - "ParallelForEach"
+          - "ui:ParallelForEach"
+          - "While"
+          - "DoWhile"
+        # Tags onde vars são exception-local
+        exception_parents:
+          - "Catch"
+          - "TryCatch.Catches"
+        # Caso A apenas (cross-scope dup) — caso B opt-in via params
+        only_cross_scope_dup: true
+    fix:
+      apply_class: structural
+      prose: |
+        Hoist da Variable para ancestral comum:
+          1. Identificar ancestral comum via DOM walk dos scopes envolvidos
+          2. Adicionar <Variable> em <Ancestral.Variables>
+          3. Remover declarações redundantes nos scopes internos
+          4. Verificar se referências pré-existentes resolvem (case-insensitive
+             VB scope resolution já fazia isso em U-4 dup)
+        Sem fix automático — risco de mudar semântica em casos com
+        Default/Assign scope-dependente. Requer revisão humana.
+
+
+  # ---------------------------------------------------------------------
+  # M-* — Schema-aware activity validation (categoria metadata)
+  # Schema source: assets/activities/activities-compact.json
+  # Regenerar: scripts/activities_meta/{batch-extract,build-schema}.ps1
+  # ---------------------------------------------------------------------
+
+  - id: M-1
+    severity: ERROR
+    category: metadata
+    target: all
+    title: "Activity FQN desconhecida no schema"
+    description: |
+      Elemento XAML referencia activity (xmlns + local name) que não existe
+      nos packages NuGet UiPath instalados (assets/activities/activities-compact.json).
+      Causas comuns:
+        - Typo no nome (case-sensitive).
+        - Package não instalado / versão sem essa activity.
+        - Activity removida em versão nova (rename + breaking change).
+        - LLM inventou activity inexistente.
+      Activities customizadas (libraries proprietárias) são ignoradas — apenas
+      xmlns canônicos UiPath disparam a regra.
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m1_activity_unknown
+    fix:
+      apply_class: contextual
+      prose: |
+        Verifique nome da activity vs schema (assets/activities/INDEX.md
+        + uipath.<package>.md). Se foi renomeada, consulte migration table
+        do package. Em packages privados, suprimir via rule-disable inline.
+
+  - id: M-2
+    severity: ERROR
+    category: metadata
+    target: all
+    title: "Argumento required ausente em activity"
+    description: |
+      Activity tem args com RequiredArgumentAttribute não preenchidos.
+      Detector respeita OverloadGroup: se group tem >=1 arg satisfeito,
+      demais required do mesmo group ficam OK (alternativas mutuamente
+      exclusivas).
+      Cobre attribute form (`<ui:WriteRange Foo="x"/>`) + property element
+      form (`<ui:WriteRange.Foo>...</...>`).
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m2_required_missing
+    fix:
+      apply_class: deterministic
+      prose: |
+        Adicionar property element ou attribute para o arg required.
+        OverloadGroup respeitado: detector emite apenas args do best_group.
+        Fixer mecânico add_property_element insere placeholder com default
+        do schema (vazio se sem default) — usuário preenche valor real.
+      mechanical:
+        type: add_property_element
+
+  - id: M-3
+    severity: WARN
+    category: metadata
+    target: all
+    title: "Argumento desconhecido em activity (typo ou removido)"
+    description: |
+      Property element / attribute referencia arg/property que NÃO existe na
+      activity conforme schema. Schema captura tanto Argument-typed properties
+      (InArgument<T>/OutArgument<T>/InOutArgument<T>) quanto plain properties
+      (string, enum, objeto). Limitação fase 1 resolvida em fase 5.
+
+      Atributos genéricos sempre OK: DisplayName, ContinueOnError, TimeoutMS,
+      DelayBefore, DelayAfter.
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m3_unknown_arg
+    fix:
+      apply_class: contextual
+      prose: |
+        Confira nome do arg vs schema (assets/activities/uipath.<package>.md).
+        Pode ser typo (case-sensitive) ou arg deprecated.
+
+  - id: M-4
+    severity: ERROR
+    category: metadata
+    target: all
+    title: "OverloadGroup conflito (alternativas mutuamente exclusivas)"
+    description: |
+      Activity tem args de OverloadGroups distintos preenchidos simultaneamente.
+      Cada group representa uma combinação válida — escolher apenas um.
+      Exemplo clássico: WriteRange File (WorkbookPath) vs FileResource
+      (WorkbookPathResource) vs Use Workbook (Workbook) — usar apenas um modo.
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m4_overload_conflict
+    fix:
+      apply_class: contextual
+      prose: |
+        Remover args dos groups não-escolhidos. Manter apenas um group preenchido.
+
+  - id: M-6
+    severity: ERROR
+    category: metadata
+    target: all
+    title: "xmlns de prefix UiPath não declarado no <Activity> root"
+    description: |
+      Workflow usa elementos com prefix UiPath conhecido (ui:, uix:, cv:,
+      isactr:, uitp:) mas xmlns:<prefix> não está declarado no root.
+      Studio reporta activities como unresolved. Diferente de S-11 (que
+      detecta xmlns declarado mas assembly não em project.json) — M-6 é
+      a outra ponta: usado sem declarar.
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m6_xmlns_missing
+    fix:
+      apply_class: contextual
+      prose: |
+        Adicionar `xmlns:<prefix>="..."` no root + assembly reference em
+        TextExpression.ReferencesForImplementation. Fixer mecânico
+        (xmlns_assembly_resolve) reusável quando pacote estiver em
+        project.json.
+
+  - id: M-5
+    severity: WARN
+    category: metadata
+    target: all
+    title: "Literal incompatível com tipo do argumento"
+    description: |
+      Atributo recebe literal cujo tipo óbvio não casa com schema da activity.
+
+      Casos cobertos (heurística sem compiler VB/C#):
+        - String literal em arg numérico/Boolean/DateTime ("abc" em Int32).
+        - Numérico literal em Boolean/DateTime ("123" em Boolean).
+        - Bool literal "True"/"False" em arg numérico/string-only.
+
+      Ignorados (precisariam compiler):
+        - Bind expressions `[expr]` — tipo depende do contexto VB.
+        - Markup extensions `{x:Null}`, `{Binding}`, etc.
+        - String → numérico em alguns contextos (Studio aceita conversão
+          implícita ToString/Parse via Option Strict Off).
+      String é destino permissivo (aceita qualquer literal — Studio chama
+      .ToString implícito).
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m5_type_mismatch
+    fix:
+      apply_class: contextual
+      prose: |
+        Ajustar literal para tipo correto OU usar bind expression
+        `[CType(value, T)]`/`[Convert.ToInt32(value)]` se conversão for
+        intencional.
+
+  - id: M-8
+    severity: ERROR
+    category: metadata
+    target: all
+    title: "[Nothing] em InArgument tipo valor (VB runtime crash)"
+    description: |
+      VB bind expression `[Nothing]` resolvendo para arg de tipo valor
+      (Integer, Boolean, DateTime, Decimal, etc) lança
+      InvalidOperationException em runtime.
+
+      Exclui Nullable<T> (`Integer?`, `Nullable(Of Integer)`) — suportam null.
+      Exclui reference types (String, IResource, DataTable, etc).
+      Exclui `Foo="{x:Null}"` em attribute form — significa "InArgument
+      não fornecido" (activity usa default), não "Expression=Nothing".
+      Apenas `Foo="[Nothing]"` (bind expression real) transmite null.
+
+      Casos detectados:
+        - `Foo="[Nothing]"` em InArgument<Int32>
+        - `Foo="[ Nothing ]"` em InArgument<Boolean>
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m8_nothing_in_value_type
+    fix:
+      apply_class: contextual
+      prose: |
+        Substituir Nothing por valor válido do tipo:
+          - Integer/Long → 0 ou expressão default
+          - Boolean → False/True
+          - DateTime → DateTime.MinValue ou data específica
+        Se semântica permite null, declarar arg como Nullable(Of T) no
+        callee, ou converter via wrapper.
+
+  - id: M-7
+    severity: INFO
+    category: metadata
+    target: all
+    title: "DefaultValue redundante (igual ao default do schema)"
+    description: |
+      Atributo atribuído explicitamente com valor literal idêntico ao default
+      definido no schema da activity. Omitir é equivalente — reduz ruído no
+      XAML.
+      Exemplo: WriteRange StartingCell="A1" — A1 já é o default.
+    applies_to:
+      include:
+        - "**/*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.activity_meta
+        function: detect_m7_redundant_default
+    fix:
+      apply_class: contextual
+      prose: |
+        Remover atribuição redundante. Studio re-emite atributo no save se
+        usuário alterar e voltar — comportamento idempotente.

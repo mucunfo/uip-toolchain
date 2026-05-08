@@ -1,0 +1,674 @@
+from pathlib import Path
+import pytest
+from scripts.rule_engine.fixers import (
+    apply_regex_replace, apply_rename_attribute, apply_rename_argument,
+    apply_set_attribute, apply_wrap_in_element, apply_delete_element,
+    apply_move_file, apply_rename_xclass,
+    apply_expand_self_closed_inarg,
+    apply_strip_string_quotes_numeric_default,
+    REGISTRY,
+)
+
+
+# ---- regex_replace ----
+
+def test_regex_replace_modifies_file(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('DisplayName="Foo.xaml - Invoke Workflow File"')
+    spec = {
+        "type": "regex_replace",
+        "pattern": r'DisplayName="([^"]*?)\.xaml\s*-\s*Invoke Workflow File"',
+        "replacement": r'DisplayName="\1"',
+    }
+    changed = apply_regex_replace(f, spec, dry_run=False)
+    assert changed is True
+    assert 'DisplayName="Foo"' in f.read_text()
+
+
+def test_regex_replace_dry_run_no_modify(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = 'DisplayName="Foo.xaml - Invoke Workflow File"'
+    f.write_text(original)
+    spec = {
+        "type": "regex_replace",
+        "pattern": r'DisplayName="([^"]*?)\.xaml\s*-\s*Invoke Workflow File"',
+        "replacement": r'DisplayName="\1"',
+    }
+    changed = apply_regex_replace(f, spec, dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_regex_replace_no_match_returns_false(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text("nothing to change")
+    spec = {"type": "regex_replace", "pattern": "X", "replacement": "Y"}
+    assert apply_regex_replace(f, spec, dry_run=False) is False
+
+
+# ---- rename_attribute ----
+
+def test_rename_attribute(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Property inout_Foo="bar"/>')
+    spec = {"type": "rename_attribute", "from": "inout_Foo", "to": "io_Foo"}
+    changed = apply_rename_attribute(f, spec, dry_run=False)
+    assert changed
+    assert 'io_Foo="bar"' in f.read_text()
+
+
+def test_rename_attribute_case_insensitive_vb_refs(tmp_path):
+    """2026-05-01 regression: declaração `dt_X` (lowercase) com refs VB
+    `[Dt_X]` (mixed case) ficavam órfãs. VB é case-insensitive — rename
+    deve cobrir todas variações de case fora de element-name context."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<root xmlns="urn:r" xmlns:ui="urn:ui">'
+        '<Variable Name="dt_X" />'
+        '<ui:ReadRange DataTable="[Dt_X]" />'
+        r'<ui:LogMessage Message="[&quot;rows: &quot; + DT_X.Rows.Count.ToString]" />'
+        '</root>'
+    )
+    spec = {"type": "rename_attribute", "from": "dt_X", "to": "vDTabX"}
+    changed = apply_rename_attribute(f, spec, dry_run=False)
+    assert changed
+    out = f.read_text()
+    # All refs (any case) renamed
+    assert 'Name="vDTabX"' in out
+    assert '[vDTabX]' in out
+    assert 'vDTabX.Rows' in out
+    # No orphan refs of any case
+    assert 'dt_X' not in out and 'Dt_X' not in out and 'DT_X' not in out
+
+
+def test_rename_attribute_orphan_check_skips_when_unsafe(tmp_path):
+    """Se after-rename ainda existe ref `from_name`, fixer aborta ao invés
+    de gravar arquivo parcialmente migrado."""
+    f = tmp_path / "x.xaml"
+    # Element name with same identifier — não deve ser renomeado, mas tb
+    # não dispara abort (skipped by element-name context, não orphan).
+    f.write_text('<root xmlns:ns="urn:n" xmlns="urn:r"><ns:foo Name="foo"/></root>')
+    spec = {"type": "rename_attribute", "from": "foo", "to": "bar"}
+    apply_rename_attribute(f, spec, dry_run=False)
+    out = f.read_text()
+    # Element name preserved (skip-tag context), Name attr renamed
+    assert '<ns:foo' in out
+    assert 'Name="bar"' in out
+
+
+# ---- rename_argument ----
+
+def test_rename_argument_cascades(tmp_path):
+    proj = tmp_path / "P"
+    proj.mkdir()
+    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    callee = proj / "Callee.xaml"
+    callee.write_text('<x:Property Name="in_old" Type="InArgument(x:String)"/>')
+    caller = proj / "Caller.xaml"
+    caller.write_text('<ui:InvokeWorkflowFile WorkflowFileName="Callee.xaml"><ui:InvokeWorkflowFile.Arguments><InArgument x:Key="in_old">[v]</InArgument></ui:InvokeWorkflowFile.Arguments></ui:InvokeWorkflowFile>')
+
+    spec = {
+        "type": "rename_argument",
+        "from": "in_old",
+        "to": "in_New",
+        "target_workflow": "Callee.xaml",
+    }
+    changed = apply_rename_argument(callee, spec, dry_run=False, project_root=proj)
+    assert changed
+    assert 'Name="in_New"' in callee.read_text()
+    assert 'x:Key="in_New"' in caller.read_text()
+
+
+def test_rename_argument_propertyelement_attribute_form(tmp_path):
+    """2026-05-01: regression — caller seta default-value via attribute
+    `this:Callee.in_old="value"` em <Activity> root. Rename de arg no callee
+    não atualizava callers nesse pattern. Fix 1 cobre via this_arg_pattern."""
+    proj = tmp_path / "P"
+    proj.mkdir()
+    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    callee = proj / "ExtratoSisbr.xaml"
+    callee.write_text(
+        '<root xmlns:x="urn:x">'
+        '<x:Property Name="in_StCpfCnpj" Type="InArgument(x:String)"/>'
+        '</root>'
+    )
+    caller = proj / "Caller.xaml"
+    caller.write_text(
+        '<Activity x:Class="Caller" '
+        'this:ExtratoSisbr.in_StCpfCnpj="03567879000146" '
+        'xmlns:this="clr-namespace:" xmlns="urn:r" xmlns:x="urn:x"/>'
+    )
+
+    spec = {
+        "type": "rename_argument",
+        "from": "in_StCpfCnpj",
+        "to": "in_StCPFCNPJ",
+        "target_workflow": "ExtratoSisbr.xaml",
+    }
+    changed = apply_rename_argument(callee, spec, dry_run=False, project_root=proj)
+    assert changed
+    assert 'this:ExtratoSisbr.in_StCPFCNPJ="03567879000146"' in caller.read_text()
+    assert 'in_StCpfCnpj' not in caller.read_text()
+
+
+def test_rename_argument_propertyelement_element_form(tmp_path):
+    """Caller seta default-value via element form
+    `<this:Callee.in_old>...</this:Callee.in_old>`. Mesmo fix cobre."""
+    proj = tmp_path / "P"
+    proj.mkdir()
+    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    callee = proj / "CCB.xaml"
+    callee.write_text(
+        '<root xmlns:x="urn:x">'
+        '<x:Property Name="in_StNumDocumento" Type="InArgument(x:String)"/>'
+        '</root>'
+    )
+    caller = proj / "FaturaDoCartao.xaml"
+    caller.write_text(
+        '<root xmlns:this="clr-namespace:" xmlns="urn:r" xmlns:x="urn:x">'
+        '<this:CCB.in_StNumDocumento>'
+        '<InArgument x:TypeArguments="x:String">[v]</InArgument>'
+        '</this:CCB.in_StNumDocumento>'
+        '</root>'
+    )
+
+    spec = {
+        "type": "rename_argument",
+        "from": "in_StNumDocumento",
+        "to": "in_StNumeroDocumento",
+        "target_workflow": "CCB.xaml",
+    }
+    changed = apply_rename_argument(callee, spec, dry_run=False, project_root=proj)
+    assert changed
+    out = caller.read_text()
+    assert '<this:CCB.in_StNumeroDocumento>' in out
+    assert '</this:CCB.in_StNumeroDocumento>' in out
+    assert 'in_StNumDocumento' not in out
+
+
+def test_rename_argument_idempotent_propertyelement(tmp_path):
+    """Aplicar rename 2× = sem mudança no segundo pass (idempotente)."""
+    proj = tmp_path / "P"
+    proj.mkdir()
+    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    callee = proj / "CCB.xaml"
+    callee.write_text(
+        '<root xmlns:x="urn:x">'
+        '<x:Property Name="in_StCpfCnpj" Type="InArgument(x:String)"/>'
+        '</root>'
+    )
+    caller = proj / "Garantia.xaml"
+    caller.write_text(
+        '<Activity x:Class="Garantia" this:CCB.in_StCpfCnpj="x" '
+        'xmlns:this="clr-namespace:" xmlns="urn:r" xmlns:x="urn:x"/>'
+    )
+    spec = {
+        "type": "rename_argument",
+        "from": "in_StCpfCnpj",
+        "to": "in_StCPFCNPJ",
+        "target_workflow": "CCB.xaml",
+    }
+    apply_rename_argument(callee, spec, dry_run=False, project_root=proj)
+    after_first_callee = callee.read_text()
+    after_first_caller = caller.read_text()
+    # 2º pass com mesma spec — após rename já feito, from_name não existe mais.
+    # Detector chamaria com from→to já alinhado, retornando False (no change).
+    changed2 = apply_rename_argument(callee, spec, dry_run=False, project_root=proj)
+    assert changed2 is False
+    assert callee.read_text() == after_first_callee
+    assert caller.read_text() == after_first_caller
+
+
+# ---- set_attribute ----
+
+def test_force_attribute_replaces(tmp_path):
+    """force_attribute substitui valor existente diferente do canonical."""
+    from scripts.rule_engine.fixers import apply_force_attribute
+    f = tmp_path / "x.xaml"
+    f.write_text('<root xmlns:ui="urn:ui"><ui:LogMessage Level="Info" Message="x"/></root>')
+    spec = {"type": "force_attribute", "tag": "ui:LogMessage",
+            "attribute": "Level", "value": "Trace"}
+    changed = apply_force_attribute(f, spec, dry_run=False)
+    assert changed
+    assert 'Level="Trace"' in f.read_text()
+    assert 'Level="Info"' not in f.read_text()
+
+
+def test_force_attribute_adds(tmp_path):
+    from scripts.rule_engine.fixers import apply_force_attribute
+    f = tmp_path / "x.xaml"
+    f.write_text('<root xmlns:ui="urn:ui"><ui:LogMessage Message="x"/></root>')
+    spec = {"type": "force_attribute", "tag": "ui:LogMessage",
+            "attribute": "Level", "value": "Trace"}
+    changed = apply_force_attribute(f, spec, dry_run=False)
+    assert changed
+    assert 'Level="Trace"' in f.read_text()
+    assert '<ui:LogMessage Message="x" Level="Trace"/>' in f.read_text()
+
+
+def test_force_attribute_idempotent(tmp_path):
+    from scripts.rule_engine.fixers import apply_force_attribute
+    f = tmp_path / "x.xaml"
+    f.write_text('<root xmlns:ui="urn:ui"><ui:LogMessage Level="Trace" Message="x"/></root>')
+    spec = {"type": "force_attribute", "tag": "ui:LogMessage",
+            "attribute": "Level", "value": "Trace"}
+    changed = apply_force_attribute(f, spec, dry_run=False)
+    assert changed is False
+
+
+def test_set_json_field(tmp_path):
+    from scripts.rule_engine.fixers import apply_set_json_field
+    f = tmp_path / "project.json"
+    f.write_text('{"name":"test","studioVersion":"24.10.0"}')
+    spec = {"type": "set_json_field", "path": "studioVersion", "value": "23.10.13"}
+    changed = apply_set_json_field(f, spec, dry_run=False)
+    assert changed
+    import json
+    data = json.loads(f.read_text())
+    assert data["studioVersion"] == "23.10.13"
+    assert data["name"] == "test"
+
+
+def test_set_json_field_idempotent(tmp_path):
+    from scripts.rule_engine.fixers import apply_set_json_field
+    f = tmp_path / "project.json"
+    f.write_text('{"studioVersion":"23.10.13"}')
+    spec = {"type": "set_json_field", "path": "studioVersion", "value": "23.10.13"}
+    changed = apply_set_json_field(f, spec, dry_run=False)
+    assert changed is False
+
+
+def test_delete_variable_self_close(tmp_path):
+    from scripts.rule_engine.fixers import apply_delete_variable
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<root xmlns:x="urn:x">'
+        '<Sequence.Variables>'
+        '<Variable x:TypeArguments="x:String" Name="vStUnused" />'
+        '<Variable x:TypeArguments="x:Int32" Name="vIntKept" />'
+        '</Sequence.Variables>'
+        '</root>'
+    )
+    spec = {"type": "delete_variable", "name": "vStUnused"}
+    changed = apply_delete_variable(f, spec, dry_run=False)
+    assert changed
+    out = f.read_text()
+    assert 'Name="vStUnused"' not in out
+    assert 'Name="vIntKept"' in out
+
+
+def test_delete_variable_idempotent(tmp_path):
+    from scripts.rule_engine.fixers import apply_delete_variable
+    f = tmp_path / "x.xaml"
+    f.write_text('<root><Variable Name="vKept" /></root>')
+    spec = {"type": "delete_variable", "name": "vNotPresent"}
+    changed = apply_delete_variable(f, spec, dry_run=False)
+    assert changed is False
+
+
+def test_delete_empty_element_open_close(tmp_path):
+    from scripts.rule_engine.fixers import apply_delete_empty_element
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<root xmlns:x="urn:x">'
+        '<Sequence>'
+        '<Sequence.Variables>   </Sequence.Variables>'
+        '<Body/>'
+        '</Sequence>'
+        '</root>'
+    )
+    spec = {"type": "delete_empty_element", "tag": "Sequence.Variables"}
+    changed = apply_delete_empty_element(f, spec, dry_run=False)
+    assert changed
+    out = f.read_text()
+    assert '<Sequence.Variables>' not in out
+    assert '<Body/>' in out
+
+
+def test_delete_empty_element_self_close(tmp_path):
+    from scripts.rule_engine.fixers import apply_delete_empty_element
+    f = tmp_path / "x.xaml"
+    f.write_text('<root><Sequence.Variables /></root>')
+    spec = {"type": "delete_empty_element", "tag": "Sequence.Variables"}
+    changed = apply_delete_empty_element(f, spec, dry_run=False)
+    assert changed
+    assert '<Sequence.Variables' not in f.read_text()
+
+
+def test_delete_empty_element_idempotent(tmp_path):
+    from scripts.rule_engine.fixers import apply_delete_empty_element
+    f = tmp_path / "x.xaml"
+    f.write_text('<root><X/></root>')
+    spec = {"type": "delete_empty_element", "tag": "Sequence.Variables"}
+    assert apply_delete_empty_element(f, spec, dry_run=False) is False
+
+
+def test_delete_empty_element_preserves_non_empty(tmp_path):
+    """Não remove se tem content real."""
+    from scripts.rule_engine.fixers import apply_delete_empty_element
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<root xmlns:x="urn:x">'
+        '<Sequence.Variables><Variable Name="v"/></Sequence.Variables>'
+        '</root>'
+    )
+    spec = {"type": "delete_empty_element", "tag": "Sequence.Variables"}
+    changed = apply_delete_empty_element(f, spec, dry_run=False)
+    assert changed is False
+    assert '<Variable Name="v"/>' in f.read_text()
+
+
+def test_set_attribute(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<ui:SendMail UseAttachmentsBackup="True"/>')
+    spec = {"type": "set_attribute", "tag": "ui:SendMail",
+            "attribute": "UseISConnection", "value": "False"}
+    changed = apply_set_attribute(f, spec, dry_run=False)
+    assert changed
+    out = f.read_text()
+    assert 'UseISConnection="False"' in out
+    # well-formed: self-close marker preserved corretamente, sem corrupção
+    assert out == '<ui:SendMail UseAttachmentsBackup="True" UseISConnection="False"/>'
+
+
+def test_set_attribute_self_close_preserved(tmp_path):
+    """Regression: 2026-05-01 — set_attribute em duas passes corrompia
+    self-close. Output ficava `<X attrs/ NewAttr="...">` (`/` órfão dentro
+    do atributos, sem `/>` ao final). Pattern unificado com lazy `[^>]*?`
+    + grupo opcional `(/?)` captura self-close em uma pass."""
+    import xml.etree.ElementTree as ET
+    f = tmp_path / "x.xaml"
+    f.write_text('<root xmlns:ui="urn:ui" xmlns:x="urn:x"><ui:DeserializeJson x:TypeArguments="njl:JObject" JsonString="x"/></root>')
+    spec = {"type": "set_attribute", "tag": "ui:DeserializeJson",
+            "attribute": "JsonSample", "value": "{x:Null}"}
+    changed = apply_set_attribute(f, spec, dry_run=False)
+    assert changed
+    # well-formed XML pós-fix
+    ET.fromstring(f.read_text())
+    out = f.read_text()
+    assert 'JsonSample="{x:Null}"/>' in out
+    assert 'JsonSample="{x:Null}"/' not in out.replace('JsonSample="{x:Null}"/>', '')
+
+
+def test_set_attribute_open_close_tag(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<root xmlns:ui="urn:ui"><ui:Foo Bar="x"></ui:Foo></root>')
+    spec = {"type": "set_attribute", "tag": "ui:Foo",
+            "attribute": "Baz", "value": "y"}
+    apply_set_attribute(f, spec, dry_run=False)
+    out = f.read_text()
+    assert '<ui:Foo Bar="x" Baz="y">' in out
+    assert '</ui:Foo>' in out
+
+
+# ---- delete_element ----
+
+def test_delete_element(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Sequence><Delay Duration="00:00:05"/></Sequence>')
+    spec = {"type": "delete_element", "pattern": r"<Delay\s[^/>]*/>"}
+    changed = apply_delete_element(f, spec, dry_run=False)
+    assert changed
+    assert "Delay" not in f.read_text()
+
+
+# ---- move_file ----
+
+def test_move_file(tmp_path):
+    src_dir = tmp_path / "Data"
+    src_dir.mkdir()
+    src = src_dir / "Config_X.xlsx"
+    src.write_bytes(b"x")
+    spec = {"type": "move_file",
+            "from_glob": "Data/Config_*.xlsx",
+            "to_dir": "assets/configs/"}
+    changed = apply_move_file(tmp_path, spec, dry_run=False, project_root=tmp_path)
+    assert changed
+    assert (tmp_path / "assets/configs/Config_X.xlsx").exists()
+    assert not src.exists()
+
+
+# ---- Idempotency ----
+
+def test_regex_replace_idempotent(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('DisplayName="Foo.xaml - Invoke Workflow File"')
+    spec = {
+        "type": "regex_replace",
+        "pattern": r'DisplayName="([^"]*?)\.xaml\s*-\s*Invoke Workflow File"',
+        "replacement": r'DisplayName="\1"',
+    }
+    apply_regex_replace(f, spec, dry_run=False)
+    after1 = f.read_text()
+    apply_regex_replace(f, spec, dry_run=False)
+    after2 = f.read_text()
+    assert after1 == after2
+
+
+def test_rename_attribute_idempotent(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Property inout_Foo="bar"/>')
+    spec = {"type": "rename_attribute", "from": "inout_Foo", "to": "io_Foo"}
+    apply_rename_attribute(f, spec, dry_run=False)
+    after1 = f.read_text()
+    apply_rename_attribute(f, spec, dry_run=False)
+    after2 = f.read_text()
+    assert after1 == after2
+
+
+def test_set_attribute_idempotent(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<ui:SendMail X="1"/>')
+    spec = {"type": "set_attribute", "tag": "ui:SendMail",
+            "attribute": "UseISConnection", "value": "False"}
+    apply_set_attribute(f, spec, dry_run=False)
+    after1 = f.read_text()
+    apply_set_attribute(f, spec, dry_run=False)
+    after2 = f.read_text()
+    assert after1 == after2
+
+
+# ---- Registry ----
+
+def test_registry_has_all_fixers():
+    for name in ("regex_replace", "rename_attribute", "rename_argument",
+                 "set_attribute", "wrap_in_element", "delete_element",
+                 "move_file", "rename_xclass"):
+        assert name in REGISTRY, f"fixer {name} missing"
+
+
+# ---- rename_xclass ----
+
+def test_rename_xclass_renames_attribute_and_this_refs_same_file(tmp_path):
+    f = tmp_path / "Login.xaml"
+    f.write_text(
+        '<Activity x:Class="OldLogin" xmlns:this="clr-namespace:">'
+        '<this:OldLogin.in_User><InArgument x:TypeArguments="x:String">'
+        '<Literal Value="x"/></InArgument></this:OldLogin.in_User>'
+        '</Activity>'
+    )
+    spec = {"type": "rename_xclass"}
+    changed = apply_rename_xclass(f, spec, dry_run=False)
+    assert changed
+    txt = f.read_text()
+    assert 'x:Class="Login"' in txt
+    assert 'this:Login.in_User' in txt
+    assert 'OldLogin' not in txt
+
+
+def test_rename_xclass_propagates_to_callers(tmp_path):
+    proj = tmp_path
+    callee = proj / "Worker.xaml"
+    callee.write_text('<Activity x:Class="OldWorker" xmlns:this="clr-namespace:"/>')
+    caller = proj / "Caller.xaml"
+    caller.write_text(
+        '<Activity><ui:InvokeWorkflowFile WorkflowFileName="Worker.xaml">'
+        '<this:OldWorker.in_X><Literal Value="y"/></this:OldWorker.in_X>'
+        '<InArgument x:Key="OldWorker.in_Y">[v]</InArgument>'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    changed = apply_rename_xclass(callee, {"type": "rename_xclass"},
+                                  dry_run=False, project_root=proj)
+    assert changed
+    assert 'x:Class="Worker"' in callee.read_text()
+    caller_txt = caller.read_text()
+    assert 'this:Worker.in_X' in caller_txt
+    assert 'x:Key="Worker.in_Y"' in caller_txt
+    assert 'OldWorker' not in caller_txt
+
+
+def test_rename_xclass_idempotent(tmp_path):
+    f = tmp_path / "Foo.xaml"
+    f.write_text('<Activity x:Class="Bar"/>')
+    spec = {"type": "rename_xclass"}
+    apply_rename_xclass(f, spec, dry_run=False)
+    after1 = f.read_text()
+    changed2 = apply_rename_xclass(f, spec, dry_run=False)
+    assert changed2 is False
+    assert f.read_text() == after1
+
+
+def test_rename_xclass_no_op_when_already_matches(tmp_path):
+    f = tmp_path / "Foo.xaml"
+    f.write_text('<Activity x:Class="Foo"/>')
+    changed = apply_rename_xclass(f, {"type": "rename_xclass"}, dry_run=False)
+    assert changed is False
+
+
+def test_rename_xclass_dry_run_does_not_write(tmp_path):
+    f = tmp_path / "Foo.xaml"
+    original = '<Activity x:Class="Bar" xmlns:this="clr-namespace:"><this:Bar.in_X/></Activity>'
+    f.write_text(original)
+    changed = apply_rename_xclass(f, {"type": "rename_xclass"}, dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+# ---- expand_self_closed_inarg (W-1) ----
+
+def test_expand_self_closed_inarg_string(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="x:String" x:Key="in_StFoo" /></Activity>'
+    )
+    changed = apply_expand_self_closed_inarg(f, {}, dry_run=False)
+    assert changed is True
+    out = f.read_text()
+    assert '<Literal x:TypeArguments="x:String" Value="" />' in out
+    assert "/></InArgument>" in out
+
+
+def test_expand_self_closed_inarg_int_default_zero(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="x:Int32" x:Key="in_IntFoo" /></Activity>'
+    )
+    apply_expand_self_closed_inarg(f, {}, dry_run=False)
+    assert '<Literal x:TypeArguments="x:Int32" Value="0" />' in f.read_text()
+
+
+def test_expand_self_closed_inarg_boolean_default_false(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="x:Boolean" x:Key="in_Bl" /></Activity>'
+    )
+    apply_expand_self_closed_inarg(f, {}, dry_run=False)
+    assert '<Literal x:TypeArguments="x:Boolean" Value="False" />' in f.read_text()
+
+
+def test_expand_self_closed_inarg_complex_type_uses_xnull(tmp_path):
+    """Tipos complexos (Tuple, Dict) usam <x:Null /> — Literal Value="" quebra."""
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="s:Tuple(x:String, ss:SecureString)" '
+        'x:Key="in_TupleCred" /></Activity>'
+    )
+    apply_expand_self_closed_inarg(f, {}, dry_run=False)
+    out = f.read_text()
+    assert "<x:Null />" in out
+    assert "Literal" not in out
+
+
+def test_expand_self_closed_inarg_skip_without_xkey(tmp_path):
+    """Self-closed sem x:Key não é caller-side, não expandir."""
+    f = tmp_path / "X.xaml"
+    original = '<Activity><InArgument x:TypeArguments="x:String" /></Activity>'
+    f.write_text(original)
+    changed = apply_expand_self_closed_inarg(f, {}, dry_run=False)
+    assert changed is False
+    assert f.read_text() == original
+
+
+def test_expand_self_closed_inarg_dry_run(tmp_path):
+    f = tmp_path / "X.xaml"
+    original = '<Activity><InArgument x:TypeArguments="x:String" x:Key="in_X" /></Activity>'
+    f.write_text(original)
+    changed = apply_expand_self_closed_inarg(f, {}, dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+# ---- strip_string_quotes_numeric_default (V-2) ----
+
+def test_strip_int_default_element_form(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="x:Int32">[&quot;60&quot;]</InArgument></Activity>'
+    )
+    changed = apply_strip_string_quotes_numeric_default(f, {}, dry_run=False)
+    assert changed is True
+    assert '<InArgument x:TypeArguments="x:Int32">[60]</InArgument>' in f.read_text()
+
+
+def test_strip_int_default_attr_form(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity xmlns:this="clr-namespace:" '
+        'this:Foo.in_IntTimeout="[&quot;60&quot;]" />'
+    )
+    apply_strip_string_quotes_numeric_default(f, {}, dry_run=False)
+    assert 'this:Foo.in_IntTimeout="[60]"' in f.read_text()
+
+
+def test_strip_bool_default_capitalizes(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="x:Boolean">[&quot;true&quot;]</InArgument></Activity>'
+    )
+    apply_strip_string_quotes_numeric_default(f, {}, dry_run=False)
+    assert '[True]</InArgument>' in f.read_text()
+
+
+def test_strip_skip_non_numeric_string(tmp_path):
+    """Conteúdo não-numérico — preservar (provavelmente String legítimo)."""
+    f = tmp_path / "X.xaml"
+    original = '<Activity><InArgument x:TypeArguments="x:Int32">[&quot;abc&quot;]</InArgument></Activity>'
+    f.write_text(original)
+    changed = apply_strip_string_quotes_numeric_default(f, {}, dry_run=False)
+    assert changed is False
+    assert f.read_text() == original
+
+
+def test_strip_dry_run(tmp_path):
+    f = tmp_path / "X.xaml"
+    original = '<Activity><InArgument x:TypeArguments="x:Int32">[&quot;60&quot;]</InArgument></Activity>'
+    f.write_text(original)
+    changed = apply_strip_string_quotes_numeric_default(f, {}, dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_strip_idempotent(tmp_path):
+    f = tmp_path / "X.xaml"
+    f.write_text(
+        '<Activity><InArgument x:TypeArguments="x:Int32">[60]</InArgument></Activity>'
+    )
+    changed = apply_strip_string_quotes_numeric_default(f, {}, dry_run=False)
+    assert changed is False
+
+
+# ---- registry wiring ----
+
+def test_w1_v2_fixers_registered():
+    assert "expand_self_closed_inarg" in REGISTRY
+    assert "strip_string_quotes_numeric_default" in REGISTRY

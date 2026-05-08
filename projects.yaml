@@ -1,0 +1,52 @@
+# C:/Users/lisan/OneDrive - Sicoob/Projects/.uipath-rules/projects.yaml
+version: 1
+description: |
+  Golden/REF projects for regression baseline. Engine ensures
+  category=breaking findings are zero (or registered as known_exceptions).
+golden_projects:
+  - name: importar-cadastro-avais-fiancas-honrados-performer
+    path: "C:/Users/lisan/OneDrive - Sicoob/Projects/importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer"
+    description: |
+      Windows-target REF — migrated from Legacy successfully.
+      Studio + Orchestrator compatible. Corporate standards (architectural)
+      do NOT apply (migration scope was technical-only).
+    expect_zero: [breaking]
+    known_exceptions:
+      - rule_id: J-1
+        reason: |
+          REF studioVersion=21.10.8.0 (pre-migração). Migração do REF foi
+          escopo técnico apenas — versão do Studio não foi atualizada.
+          Bump pendente para 23.10.13 quando próximo touch funcional ocorrer.
+      - rule_id: J-2
+        reason: |
+          Consequência direta de J-1 — packages 25.x com studioVersion 21.x.
+          Mesma razão (migração escopo técnico).
+      - rule_id: W-1
+        reason: |
+          2x InArgument self-closed em REF compila/roda. Caller passa Nothing
+          intencionalmente — callee tem default ou guard adequado.
+          Confirmar runtime test antes de promover a bug real.
+        files:
+          - Framework/InitAllSettings.xaml
+          - Sicoob/DB2/ImportarEntradasProcessar.xaml
+      - rule_id: W-11a
+        reason: |
+          Main.xaml de REF não declara System.Security em
+          ReferencesForImplementation. Compila e roda — uso de SecureString
+          ocorre em sub-workflows que declaram a referência localmente.
+      - rule_id: W-12
+        reason: |
+          1x array literal em ImportarEntradasProcessar.xaml. Compila com
+          Option Strict porque tipo é inferível no contexto. Defensive prefix
+          recomendado em próximo touch funcional.
+      - rule_id: X-1
+        reason: |
+          3x Duplicate IdRef em Main.xaml (VisualBasicValue`1_1..3). Studio
+          aceita; duplicatas estão em sap:WorkflowViewStateService.ViewState
+          (state interno do designer). Não-bloqueante até Studio reportar.
+      - rule_id: N-11
+        reason: |
+          1x `vStFullpathScreenshotFile` declarado como OutArgument em
+          Framework/TakeScreenshot.xaml — pré-migração, prefix `v` (variável)
+          em vez de `out_`. Convenção atual exige `out_StFullpathScreenshotFile`.
+          Renomear no próximo touch do Framework.

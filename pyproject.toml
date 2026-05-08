@@ -1,0 +1,24 @@
+[project]
+name = "rule-engine"
+version = "0.1.0"
+description = "UiPath rules engine — single source of truth"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+    "pathspec>=0.12",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+
+[project.scripts]
+rule-engine = "scripts.rule_engine.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.setuptools.packages.find]
+where = ["scripts"]
+include = ["rule_engine*"]

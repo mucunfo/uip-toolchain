@@ -1,0 +1,11 @@
+<!-- tests/fixtures/minimal.xaml -->
+<Activity x:Class="Minimal"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_StName" Type="InArgument(x:String)" />
+  </x:Members>
+  <Sequence DisplayName="Body">
+    <!-- rule-disable: A-7 -->
+  </Sequence>
+</Activity>

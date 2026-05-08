@@ -1,0 +1,12 @@
+# models.conf — paths absolutos de projetos UiPath de referência (per-machine).
+#
+# Copie este arquivo para `models.conf` (mesmo diretório) e ajuste paths.
+# `models.conf` está em .gitignore — leak de path local não é commitado.
+#
+# Um path absoluto por linha. Ordem = prioridade (primeiro vence em caso de match).
+# Linhas começando com # são comentários, linhas vazias ignoradas.
+# Usado por scripts/xaml_example.py para extrair exemplos reais de activities.
+
+# Exemplo (substitua por seus paths):
+# C:\path\to\projeto-performer
+# C:\path\to\projeto-dispatcher

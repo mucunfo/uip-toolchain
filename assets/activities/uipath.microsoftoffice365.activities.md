@@ -1,0 +1,4682 @@
+﻿# uipath.microsoftoffice365.activities
+Assembly: UiPath.MicrosoftOffice365.Activities v3.6.10.0
+PackageVersion: 3.6.10
+ActivityCount: 182
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.AddAttachment
+- optional:
+  - Account : String [In]  // Conta
+  - Event : Microsoft.Graph.Event [InOut]  // Evento
+  - FilePath : String [In]  // CaminhoDoArquivo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.AddAttendee
+- optional:
+  - Account : String [In]  // Conta
+  - Event : Microsoft.Graph.Event [InOut]  // Evento
+  - Name : String [In]  // Nome
+  - EmailAddress : String [In]  // Endereço de Email
+  - Type : Microsoft.Graph.AttendeeType [Plain]  // Tipo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.AddLocation
+- optional:
+  - Account : String [In]  // Conta
+  - Event : Microsoft.Graph.Event [InOut]  // Evento
+  - LocationDisplayName : String [In]  // Nome de Exibição
+  - City : String [In]  // Cidade
+  - CountryOrRegion : String [In]  // País ou Região
+  - PostalCode : String [In]  // CEP
+  - Street : String [In]  // Rua
+  - State : String [In]  // Estado
+  - EmailAddress : String [In]  // Endereço de Email da Sala
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.CreateEvent
+- optional:
+  - Account : String [In]  // Conta
+  - Calendar : Microsoft.Graph.Calendar [In]  // Calendário
+  - Subject : String [In]  // Assunto
+  - Body : String [In]  // Corpo
+  - IsBodyHTML : Boolean [Plain]  // É Corpo HTML
+  - StartTime : DateTime [In]  // Hora de Início
+  - EndTime : DateTime [In]  // Hora de Término
+  - Timezone : String [In]  // Fuso Horário
+  - IsAllDay : Boolean [Plain]  // É o Dia Todo
+  - ShowAs : Microsoft.Graph.FreeBusyStatus [Plain]  // Mostrar como
+  - Categories : String[] [In]  // Categorias
+  - Event : Microsoft.Graph.Event [Out]  // Event
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.CreateEventConnections
+- optional:
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - ObjectName : String [Plain]
+  - Title : String [In]  // Título do evento
+  - StartDateTime : DateTimeOffset [In]  // Data e hora de início
+  - EndDateTime : DateTimeOffset [In]  // Data e hora de término
+  - Timezone : String [In]  // Fuso horário
+  - Recurrence : String [In]  // Recorrência
+  - AllDayEvent : Boolean [In]  // Evento de dia inteiro
+  - RequiredAttendees : Collections.Generic.IEnumerable<String> [In]  // Participantes obrigatórios
+  - OptionalAttendees : Collections.Generic.IEnumerable<String> [In]  // Participantes opcionais
+  - ResourceAttendees : Collections.Generic.IEnumerable<String> [In]  // Participantes do recurso
+  - Location : String [In]  // Localização
+  - MeetingUrl : String [In]  // URL da reunião online
+  - IsOnlineMeeting : Boolean [In]
+  - Description : String [In]  // Descrição
+  - AttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada de anexos
+  - AttachmentsBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode> [Plain]
+  - Attachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Anexo(s)
+  - ArgumentAttachments : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Anexo(s)
+  - Importance : UiPath.MicrosoftOffice365.Activities.Mail.Enums.Importance [In]  // Importância
+  - Categories : Collections.Generic.IEnumerable<String> [In]  // Categorias
+  - ShowAs : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.FreeBusyStatus [In]  // Mostrar como
+  - Sensitivity : UiPath.MicrosoftOffice365.Activities.Mail.Enums.Sensitivity [In]  // Confidencialidade
+  - PreferredReturnTimezone : String [In]  // Fuso horário para o evento de saída
+  - Result : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]  // Evento
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - CalendarInputMode : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode [Plain]  // Modo de entrada do calendário
+  - CalendarIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode> [Plain]
+  - Calendar : UiPath.MicrosoftOffice365.Calendar.Models.O365CalendarItem [In]  // Calendário
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - BrowserCalendarId : String [In]  // ID do calendário
+  - BrowserCalendarGroupId : String [In]  // Grupo do calendário
+  - BrowserGroupId : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.DeleteEvent
+- optional:
+  - Account : String [In]  // Conta
+  - Event : Microsoft.Graph.Event [In]  // Evento
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.DeleteEventConnections
+- optional:
+  - Event : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [In]  // Evento a excluir
+  - DeleteOption : UiPath.MicrosoftOffice365.Enums.DeleteOptionType [In]  // Excluir
+  - Comment : String [In]  // Comentário
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.FindMeetingTimes
+- optional:
+  - Attendees : String[] [In]  // Participantes
+  - IntervalStart : DateTime [In]  // Início do Intervalo
+  - IntervalEnd : DateTime [In]  // Final do Intervalo
+  - TimeZone : String [In]  // Fuso horário
+  - MeetingDuration : Int32 [In]  // Duração da Reunião
+  - Policy : Microsoft.Graph.ActivityDomain [Plain]  // Política
+  - Locations : String[] [In]  // Locais
+  - OrganizerRequired : Boolean [Plain]  // Organizador Obrigatório
+  - AvailableTimeslots : Microsoft.Graph.MeetingTimeSuggestion[] [Out]  // Horários Disponíveis
+  - EmptySuggestionsReason : String [Out]  // Motivo das Sugestões Vazias
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.FindMeetingTimesConnections
+- optional:
+  - Attendees : Collections.Generic.IEnumerable<String> [In]
+  - IntervalStart : DateTimeOffset [In]
+  - IntervalEnd : DateTimeOffset [In]
+  - MeetingDuration : TimeSpan [In]
+  - Timezone : String [In]
+  - OrganizerRequired : Boolean [In]
+  - Constraint : UiPath.MicrosoftOffice365.Calendar.Enums.MeetingTimeConstraint [In]
+  - Locations : Collections.Generic.IEnumerable<String> [In]
+  - EmptySuggestionsReason : String [Out]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.ForEachEventConnections
+- optional:
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - ObjectName : String [Plain]
+  - CurrentItemVariableName : String [Plain]
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem,Int32> [Plain]
+  - StartDate : DateTimeOffset [In]  // De
+  - EndDate : DateTimeOffset [In]  // Até
+  - MaxResults : Int32 [In]  // Limitar eventos aos primeiros
+  - PreferredReturnTimezone : String [In]  // Fuso horário do evento atual
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventFilterMode [Plain]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventFilterMode> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.EventFilterCollection [Plain]
+  - Length : Int32 [Out]  // Número de eventos processados
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Calendar : UiPath.MicrosoftOffice365.Calendar.Models.O365CalendarItem [In]  // Calendário
+  - CalendarInputMode : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode [Plain]  // Modo de entrada do calendário
+  - CalendarIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode> [Plain]
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - BrowserCalendarId : String [In]  // Calendário
+  - BrowserCalendarGroupId : String [In]  // ID do grupo de calendários
+  - BrowserGroupId : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.ForwardEventConnections
+- optional:
+  - Connector : String [Plain]
+  - Event : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [In]  // Evento
+  - Attendees : Collections.Generic.IEnumerable<String> [In]  // Participante(s)
+  - ApplyOnSeries : Boolean [In]  // Aplicar à série
+  - Comment : String [In]  // Comentário
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.GetCalendars
+- optional:
+  - Account : String [In]  // Conta
+  - UserEmail : String [In]  // Usuário
+  - DefaultCalendar : Microsoft.Graph.Calendar [Out]  // Calendário Padrão
+  - Calendars : Microsoft.Graph.Calendar[] [Out]  // Calendários
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.GetCalendarsConnections
+- optional:
+  - IncludeGroupCalendars : Boolean [Plain]  // Incluir calendários de grupo
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Calendars : Collections.Generic.List<UiPath.MicrosoftOffice365.Calendar.Models.O365CalendarItem> [Out]  // Calendários
+  - DefaultCalendar : UiPath.MicrosoftOffice365.Calendar.Models.O365CalendarItem [Out]  // Calendário Padrão
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.GetEventByIdConnections
+- optional:
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - EventId : String [In]
+  - Event : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - Calendar : UiPath.MicrosoftOffice365.Calendar.Models.O365CalendarItem [In]  // Calendário
+  - CalendarInputMode : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode [Plain]  // Modo de entrada do calendário
+  - CalendarIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode> [Plain]
+  - BrowserCalendarId : String [In]  // Calendário
+  - BrowserCalendarGroupId : String [In]  // ID do grupo de calendários
+  - BrowserGroupId : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.GetEventListConnections
+- optional:
+  - StartDate : DateTimeOffset [In]  // De
+  - EndDate : DateTimeOffset [In]  // Até
+  - MaxResults : Int32 [In]  // Limitar eventos aos primeiros
+  - PreferredReturnTimezone : String [In]  // Fuso horário do evento atual
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventFilterMode [Plain]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventFilterMode> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.EventFilterCollection [Plain]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - EventList : Collections.Generic.List<UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem> [Out]  // Lista de eventos do Outlook
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - Calendar : UiPath.MicrosoftOffice365.Calendar.Models.O365CalendarItem [In]  // Calendário
+  - CalendarInputMode : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode [Plain]  // Modo de entrada do calendário
+  - CalendarIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.ECalendarMode> [Plain]
+  - BrowserCalendarId : String [In]  // Calendário
+  - BrowserCalendarGroupId : String [In]  // ID do grupo de calendários
+  - BrowserGroupId : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.ModifyEvent
+- optional:
+  - Account : String [In]  // Conta
+  - Event : Microsoft.Graph.Event [InOut]  // Evento
+  - Subject : String [In]  // Assunto
+  - Body : String [In]  // Corpo
+  - IsBodyHtml : Boolean [Plain]  // É Corpo em HTML
+  - StartTime : DateTime [In]  // Hora de Início
+  - EndTime : DateTime [In]  // Hora de Término
+  - TimeZone : String [In]  // FusoHorário
+  - IsAllDay : Boolean [Plain]  // É o Dia Todo
+  - ShowAs : Microsoft.Graph.FreeBusyStatus [Plain]  // Mostrar como
+  - Categories : String[] [In]  // Categorias
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.ModifyEventConnections
+- optional:
+  - Event : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [In]  // Evento a ser modificado
+  - Title : String [In]  // Título do evento
+  - StartDateTime : DateTimeOffset [In]  // Data e hora de início
+  - EndDateTime : DateTimeOffset [In]  // Data e hora de término
+  - Timezone : String [In]  // Fuso horário
+  - AllDayEvent : Boolean [In]  // Evento de dia inteiro
+  - Recurrence : String [In]  // Recorrência
+  - ChangeRequiredAttendees : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventPropertyChange [Plain]  // Alterar participantes exigidos
+  - OverwriteRequiredAttendees : Collections.Generic.IEnumerable<String> [In]  // Participante(s) exigido(s)
+  - AddRequiredAttendees : Collections.Generic.IEnumerable<String> [In]  // Adicionar participante(s) exigido(s)
+  - RemoveRequiredAttendees : Collections.Generic.IEnumerable<String> [In]  // Remover participante(s) exigido(s)
+  - ChangeOptionalAttendees : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventPropertyChange [Plain]  // Alterar participantes opcionais
+  - OverwriteOptionalAttendees : Collections.Generic.IEnumerable<String> [In]  // Participante(s) opcional(is)
+  - AddOptionalAttendees : Collections.Generic.IEnumerable<String> [In]  // Adicionar participante(s) adicional(is)
+  - RemoveOptionalAttendees : Collections.Generic.IEnumerable<String> [In]  // Remover participante(s) opcional(is)
+  - ChangeResourceAttendees : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventPropertyChange [Plain]  // Alterar participantes do recurso
+  - OverwriteResourceAttendees : Collections.Generic.IEnumerable<String> [In]  // Participante(s) do recurso
+  - AddResourceAttendees : Collections.Generic.IEnumerable<String> [In]  // Adicionar participante(s) do recurso
+  - RemoveResourceAttendees : Collections.Generic.IEnumerable<String> [In]  // Remover participante(s) do recurso
+  - Location : String [In]  // Localização
+  - MeetingUrl : String [In]  // URL da reunião online
+  - IsOnlineMeeting : Boolean [In]
+  - Description : String [In]  // Descrição
+  - ChangeAttachments : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventPropertyChange [Plain]  // Alterar anexos
+  - OverwriteAttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada Substituir anexos
+  - OverwriteAttachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Anexo(s)
+  - OverwriteArgumentAttachments : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Anexo(s)
+  - AddAttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada Adicionar anexos
+  - AddAttachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Adicionar anexo(s)
+  - AddArgumentAttachments : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Adicionar anexo(s)
+  - RemoveAttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada Remover anexos
+  - RemoveAttachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Remover anexo(s)
+  - RemoveArgumentAttachments : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Remover anexo(s)
+  - Importance : Nullable<UiPath.MicrosoftOffice365.Activities.Mail.Enums.Importance> [In]  // Importância
+  - ChangeCategories : UiPath.MicrosoftOffice365.Activities.Calendar.Enums.EventPropertyChange [Plain]  // Alterar categorias
+  - OverwriteCategories : Collections.Generic.IEnumerable<String> [In]  // Categorias
+  - AddCategories : Collections.Generic.IEnumerable<String> [In]  // Adicionar categorias
+  - RemoveCategories : Collections.Generic.IEnumerable<String> [In]  // Remover categorias
+  - ShowAs : Nullable<UiPath.MicrosoftOffice365.Activities.Calendar.Enums.FreeBusyStatus> [In]  // Mostrar como
+  - Sensitivity : Nullable<UiPath.MicrosoftOffice365.Activities.Mail.Enums.Sensitivity> [In]  // Sensibilidade
+  - PreferredReturnTimezone : String [In]  // Fuso horário para o evento de saída
+  - Result : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]  // Evento
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.Rsvp
+- optional:
+  - Account : String [In]  // Conta
+  - Event : Microsoft.Graph.Event [In]  // Evento
+  - Response : UiPath.MicrosoftOffice365.Enums.EventResponseType [Plain]  // Resposta
+  - Comment : String [In]  // Comentário
+  - EmailOrganizer : Boolean [Plain]  // Organizador de Email
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.RsvpConnections
+- optional:
+  - Event : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [In]  // Evento a responder
+  - Response : UiPath.MicrosoftOffice365.Enums.EventResponseType [In]  // Resposta
+  - ApplyOnSeries : Boolean [In]  // Aplicar a todas as ocorrências
+  - EmailOrganizer : Boolean [In]  // Enviar notificação de resposta
+  - Comment : String [In]  // Comentário
+  - NewStartTime : DateTimeOffset [In]  // Nova data e hora de início
+  - NewEndTime : DateTimeOffset [In]  // Nova data e hora de término
+  - NewTimezone : String [In]  // Novo fuso horário
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.SearchEvents
+- optional:
+  - Account : String [In]  // Conta
+  - Calendar : Microsoft.Graph.Calendar [In]  // Calendário
+  - StartDate : DateTime [In]  // Data de Início
+  - EndDate : DateTime [In]  // Data de Término
+  - MaxResults : Int32 [In]  // Resultados Máx
+  - SearchQuery : String [In]  // Consulta de Pesquisa
+  - EventId : String [In]  // ID do Evento
+  - ReturnRecurring : Boolean [Plain]  // Retornar Recorrente
+  - Events : Microsoft.Graph.Event[] [Out]  // Eventos
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.Triggers.EventReplied
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarFriendlyName : String [In]  // Nome amigável do calendário
+  - BrowserCalendarId : String [In]  // Calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - ObjectName : String [Plain]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - BrowserCalendarGroupId : String [In]
+  - BrowserGroupId : String [In]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.TriggerEventFilterCollection [Plain]
+  - Result : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.Triggers.EventUpdated
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - BrowserCalendarId : String [In]  // Calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - ObjectName : String [Plain]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - BrowserCalendarGroupId : String [In]
+  - BrowserGroupId : String [In]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.TriggerEventFilterCollection [Plain]
+  - Result : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.Triggers.NewEventCreated
+- optional:
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - BrowserCalendarId : String [In]  // Calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - BrowserCalendarGroupId : String [In]
+  - BrowserGroupId : String [In]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.TriggerEventFilterCollection [Plain]
+  - Result : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Calendar.Triggers.NewEventInvitationReceived
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarFriendlyName : String [In]  // Calendário
+  - BrowserCalendarId : String [In]  // Calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - ObjectName : String [Plain]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - BrowserCalendarGroupId : String [In]
+  - BrowserGroupId : String [In]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.TriggerEventFilterCollection [Plain]
+  - Result : UiPath.MicrosoftOffice365.Calendar.Models.O365EventItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.AddSheet
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Planilha
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.AddSheetConnections
+- optional:
+  - ObjectName : String [Plain]
+  - SheetName : String [In]  // Nome da planilha
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In] = 1  // Se a planilha já existir
+  - NewSheetName : String [Out]  // Nome da planilha
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.AppendRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - DataTable : Data.DataTable [In]  // TabelaDeDados
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ClearRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - ClearAction : UiPath.MicrosoftOffice365.Enums.ExcelClearRangeAction [Plain]  // Limpar Ação
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CopyRange
+- optional:
+  - SourceWorkbook : Microsoft.Graph.DriveItem [In]  // Pasta de Trabalho de Origem
+  - SourceSheet : String [In]  // Planilha de Origem
+  - SourceRange : String [In]  // Intervalo de origem
+  - DestinationWorkbook : Microsoft.Graph.DriveItem [In]  // Pasta de Trabalho de Destino
+  - DestinationSheet : String [In]  // Planilha de Destino
+  - DestinationRange : String [In]  // Intervalo de Destino
+  - WhatToCopy : UiPath.MicrosoftOffice365.Enums.CopyValueType [Plain]  // O Que Copiar
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CopyRangeConnections
+- optional:
+  - SecondaryResourceKey : String [Plain]
+  - SecondaryResourceRelativePathBindingsKey : String [Plain]
+  - BrowserDestinationItemId : String [In]  // Pasta de trabalho de destino
+  - BrowserDestinationItemFriendlyName : String [In]  // Pasta de trabalho de destino
+  - BrowserDestinationDriveId : String [In]  // Repositório
+  - BrowserItemId : String [In]  // Pasta de trabalho de origem
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - BrowserParentDestinationItemId : String [In]  // Pasta pai
+  - BrowserParentDestinationDriveId : String [In]  // Pasta pai
+  - BrowserParentDestinationItemFriendlyName : String [In]  // Pasta Pai de Destino
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho de origem
+  - DestinationItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - TemplateDestinationItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateDestinationItem : Boolean [Plain]
+  - DestinationRange : String [In]
+  - WhatToCopy : UiPath.MicrosoftOffice365.Enums.ValuesType [In]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - TemplateItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateItem : Boolean [Plain]
+  - Range : String [In]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CopySheet
+- optional:
+  - CopyWorkbook : Microsoft.Graph.DriveItem [In]  // Copy Workbook
+  - PasteWorkbook : Microsoft.Graph.DriveItem [In]  // Colar Pasta de Trabalho
+  - CopySheetName : String [In]  // Copiar Planilha
+  - PasteSheetName : String [In]  // Colar Planilha
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CreateTable
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - TableName : String [In]  // Nome da Tabela
+  - HasHeaders : Boolean [Plain]  // Tem Cabeçalhos
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CreateTableConnections
+- optional:
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - TableName : String [In]  // Nome da Tabela
+  - HasHeaders : Boolean [Plain]  // Tem Cabeçalhos
+  - BrowserItemId : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Pasta de trabalho
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // Drive Item
+  - BrowserParentItemId : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CreateWorkbook
+- optional:
+  - Name : String [In]  // Nome
+  - Parent : Microsoft.Graph.DriveItem [In]  // Pai
+  - ConflictBehavior : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [Plain]  // Comportamento de Conflito
+  - WorkBookUrl : String [Out]  // URL da Pasta de Trabalho
+  - Account : String [In]  // Conta
+  - WorkBook : Microsoft.Graph.DriveItem [Out]  // Pasta de trabalho
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.CreateWorkbookConnections
+- optional:
+  - ObjectName : String [Plain]
+  - WorkbookName : String [In]  // Nome da pasta de trabalho
+  - FirstSheetName : String [In]  // Nome da primeira planilha
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se a pasta de trabalho já existe
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]  // Pasta de trabalho
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserParentFolderId : String [In]
+  - BrowserParentFolderDriveName : String [In]
+  - BrowserParentFolderSiteUrl : String [In]
+  - BrowserParentFolderFriendlyName : String [In]
+  - BrowserParentFolderDriveId : String [In]
+  - ParentFolderSelectionMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ParentFolderExisting : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteColumn
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - TableName : String [In]  // Nome da Tabela
+  - ColumnName : String [In]  // Nome da Coluna
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteColumnConnections
+- optional:
+  - HasHeaders : Boolean [In]  // Tem cabeçalhos
+  - Column : String [In]  // Nome da coluna ou posição da coluna
+  - DeleteMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.ColumnDeleteMode [In]  // Excluir comportamento
+  - RangeInformation : UiPath.MicrosoftOffice365.Excel.Models.RangeInformation [Out]  // Informações do intervalo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - Range : String [In]
+  - RangeMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain]
+  - Connector : String [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - TemplateBrowserItemId : String [In]
+  - TemplateBrowserDriveName : String [In]
+  - TemplateBrowserSiteUrl : String [In]
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - Shift : UiPath.MicrosoftOffice365.Enums.DeleteShiftType [Plain]  // Mudar
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteRangeConnections
+- optional:
+  - ObjectName : String [Plain]
+  - Range : String [In]  // Intervalo
+  - DeleteMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeDeleteMode [In]  // Excluir comportamento
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteRows
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - TableName : String [In]  // Nome da Tabela
+  - Rows : String [In]  // Linhas
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteRowsConnections
+- optional:
+  - Rows : String [In]
+  - DeleteMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.RowsDeleteMode [In]
+  - RangeInformation : UiPath.MicrosoftOffice365.Excel.Models.RangeInformation [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - Range : String [In]
+  - RangeMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain]
+  - Connector : String [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - TemplateBrowserItemId : String [In]
+  - TemplateBrowserDriveName : String [In]
+  - TemplateBrowserSiteUrl : String [In]
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteSheet
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Planilha
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.DeleteSheetConnections
+- optional:
+  - ObjectName : String [Plain]
+  - SheetName : String [In]  // Planilha
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ForEachRowConnections`1
+- optional:
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ObjectName : String [Plain]
+  - CurrentItemVariableName : String [Plain]
+  - RangeType : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain] = 0  // Tipo de intervalo
+  - TableName : String [In]  // Nome da tabela
+  - RangeWorksheetName : String [In]  // Nome da planilha
+  - RangeAddress : String [In]  // Nome ou endereço do intervalo
+  - PivotTableWorksheetName : String [In]  // Nome da planilha
+  - PivotTableName : String [In]  // Nome da tabela dinâmica
+  - SheetName : String [In]  // Nome da planilha
+  - Range : String [In]  // Intervalo
+  - GlobalRange : String [In]  // Intervalo global
+  - IncludeHeaders : Boolean [In]  // Tem cabeçalhos
+  - EmptyRowAction : UiPath.MicrosoftOffice365.Activities.Excel.Enums.RowIteratorAction [In]  // Se a linha estiver vazia
+  - ColumnNames : String[] [Plain]
+  - RangeMetadata : UiPath.MicrosoftOffice365.Excel.Models.RangeMetadataSlim [Plain]
+  - Length : Int32 [Out]  // Número de linhas processadas
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - TemplateBrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - TemplateBrowserDriveName : String [In]  // Biblioteca de documentos do SharePoint
+  - TemplateBrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]  // Exemplo de pasta de trabalho
+  - RelativePathBindingsKey : String [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveName : String [In]  // Biblioteca de documentos do SharePoint
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]
+  - ManualEntryItemRelativePath : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ForEachSheetConnections
+- optional:
+  - ObjectName : String [Plain]
+  - CurrentItemVariableName : String [Plain]
+  - Body : Activities.ActivityAction<String,Int32> [Plain]
+  - Connector : String [Plain]
+  - Length : Int32 [Out]  // Quantidade total de planilhas processadas
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - RelativePathBindingsKey : String [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveName : String [In]  // Biblioteca de documentos do SharePoint
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]
+  - ManualEntryItemRelativePath : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.GetCellColor
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - CellAddress : String [In]  // Endereço da Célula
+  - CellColor : String [Out]  // Cor
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.GetCellColorConnections
+- optional:
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - CellAddress : String [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Pasta de trabalho
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - TemplateItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateItem : Boolean [Plain]
+  - Range : String [In]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.GetSheets
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - Sheets : String[] [Out]  // Planilhas
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.GetTableRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - TableName : String [In]  // Nome da Tabela
+  - Range : String [Out]  // Intervalo 
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.InsertColumn
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - TableName : String [In]  // Nome da Tabela
+  - ColumnName : String [In]  // Nome da Coluna
+  - ColumnValues : Data.DataTable [In]  // Valores da Coluna
+  - Position : Int32 [In]  // Posição
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.InsertRows
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - TableName : String [In]  // Nome da Tabela
+  - EmptyRows : Int32 [In]  // Linhas Vazias
+  - Values : Data.DataTable [In]  // Valores
+  - InsertPosition : UiPath.MicrosoftOffice365.Enums.ExcelInsertRowPosition [Plain]  // Inserir Posição
+  - SpecificIndex : Int32 [In]  // Índice Específico
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.InsertRowsOrColumns
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - StartingCell : String [In]  // Célula Inicial
+  - NoOfItems : Int32 [In]  // Nº de Itens
+  - ItemType : UiPath.MicrosoftOffice365.Enums.InsertShiftType [Plain]  // Tipo de Item
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.PasteRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - StartingCell : String [In]  // Célula Inicial
+  - Range : Microsoft.Graph.WorkbookRange [In]  // Intervalo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadCell
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Cell : String [In]  // Endereço da Célula
+  - ValuesType : UiPath.MicrosoftOffice365.Enums.ValuesType [Plain]  // Tipo de Valor
+  - CellValue : String [Out]  // Valor da Célula
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadCellConnections`1
+- optional:
+  - ObjectName : String [Plain]
+  - RangeLocation : String [In]  // Planilha/Intervalo nomeado
+  - Cell : String [In]  // Célula
+  - HideCell : Boolean [Plain]
+  - WhatToRead : UiPath.MicrosoftOffice365.Enums.ValuesType [Plain]  // O que ler
+  - CellValueType : UiPath.MicrosoftOffice365.Activities.Excel.Enums.CellFormatType [Plain]  // Tipo de valor da célula
+  - Result : T [Out]  // Ler célula
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadColumn
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Cell : String [In]  // Célula Inicial
+  - ValuesType : UiPath.MicrosoftOffice365.Enums.ValuesType [Plain]  // Tipo de Valor
+  - Column : Object[] [Out]  // Coluna
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadColumnConnections
+- optional:
+  - Cell : String [In]
+  - ValuesType : UiPath.MicrosoftOffice365.Enums.ValuesType [In]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Pasta de trabalho
+  - TemplateItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateItem : Boolean [Plain]
+  - Range : String [In]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // Drive Item
+  - BrowserParentItemId : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - AddHeaders : Boolean [Plain]  // Adicionar Cabeçalhos
+  - ValuesType : UiPath.MicrosoftOffice365.Enums.ValuesType [Plain]  // Tipo de Valor
+  - DataTable : Data.DataTable [Out]  // TabelaDeDados
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadRangeConnections`1
+- optional:
+  - RangeType : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain] = 0  // Tipo de intervalo
+  - TableName : String [In]  // Nome da tabela
+  - RangeWorksheetName : String [In]  // Nome da planilha
+  - RangeAddress : String [In]  // Nome ou endereço do intervalo
+  - PivotTableWorksheetName : String [In]  // Nome da planilha
+  - PivotTableName : String [In]  // Nome da tabela dinâmica
+  - SheetName : String [In]  // Nome da planilha
+  - GlobalRange : String [In]  // Intervalo global
+  - HasHeaders : Boolean [In]  // Tem cabeçalhos
+  - IgnoreEmptyValues : Boolean [In]  // Ignorar linhas/colunas vazias
+  - ReadAs : UiPath.MicrosoftOffice365.Enums.ValuesType [In]  // O que ler
+  - Result : T [Out]  // Intervalo de leitura
+  - RangeInformation : UiPath.MicrosoftOffice365.Excel.Models.RangeInformation [Out]  // Informações do intervalo
+  - ColumnNames : String[] [Plain]  // Colunas
+  - RangeMetadata : UiPath.MicrosoftOffice365.Excel.Models.RangeMetadataSlim [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - ObjectName : String [Plain]
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - Range : String [In]
+  - RangeMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain]
+  - Connector : String [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - TemplateBrowserItemId : String [In]
+  - TemplateBrowserDriveName : String [In]
+  - TemplateBrowserSiteUrl : String [In]
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadRow
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Cell : String [In]  // Célula Inicial
+  - ValuesType : UiPath.MicrosoftOffice365.Enums.ValuesType [Plain]  // Tipo de Valor
+  - Row : Object[] [Out]  // Linha
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.ReadRowConnections
+- optional:
+  - Cell : String [In]
+  - ValuesType : UiPath.MicrosoftOffice365.Enums.ValuesType [In]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Pasta de trabalho
+  - TemplateItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateItem : Boolean [Plain]
+  - Range : String [In]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // Drive Item
+  - BrowserParentItemId : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.RenameSheet
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - OldSheet : String [In]  // Nome Original da Planilha
+  - NewSheet : String [In]  // Nome da planilha
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.RenameSheetConnections
+- optional:
+  - ObjectName : String [Plain]
+  - OldSheetName : String [In]  // Planilha
+  - NewSheetName : String [In]  // Novo nome
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.SetRangeColor
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - Color : Drawing.Color [In]  // Cor
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.SetRangeColorConnections
+- optional:
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserItemId : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Pasta de trabalho
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - Color : Drawing.Color [In]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - TemplateItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateItem : Boolean [Plain]
+  - Range : String [In]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.Triggers.RowAddedToTableBottom`1
+- optional:
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - TableNameBindingKey : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserItemId : String [In]  // ID da pasta de trabalho
+  - BrowserDriveId : String [In]  // ID da pasta de trabalho
+  - ReferenceId : String [Plain]  // ID de referência
+  - TableIdentifier : String [Plain]  // Tabela
+  - TableName : String [Plain]  // Tabela
+  - SheetTableId : String [Plain]  // Tabela
+  - AllColumns : UiPath.MicrosoftOffice365.Excel.Contracts.IRangeField[] [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.TriggerTableColumnFilterCollection [Plain]
+  - AddedRow : T [Out]  // Linha
+  - RowNumber : Int32 [Out]  // Número da linha da tabela
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.Triggers.WorksheetCellUpdated
+- optional:
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - SheetCellBindingKey : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.TriggerWorksheetCellFilterCollection [Plain]
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserItemId : String [In]  // ID da pasta de trabalho
+  - BrowserDriveId : String [In]  // ID da pasta de trabalho
+  - ReferenceId : String [Plain]  // ID de referência
+  - SheetId : String [Plain]  // Folha
+  - SheetName : String [Plain]  // Folha
+  - CellAddress : String [Plain]  // Endereço da célula
+  - UpdatedCell : UiPath.MicrosoftOffice365.Excel.Models.CellInformation [Out]  // Célula
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.Triggers.WorksheetCreated
+- optional:
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.TriggerWorksheetFilterCollection [Plain]
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserItemId : String [In]  // ID da pasta de trabalho
+  - BrowserDriveId : String [In]  // ID da pasta de trabalho
+  - ReferenceId : String [Plain]  // ID de referência
+  - WorksheetName : String [Out]  // Planilha
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.VLookupRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - Range : String [In]  // Intervalo
+  - ValueToLookup : String [In]  // Valor a Pesquisar
+  - ColumnIndex : Int32 [In]  // Índice de coluna
+  - ExactMatch : Boolean [Plain]  // Correspondência Exata
+  - Result : String [Out]  // Resultado
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.VLookupRangeConnections
+- optional:
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserItemId : String [In]  // Pasta de trabalho
+  - BrowserDriveId : String [In]  // Pasta de trabalho
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - ValueToLookup : Object [In]
+  - ColumnIndex : Int32 [In]
+  - ExactMatch : Boolean [In]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - TemplateItem : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateItem : Boolean [Plain]
+  - Range : String [In]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.WriteCell
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - CellAddress : String [In]  // Endereço da Célula
+  - Value : String [In]  // Valor da Célula
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.WriteCellConnections
+- optional:
+  - ObjectName : String [Plain]
+  - RangeLocation : String [In]  // Planilha/Intervalo nomeado
+  - Cell : String [In]  // Célula
+  - HideCell : Boolean [Plain]
+  - WhatToWrite : Object [In]  // O que escrever
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.WriteColumnConnections
+- optional:
+  - WriteMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeWriteMode [In]  // Como escrever
+  - DataType : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputDataType [Plain]  // O que escrever
+  - DataColumn : Data.DataColumn [In]  // Coluna de dados a ser gravada
+  - ArrayColumn : Collections.Generic.IEnumerable<Object> [In]  // Coluna de array a ser gravada
+  - ColumnPosition : Int32 [In]  // PosiçãoDaColuna
+  - AllFields : UiPath.MicrosoftOffice365.Excel.Contracts.IRangeField[] [Plain]
+  - State : UiPath.MicrosoftOffice365.Activities.Sharepoint.ActivityState [Plain]
+  - UseDataColumn : Boolean [Plain]
+  - RangeWriteModeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeWriteMode> [Plain]
+  - InputDataTypeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputDataType> [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - Range : String [In]
+  - RangeMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain]
+  - Connector : String [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - TemplateBrowserItemId : String [In]
+  - TemplateBrowserDriveName : String [In]
+  - TemplateBrowserSiteUrl : String [In]
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.WriteRange
+- optional:
+  - Workbook : Microsoft.Graph.DriveItem [In]  // Pasta de trabalho
+  - SheetName : String [In]  // Nome da Planilha
+  - StartingCell : String [In]  // Célula Inicial
+  - DataTable : Data.DataTable [In]  // TabelaDeDados
+  - IncludeHeaders : Boolean [Plain]  // Incluir cabeçalhos
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.WriteRangeConnections
+- optional:
+  - RangeType : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain] = 0  // Tipo de intervalo
+  - TableName : String [In]  // Nome da tabela
+  - RangeWorksheetName : String [In]  // Nome da planilha
+  - RangeAddress : String [In]  // Nome ou endereço do intervalo
+  - SheetName : String [In]  // Nome da planilha
+  - GlobalRange : String [In]  // Intervalo global
+  - WriteMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeWriteMode [In]  // Como escrever
+  - Source : Data.DataTable [In]  // O que escrever
+  - IncludeHeaders : Boolean [In]  // Incluir cabeçalhos
+  - RowPosition : Int32 [In]  // PosiçãoDaLinha
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - RangeWriteModeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeWriteMode> [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - ObjectName : String [Plain]
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - Range : String [In]
+  - RangeMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain]
+  - Connector : String [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - TemplateBrowserItemId : String [In]
+  - TemplateBrowserDriveName : String [In]
+  - TemplateBrowserSiteUrl : String [In]
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Excel.WriteRowConnections
+- optional:
+  - WriteMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeWriteMode [In]  // Como escrever
+  - DataType : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputDataType [Plain]  // O que escrever
+  - DataRow : Data.DataRow [In]  // Linha de dados a ser gravada
+  - ArrayRow : Collections.Generic.IEnumerable<Object> [In]  // Linha de array a ser gravada
+  - RowPosition : Int32 [In]  // PosiçãoDaLinha
+  - AllFields : UiPath.MicrosoftOffice365.Excel.Contracts.IRangeField[] [Plain]
+  - State : UiPath.MicrosoftOffice365.Activities.Sharepoint.ActivityState [Plain]
+  - HasHeaders : Boolean [In]  // Tem cabeçalhos
+  - RangeWriteModeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Excel.Enums.RangeWriteMode> [Plain]
+  - InputDataTypeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputDataType> [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - TemplateArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - Range : String [In]
+  - RangeMode : UiPath.MicrosoftOffice365.Activities.Excel.Enums.InputRangeMode [Plain]
+  - Connector : String [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - TemplateBrowserItemId : String [In]
+  - TemplateBrowserDriveName : String [In]
+  - TemplateBrowserSiteUrl : String [In]
+  - TemplateBrowserItemFriendlyName : String [In]
+  - TemplateBrowserDriveId : String [In]
+  - WorkbookSample : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.AssignSensitivityLabelConnections
+- optional:
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]  // Arquivo
+  - ActionType : UiPath.MicrosoftOffice365.Enums.SensitivityLabelActionType [In]  // Ação
+  - SensitivityLabel : String [In]  // ID do rótulo de confidencialidade
+  - Justification : String [In]  // Justificativa
+  - WaitActionToComplete : Boolean [In]  // Aguardar conclusão da ação
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.CheckinCheckoutFileConnections
+- optional:
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]  // Arquivo
+  - ActionType : UiPath.MicrosoftOffice365.Enums.CheckinCheckoutActionType [In]  // Ação 
+  - Comment : String [In]  // Comment
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.CopyItem
+- required:
+  - **DriveItem** : Microsoft.Graph.DriveItem [In]  // Arquivo ou pasta a copiar
+- optional:
+  - ParentItem : Microsoft.Graph.DriveItem [In]  // Pasta de destino
+  - NewName : String [In]  // Novo nome (opcional)
+  - Account : String [In]  // Conta
+  - CopiedItem : Microsoft.Graph.DriveItem [Out]  // Referenciar como
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.CopyItemConnections
+- optional:
+  - Connector : String [Plain]
+  - SecondaryResourceKey : String [Plain]
+  - ObjectName : String [Plain]
+  - SecondaryObjectName : String [Plain]
+  - NewName : String [In]  // Novo nome
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se o arquivo/pasta já existir
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]  // Arquivo ou pasta
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ItemInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemDriveId : String [In]
+  - BrowserItemDriveName : String [In]
+  - BrowserItemSiteUrl : String [In]
+  - FolderInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta a ser copiado
+  - FolderArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - BrowserFolderId : String [In]  // Pasta de destino
+  - BrowserFolderDriveName : String [In]
+  - BrowserFolderSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserFolderFriendlyName : String [In]  // Pasta de destino
+  - BrowserFolderDriveId : String [In]  // Repositório
+  - ManualEntryFolderId : String [In]
+  - ManualEntryFolderDriveName : String [In]
+  - ManualEntryFolderSiteUrl : String [In]
+  - ManualEntryFolderUrl : String [In]
+  - Folder : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - FolderSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.CreateFolder
+- required:
+  - **Name** : String [In]  // Nome da pasta
+- optional:
+  - ParentItem : Microsoft.Graph.DriveItem [In]  // Pasta de destino
+  - Folder : Microsoft.Graph.DriveItem [Out]  // Referenciar como
+  - Account : String [In]  // Conta
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.CreateFolderConnections
+- optional:
+  - ObjectName : String [Plain]
+  - NewFolderName : String [In]  // Nome da pasta
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se a pasta já existir
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]  // Pasta
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentFolderSelectionMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserParentFolderId : String [In]
+  - BrowserParentFolderDriveName : String [In]
+  - BrowserParentFolderSiteUrl : String [In]
+  - BrowserParentFolderFriendlyName : String [In]
+  - BrowserParentFolderDriveId : String [In]
+  - ParentFolderExisting : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemFriendlyName : String [In]  // Pasta pai
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.DeleteItem
+- required:
+  - **DriveItem** : Microsoft.Graph.DriveItem [In]  // Arquivo ou pasta a excluir
+- optional:
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.DeleteItemConnections
+- optional:
+  - PermanentlyDelete : Boolean [In]  // Excluir permanentemente
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ItemInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta a excluir
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.DownloadFile
+- required:
+  - **File** : Microsoft.Graph.DriveItem [In]  // Arquivo a fazer download
+- optional:
+  - LocalFilePath : String [In]  // Fazer download como arquivo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.DownloadFileConnections
+- optional:
+  - ObjectName : String [Plain]
+  - ConvertToPdf : Boolean [In]  // Converter para formato PDF
+  - DestinationPath : String [In]  // Caminho de destino
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se um arquivo já existirem
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.Platform.ResourceHandling.ILocalResource [Out]  // Arquivo
+  - NewResult : UiPath.MicrosoftOffice365.Files.Models.O365DriveLocalItem [Out]  // Arquivo
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FileInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - FileIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - File : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserFileId : String [In]
+  - BrowserFileFriendlyName : String [In]
+  - BrowserItemFriendlyName : String [In]  // Arquivo a fazer download
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.ExportAsPdf
+- required:
+  - **DriveItem** : Microsoft.Graph.DriveItem [In]  // Arquivo a exportar
+- optional:
+  - LocalFilePath : String [In]  // Fazer download como arquivo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.FindFilesAndFolders
+- optional:
+  - Query : String [In]  // Consulta
+  - Subfolder : String [In]  // Subpasta
+  - DriveName : String [In]  // Nome da Unidade
+  - SiteUrl : String [In]  // URL do site
+  - Account : String [In]  // Conta
+  - First : Microsoft.Graph.DriveItem [Out]  // Primeiro
+  - Results : Microsoft.Graph.DriveItem[] [Out]  // Resultados
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.ForEachFileFolder
+- optional:
+  - Body : Activities.ActivityAction<Microsoft.Graph.DriveItem,Int32> [Plain]
+  - CurrentIndex : Int32 [Out]  // Índice
+  - FileFolderFilter : UiPath.MicrosoftOffice365.Activities.Files.FileFolderFilterArgument [Plain]
+  - FilesRepository : UiPath.MicrosoftOffice365.Enums.FilesRepositoryType [Plain]  // Repositório de Arquivos
+  - Folder : String [In]  // Pasta 
+  - ItemFriendlyName : String [In]
+  - LimitToFirst : Int32 [In]  // Limitar ao Primeiro
+  - Account : String [In]  // Conta
+  - Query : String [In]  // Pesquisa avançada
+  - SharePointDocumentLibrary : String [In]  // Biblioteca de Documentos do SharePoint
+  - SharePointSiteUrl : String [In]  // URL do Site do SharePoint
+  - SpecificUrl : String [In]  // URL Específica
+  - UseSimpleApi : Boolean [Plain]  // Usar pesquisa simples
+  - SimpleQuery : String [In]  // Pesquisa simples
+  - TrimDuplicates : Boolean [Plain]  // Cortar Duplicatas
+  - IncludeSubfolders : Boolean [Plain]  // Incluir subpastas
+  - WhatToReturn : UiPath.MicrosoftOffice365.Enums.FindFilesAndFoldersResultType [Plain]  // O Que Retornar
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.ForEachFileFolderConnections
+- optional:
+  - ObjectName : String [Plain]
+  - CurrentItemVariableName : String [Plain]
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem,Int32> [Plain]
+  - MaxResults : Int32 [In]  // Limitar ao primeiro
+  - WhatToReturn : UiPath.MicrosoftOffice365.Enums.FindFilesAndFoldersResultType [In]  // O que retornar
+  - TrimDuplicates : Boolean [In]  // Cortar duplicatas
+  - IncludeSubfolders : Boolean [In]  // Incluir subpastas
+  - Filter : UiPath.MicrosoftOffice365.Activities.Files.Filters.FileFilterArgument [Plain]
+  - SearchMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode [Plain]
+  - SimpleSearch : String [In]  // Pesquisa simples
+  - FreeTextFilter : String [In]
+  - QueryFilter : String [In]
+  - SortOptions : UiPath.MicrosoftOffice365.Files.Enums.SortOrder [Plain]  // Classificar por
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode> [Plain]
+  - Length : Int32 [Out]  // Quantidade total de arquivos/pastas processados
+  - Connector : String [Plain]
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - LocationInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - DestinationFolder : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemFriendlyName : String [In]  // No local
+  - BrowserSpecificUrl : String [In]  // No local
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemFullPath : String [In]  // Caminho completo da pasta ou arquivo
+  - ManualEntryItemRelativePath : String [In]  // Arquivo ou caminho da pasta
+  - RelativePathBindingsKey : String [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - BrowserItemId : String [In]  // Pasta de trabalho do Excel
+  - BrowserDriveName : String [In]  // Biblioteca de documentos do SharePoint
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.GetFileFolderConnections
+- optional:
+  - ObjectName : String [Plain]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - Connector : String [Plain]
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.GetFileFolderMetadataConnections`1
+- optional:
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ColumnsToRetrieveByName : Collections.Generic.IEnumerable<Object> [In]
+  - Result : T [Out]  // Metadados de arquivo ou pasta
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - SharepointSiteUrl : String [In]
+  - SharepointListId : String [In]
+  - SharepointLibraryItemFriendlyName : String [In]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - WorkingWithDocumentLibrary : Boolean [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.GetFileListConnections
+- optional:
+  - ObjectName : String [Plain]
+  - MaxResults : Int32 [In]  // Limitar ao primeiro
+  - WhatToReturn : UiPath.MicrosoftOffice365.Enums.FindFilesAndFoldersResultType [In]  // O que retornar
+  - TrimDuplicates : Boolean [In]  // Cortar duplicatas
+  - IncludeSubfolders : Boolean [In]  // Incluir subpastas
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem[] [Out]  // Arquivos ou pastas
+  - Filter : UiPath.MicrosoftOffice365.Activities.Files.Filters.FileFilterArgument [Plain]
+  - MetadataFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnFilterCollection [Plain]
+  - DynamicMetadataFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - SearchMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode [Plain]
+  - SimpleSearch : String [In]
+  - FreeTextFilter : String [In]
+  - QueryFilter : String [In]
+  - SortOptions : UiPath.MicrosoftOffice365.Files.Enums.SortOrder [Plain]  // Classificar por
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - LocationInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - DestinationFolder : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemFriendlyName : String [In]  // No local
+  - BrowserSpecificUrl : String [In]  // No local
+  - SharepointSiteUrl : String [In]
+  - SharepointListId : String [In]
+  - SharepointLibraryItemFriendlyName : String [In]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - WorkingWithDocumentLibrary : Boolean [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.GetItem
+- optional:
+  - ItemId : String [In]  // ID do Item
+  - ItemFriendlyName : String [In]
+  - FileIdSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveMode [Plain] = 2
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]  // Modo de entrada do arquivo ou pasta
+  - DriveName : String [In]  // Nome da Unidade
+  - SiteUrl : String [In]  // URL do site
+  - ItemUrl : String [In]  // URL do item
+  - DriveId : String [In]
+  - Account : String [In]  // Conta
+  - Item : Microsoft.Graph.DriveItem [Out]  // Item
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.GetSensitivityLabelsConnections
+- optional:
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]  // Arquivo
+  - SensitivityLabels : Collections.Generic.IEnumerable<UiPath.MicrosoftOffice365.Files.Models.SensitivityLabel> [Out]  // Rótulos de confidencialidade
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.MoveItem
+- required:
+  - **DriveItem** : Microsoft.Graph.DriveItem [In]  // Arquivo ou pasta a mover
+- optional:
+  - ParentItem : Microsoft.Graph.DriveItem [In]  // Pasta de destino
+  - NewName : String [In]  // Novo nome (opcional)
+  - Account : String [In]  // Conta
+  - MovedDriveItem : Microsoft.Graph.DriveItem [Out]  // Referenciar como
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.MoveItemConnections
+- optional:
+  - Connector : String [Plain]
+  - SecondaryResourceKey : String [Plain]
+  - ObjectName : String [Plain]
+  - SecondaryObjectName : String [Plain]
+  - NewName : String [In]  // Novo nome
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se o arquivo/pasta já existir
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]  // Arquivo ou pasta
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ItemInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemDriveName : String [In]
+  - BrowserItemSiteUrl : String [In]
+  - BrowserItemDriveId : String [In]
+  - FolderInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta a ser movido
+  - FolderArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - BrowserFolderId : String [In]  // Pasta de destino
+  - BrowserFolderDriveName : String [In]
+  - BrowserFolderSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserFolderFriendlyName : String [In]  // Pasta de destino
+  - BrowserFolderDriveId : String [In]  // Repositório
+  - ManualEntryFolderId : String [In]
+  - ManualEntryFolderDriveName : String [In]
+  - ManualEntryFolderSiteUrl : String [In]
+  - ManualEntryFolderUrl : String [In]
+  - Folder : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - FolderSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.RenameItemConnections
+- optional:
+  - NewName : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - BrowserItemId : String [In]  // Pasta ou arquivo a ser renomeado
+  - BrowserDriveId : String [In]  // Pasta ou arquivo a ser renomeado
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Item : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - Connector : String [Plain]
+  - ArgumentsPrefix : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // Drive Item
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.ShareItem
+- required:
+  - **DriveItem** : Microsoft.Graph.DriveItem [In]  // Arquivo ou pasta a compartilhar
+- optional:
+  - GranteeType : UiPath.MicrosoftOffice365.Enums.GranteeType [Plain]  // Tipo de entidade autorizada
+  - GranteePermission : UiPath.MicrosoftOffice365.Enums.GranteePermission [Plain]  // Permissão da entidade autorizada
+  - SendSharingInvitationEmail : Boolean [Plain]  // Enviar email de convite de compartilhamento
+  - Message : String [In]  // Mensagem
+  - Recipients : String[] [In]  // Destinatários
+  - RequiresSignIn : Boolean [Plain]  // Exige login
+  - Password : String [In]  // Senha
+  - ExpirationDateTime : DateTime [In]  // Data/hora de expiração
+  - AccessUrl : String [Out]  // Access Url
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.ShareItemConnections
+- optional:
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RecipientType : UiPath.MicrosoftOffice365.Enums.GranteeType [Plain]  // Compartilhar com
+  - PermissionType : UiPath.MicrosoftOffice365.Enums.GranteePermission [Plain]  // Permissão
+  - SharingLinkPassword : String [In]  // Senha do link de compartilhamento
+  - ExpirationDate : DateTime [In]  // Data de validade
+  - Recipients : Collections.Generic.IEnumerable<String> [In]  // Destinatários
+  - Message : String [In]  // Mensagem
+  - SendInvitationEmail : Boolean [In]  // Enviar email de convite de compartilhamento
+  - SignInRequired : Boolean [In]  // Exige o login
+  - AccessUrl : String [Out]  // URL de acesso
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ItemInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - BrowserId : String [In]
+  - BrowserFriendlyName : String [In]
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta a compartilhar
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.Triggers.FileUpdated
+- optional:
+  - Operation : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // No local
+  - BrowserItemId : String [In]  // ID do arquivo ou pasta
+  - BrowserDriveId : String [In]  // ID do arquivo ou pasta
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ObjectName : String [Plain]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Files.Filters.TriggerFileFilterCollection [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.Triggers.NewFileCreated
+- optional:
+  - Operation : String [Plain]
+  - BrowserItemFriendlyName : String [In]  // No local
+  - BrowserItemId : String [In]  // ID do arquivo ou pasta
+  - BrowserDriveId : String [In]  // ID do arquivo ou pasta
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ObjectName : String [Plain]
+  - FilterExpression : String [Plain]
+  - Connector : String [Plain]
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]
+  - Result : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Files.Filters.TriggerFileFilterCollection [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.UpdateFileFolderMetadataConnections`1
+- optional:
+  - State : UiPath.MicrosoftOffice365.Activities.Sharepoint.ActivityState [Plain]
+  - DataRow : Data.DataRow [In]
+  - Result : T [Out]  // Metadados de arquivo ou pasta
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - SharepointSiteUrl : String [In]
+  - SharepointListId : String [In]
+  - SharepointLibraryItemFriendlyName : String [In]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - WorkingWithDocumentLibrary : Boolean [Plain]
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserItemFriendlyName : String [In]  // Arquivo ou pasta
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.UploadFile
+- optional:
+  - LocalFilePath : String [In]  // Arquivo a carregar
+  - Destination : Microsoft.Graph.DriveItem [In]  // Pasta de destino
+  - CloudFileName : String [In]  // Novo nome (opcional)
+  - ConflictBehavior : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [Plain]  // Comportamento de conflito
+  - Metadata : Data.DataTable [In]  // Metadados
+  - Checkin : Boolean [Plain]  // Fazer check-in
+  - Account : String [In]  // Conta
+  - Result : Microsoft.Graph.DriveItem [Out]  // Referenciar como
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - DriveMetadata : UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata [In]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.UploadFilesConnections
+- optional:
+  - ObjectName : String [Plain]
+  - FilesInputMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.FilesInputMode [Plain]  // Modo de entrada de arquivo
+  - FilesBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.FilesInputMode> [Plain]
+  - SingleFileToUpload : UiPath.Platform.ResourceHandling.IResource [In]  // Arquivo(s)
+  - FilesList : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Arquivo(s)
+  - MultipleFilesToUpload : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Arquivo(s)
+  - Metadata : Data.DataTable [In]  // Metadados dos arquivos carregados
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se os arquivos já existirem
+  - FirstResult : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]  // Primeiro arquivo
+  - AllResults : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem[] [Out]  // ListaDeArquivos
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - FolderInputMode : Nullable<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - DestinationFolder : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemFriendlyName : String [In]  // Pasta de destino
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - Item : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [In]
+  - BrowserItemId : String [In]  // Arquivo ou pasta
+  - BrowserDriveName : String [In]
+  - BrowserSiteUrl : String [In]  // Endereço do site do SharePoint
+  - BrowserDriveId : String [In]  // Repositório
+  - ManualEntryItemId : String [In]
+  - ManualEntryDriveName : String [In]
+  - ManualEntrySiteUrl : String [In]
+  - ManualEntryItemUrl : String [In]
+  - ManualEntryItemFullPath : String [In]
+  - BrowserParentItemId : String [In]
+  - BrowserParentPath : String [In]
+  - BrowserParentDriveName : String [In]
+  - BrowserParentDriveId : String [In]
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - ManualEntryItemRelativePath : String [In]
+  - ItemIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Files.UseDriveCard
+- optional:
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Activities.Files.Contracts.IDriveMetadata> [Plain]
+  - AuthenticationScopes : Collections.Generic.List<Activities.InArgument<String>> [Plain]
+  - EmailAddress : String [In]
+  - ApplicationId : String [In]  // ID do Aplicativo
+  - TenantId : String [In]  // ID de Tenant
+  - Timeout : Double [In]  // Tempo limite
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - Connector : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - Account : String [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.General.HttpRequestConnections
+- optional:
+  - RequestMethod : UiPath.MicrosoftOffice365.Activities.General.Enums.RequestMethod [In]  // Método de Solicitação
+  - RequestUrl : String [In]  // URL da Solicitação
+  - ParametersInputMode : UiPath.MicrosoftOffice365.Activities.General.Enums.DictionaryInputMode [Plain]  // Modo de entrada de parâmetros
+  - ParametersBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.General.Enums.DictionaryInputMode> [Plain]
+  - Parameters : Collections.Generic.Dictionary<String,Activities.InArgument<String>> [Plain]  // Parâmetros de URL
+  - ParametersVariable : Collections.Generic.Dictionary<String,String> [In]  // Parâmetros de URL
+  - HeadersInputMode : UiPath.MicrosoftOffice365.Activities.General.Enums.DictionaryInputMode [Plain]  // Modo de entrada de cabeçalhos
+  - HeadersBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.General.Enums.DictionaryInputMode> [Plain]
+  - Headers : Collections.Generic.Dictionary<String,Activities.InArgument<String>> [Plain]  // Cabeçalhos
+  - HeadersVariable : Collections.Generic.Dictionary<String,String> [In]  // Cabeçalhos
+  - Body : String [In]  // Corpo
+  - Scopes : String[] [Plain]  // Escopos exigidos
+  - ResponseContent : String [Out]  // Corpo da Resposta
+  - ResponseStatus : Int32 [Out]  // Status da resposta
+  - ResponseHeaders : Collections.Generic.Dictionary<String,String> [Out]  // Cabeçalhos de resposta
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Groups.CreateGroup
+- optional:
+  - GroupName : String [In]  // Nome do Grupo
+  - GroupDescription : String [In]  // Descrição do Grupo
+  - MailEnabled : Boolean [Plain]  // Email Habilitado
+  - MailNickname : String [In]  // ApelidoDoEmail
+  - SecurityEnabled : Boolean [Plain]  // Segurança Habilitada
+  - GroupType : UiPath.MicrosoftOffice365.Enums.GroupType [Plain]  // Tipo do Grupo
+  - Account : String [In]  // Conta
+  - Result : Microsoft.Graph.Group [Out]  // Grupo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Groups.DeleteGroup
+- optional:
+  - Group : Microsoft.Graph.Group [In]  // Grupo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Groups.GetGroup
+- optional:
+  - MailNickname : String [In]  // ApelidoDoEmail
+  - Result : Microsoft.Graph.Group [Out]  // Grupo
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.ListGroups
+- optional:
+  - GroupType : UiPath.MicrosoftOffice365.Enums.GroupType [Plain]  // Tipo do Grupo
+  - Result : Microsoft.Graph.Group[] [Out]  // Grupos
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.ArchiveEmailConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.DeleteEmailConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email
+  - PermanentlyDelete : Boolean [In]  // Excluir permanentemente
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.DeleteMail
+- optional:
+  - Account : String [In]  // Conta
+  - Message : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Mensagem
+  - PermanentlyDelete : Boolean [Plain]  // ExcluirPermanentemente
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.DownloadEmailAttachments
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // MensagemDoEmail
+  - ExcludeInlineAttachments : Boolean [In]  // Excluir anexos incorporados
+  - FilterByFileNames : String [In]  // Filtrar por nome de arquivo
+  - DestinationPath : String [In]  // Caminho de destino
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se um arquivo já existirem
+  - Result : UiPath.Platform.ResourceHandling.ILocalResource[] [Out]  // Anexos
+  - NewResult : UiPath.MicrosoftOffice365.Mail.Models.O365AttachmentLocalItem[] [Out]  // Anexos
+  - SearchMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.FilenameFilterCollection [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.DownloadEmailConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // MensagemDoEmail
+  - DestinationPath : String [In]  // Caminho de destino
+  - CreateMissingFolders : Boolean [In]
+  - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se um arquivo já existirem
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - Result : UiPath.Platform.ResourceHandling.ILocalResource [Out]  // Email
+  - NewResult : UiPath.MicrosoftOffice365.Mail.Models.O365MailLocalItem [Out]  // Email
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.ForEachEmailConnections
+- optional:
+  - MailFolderArgument : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailFolderArgument [Plain]
+  - ObjectName : String [Plain]
+  - CurrentItemVariableName : String [Plain]
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Models.Office365Message,Int32> [Plain]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - Mailbox : String [In]  // Caixa de correio compartilhada
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - IncludeSubfolders : Boolean [In]  // Incluir subpastas
+  - OrderByDate : UiPath.MicrosoftOffice365.Activities.Mail.EOrderByDate [In]  // Ordenar por data
+  - MaxResults : Int32 [In]  // Limitar emails aos primeiros
+  - UnreadOnly : Boolean [In]  // Apenas não lidos
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - WithAttachmentsOnly : Boolean [In]  // Apenas com anexos
+  - MarkAsRead : Boolean [In]  // Marcar como lido
+  - Importance : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ImportanceFilter [In]  // Importância
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.FilterMode [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.MailFilterCollection [Plain]
+  - FreeTextFilter : String [In]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.FilterMode> [Plain]
+  - Length : Int32 [Out]  // Número de e-mails processados
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserFolderId : String [Plain]  // Pasta de emails
+  - ManualEntryFolder : String [In]  // Na pasta de email
+  - BrowserFolder : String [In]  // Na pasta de email
+  - SelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode [Plain]  // Como especificar a pasta
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.ForwardEmailConnections
+- optional:
+  - Connector : String [Plain]
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - ForwardAs : String [In]  // Encaminhar como
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - Body : String [In]  // Corpo
+  - NewSubject : String [In]  // Novo assunto
+  - AttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada de anexos
+  - AttachmentsBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode> [Plain]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - SingleAttachment : UiPath.Platform.ResourceHandling.IResource [In]  // Anexo(s)
+  - Attachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Anexo(s)
+  - ArgumentAttachments : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Anexo(s)
+  - AttachmentPaths : Collections.Generic.IEnumerable<String> [In]  // Anexo(s)
+  - ArgumentAttachmentPaths : Collections.Generic.IEnumerable<Activities.InArgument<String>> [Plain]  // Anexo(s)
+  - PreferredTimezone : String [In]  // Fuso Horário Preferido
+  - To : Collections.Generic.IEnumerable<String> [In]  // Para
+  - Cc : Collections.Generic.IEnumerable<String> [In]  // CC
+  - Bcc : Collections.Generic.IEnumerable<String> [In]  // CCO
+  - SaveAsDraft : Boolean [In]  // Salvar como rascunho
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.ForwardMail
+- optional:
+  - Account : String [In]  // Conta
+  - Attachments : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
+  - BCC : String[] [In]  // CCO
+  - Body : String [In]  // Corpo
+  - CC : String[] [In]  // CC
+  - IsDraft : Boolean [Plain]  // É Rascunho
+  - Message : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Mensagem
+  - NewSubject : String [In]  // Novo Assunto
+  - ReplaceExisting : Boolean [Plain]  // Substituir Existente
+  - To : String[] [In]  // Para
+  - IsBodyHTML : Boolean [Plain] = false  // É Corpo em HTML
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.GetEmailByIdConnections
+- optional:
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - SharedMailbox : String [In]  // Caixa de correio compartilhada
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - EmailId : String [In]  // ID do Email
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.MicrosoftOffice365.Models.Office365Message [Out]  // Email
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Connector : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.GetEmailFoldersListConnections
+- optional:
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.GetEmailListConnections
+- optional:
+  - IncludeSubfolders : Boolean [In]  // Incluir subpastas
+  - OrderByDate : UiPath.MicrosoftOffice365.Activities.Mail.EOrderByDate [In]  // Ordenar por data
+  - MaxResults : Int32 [In]  // Limitar emails aos primeiros
+  - UnreadOnly : Boolean [In]  // Apenas não lidos
+  - WithAttachmentsOnly : Boolean [In]  // Apenas com anexos
+  - MarkAsRead : Boolean [In]  // Marcar como lido
+  - Importance : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ImportanceFilter [In]  // Importância
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - EmailList : Collections.Generic.List<UiPath.MicrosoftOffice365.Models.Office365Message> [Out]  // Lista de e-mails
+  - Connector : String [Plain]
+  - BrowserFolderId : String [Plain]  // Pasta de emails
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserFolder : String [In]  // Pasta de emails
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.FilterMode [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.MailFilterCollection [Plain]
+  - FreeTextFilter : String [In]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.FilterMode> [Plain]
+  - MailFolderArgument : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailFolderArgument [Plain]
+  - ObjectName : String [Plain]
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - ManualEntryFolder : String [In]
+  - SelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode> [Plain]
+  - UseSharedMailbox : Boolean [Plain]
+  - Mailbox : String [In]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.GetEmailThreadConnections
+- optional:
+  - ConversationId : String [In]  // ID da conversa
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Connector : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.GetMail
+- optional:
+  - Account : String [In]  // Conta
+  - MailFolder : String [In]  // Pasta de Email
+  - EmailId : String [In]  // ID do Email
+  - GetAsHTML : Boolean [Plain]  // Obter como HTML
+  - Query : String [In]  // Consulta
+  - Top : Int32 [In]  // Superior
+  - OnlyUnreadMessages : Boolean [Plain]  // Apenas Mensagens Não Lidas
+  - OrderByDate : UiPath.MicrosoftOffice365.Activities.Mail.EOrderByDate [Plain]  // Ordenar por Data
+  - MarkAsRead : Boolean [Plain]  // Marcar como Lido
+  - Results : UiPath.MicrosoftOffice365.Models.Office365Message[] [Out]  // Resultado
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.GetNewestEmail
+- optional:
+  - UnreadOnly : Boolean [In]  // Apenas não lidos
+  - WithAttachmentsOnly : Boolean [In]  // Apenas com anexos
+  - MarkAsRead : Boolean [In]  // Marcar como lido
+  - Importance : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ImportanceFilter [In]  // Importância
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - Result : UiPath.MicrosoftOffice365.Models.Office365Message [Out]  // Email
+  - BrowserFolderId : String [Plain]  // Pasta de emails
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BrowserFolder : String [In]  // Pasta de emails
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.FilterMode [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.MailFilterCollection [Plain]
+  - FreeTextFilter : String [In]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.FilterMode> [Plain]
+  - MailFolderArgument : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailFolderArgument [Plain]
+  - ObjectName : String [Plain]
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - ManualEntryFolder : String [In]
+  - SelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode> [Plain]
+  - UseSharedMailbox : Boolean [Plain]
+  - Mailbox : String [In]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.MarkAsReadUnreadConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email
+  - MarkAsReadUnread : UiPath.MicrosoftOffice365.Activities.Mail.Enums.MarkAsReadUnread [In]  // Marcar como
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.MoveEmailConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email a ser movido
+  - Result : UiPath.MicrosoftOffice365.Models.Office365Message [Out]  // Email
+  - BrowserFolderId : String [Plain]  // Para pasta de emails
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - SharedMailbox : String [In]
+  - BrowserFolder : String [In]  // Para pasta de emails
+  - MailFolderArgument : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailFolderArgument [Plain]
+  - ObjectName : String [Plain]
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - ManualEntryFolder : String [In]
+  - SelectionMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode [Plain]
+  - FolderIdBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.ItemSelectionMode> [Plain]
+  - UseSharedMailbox : Boolean [Plain]
+  - Mailbox : String [In]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.MoveMail
+- optional:
+  - Account : String [In]  // Conta
+  - Message : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Mensagem
+  - DestinationFolderName : String [In]  // Pasta de Destino
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.ReplyToEmailConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email a ser respondido
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - ReplyAs : String [In]  // Responder como
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - Body : String [In]  // Corpo
+  - AttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada de anexos
+  - AttachmentsBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode> [Plain]
+  - SingleAttachment : UiPath.Platform.ResourceHandling.IResource [In]  // Anexo(s)
+  - Attachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Anexo(s)
+  - ArgumentAttachments : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Anexo(s)
+  - AttachmentPaths : Collections.Generic.IEnumerable<String> [In]  // Anexo(s)
+  - ArgumentAttachmentPaths : Collections.Generic.IEnumerable<Activities.InArgument<String>> [Plain]  // Anexo(s)
+  - NewSubject : String [In]  // Novo assunto
+  - PreferredTimezone : String [In]  // Fuso Horário Preferido
+  - To : Collections.Generic.IEnumerable<String> [In]  // Para
+  - Cc : Collections.Generic.IEnumerable<String> [In]  // CC
+  - Bcc : Collections.Generic.IEnumerable<String> [In]  // CCO
+  - Importance : UiPath.MicrosoftOffice365.Activities.Mail.Enums.Importance [In]  // Importância
+  - SaveAsDraft : Boolean [In]  // Salvar como rascunho
+  - ReplyToAll : Boolean [In]  // Responder a todos
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.ReplyToMail
+- optional:
+  - Account : String [In]  // Conta
+  - AddBCC : String[] [In]  // Adicionar CCO
+  - AddCC : String[] [In]  // Adicionar CC
+  - AddTo : String[] [In]  // Adicionar Para
+  - Attachments : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
+  - Body : String [In]  // Corpo
+  - Importance : Microsoft.Graph.Importance [Plain]  // Importância
+  - IsDraft : Boolean [Plain]  // É Rascunho
+  - Message : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Mensagem
+  - NewSubject : String [In]  // Novo Assunto
+  - ReplyToAll : Boolean [Plain]  // Responder a Todos
+  - IsBodyHTML : Boolean [Plain] = false  // É Corpo em HTML
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.SendMail
+- optional:
+  - Account : String [In]  // Conta
+  - Body : String [In]  // Corpo
+  - Subject : String [In]  // Assunto
+  - IsDraft : Boolean [Plain]  // É Rascunho
+  - Attachments : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
+  - IsBodyHTML : Boolean [Plain]  // É Corpo em HTML
+  - To : String[] [In]  // Para
+  - Bcc : String[] [In]  // Cco
+  - Cc : String[] [In]  // Cc
+  - ReplyTo : String[] [In]  // Responder a
+  - From : String [In]  // De
+  - Importance : Microsoft.Graph.Importance [Plain]  // Importância
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.SendMailConnections
+- optional:
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - Mailbox : String [In]  // Enviar como
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - To : Collections.Generic.IEnumerable<String> [In]  // Para
+  - Cc : Collections.Generic.IEnumerable<String> [In]  // CC
+  - Bcc : Collections.Generic.IEnumerable<String> [In]  // CCO
+  - Subject : String [In]  // Assunto
+  - Body : String [In]  // Corpo
+  - TextBody : String [In]  // Corpo
+  - InputType : UiPath.MicrosoftOffice365.Activities.Mail.Enums.BodyInputType [Plain]  // Tipo de entrada do corpo
+  - InputTypeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.BodyInputType> [Plain]
+  - SingleAttachment : UiPath.Platform.ResourceHandling.IResource [In]  // Anexo(s)
+  - Attachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]  // Anexo(s)
+  - AttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]  // Modo de entrada de anexos
+  - AttachmentsBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode> [Plain]
+  - AttachmentList : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]  // Anexo(s)
+  - AttachmentPaths : Collections.Generic.IEnumerable<String> [In]  // Anexo(s)
+  - ArgumentAttachmentPaths : Collections.Generic.IEnumerable<Activities.InArgument<String>> [Plain]  // Anexo(s)
+  - Importance : UiPath.MicrosoftOffice365.Activities.Mail.Enums.Importance [In]  // Importância
+  - ReplyTo : Collections.Generic.IEnumerable<String> [In]  // Responder a
+  - SaveAsDraft : Boolean [In]  // Salvar como rascunho
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.SetEmailCategoriesConnections
+- optional:
+  - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Email
+  - CategoriesToAssign : String[] [In]  // Categorias a atribuir
+  - CategoriesToRemove : UiPath.MicrosoftOffice365.Activities.Mail.Enums.CategoriesToRemove [Plain]  // Categorias a remover
+  - SpecificCategoriesToRemove : String[] [In]  // Categorias específicas
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.SetMailCategories
+- optional:
+  - Account : String [In]  // Conta
+  - Message : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // Mensagem
+  - Categories : String[] [In]  // Categorias
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.Triggers.EmailSent
+- optional:
+  - Operation : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - SharedMailboxBindingKey : String [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.TriggerMailFilterCollection [Plain]
+  - WithAttachmentsOnly : Boolean [Plain]  // Apenas com anexos
+  - IncludeAttachments : Boolean [In]  // Incluir anexos
+  - Result : UiPath.MicrosoftOffice365.Models.Office365Message [Out]  // Email
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - Mailbox : String [Plain]  // Caixa de correio compartilhada
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.TriggerMailboxArgument [Plain]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - FilterExpression : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.Triggers.NewEmailReceived
+- optional:
+  - Operation : String [Plain]
+  - MailFolderArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.TriggerMailFolderArgument [Plain]
+  - BrowserFolderName : String [Plain]  // Pasta de email
+  - BrowserFolderId : String [Plain]  // ID da Pasta
+  - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
+  - MarkAsRead : Boolean [In]  // Marcar como lido
+  - Result : UiPath.MicrosoftOffice365.Models.Office365Message [Out]  // Email
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - SharedMailboxBindingKey : String [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.TriggerMailFilterCollection [Plain]
+  - WithAttachmentsOnly : Boolean [Plain]  // Apenas com anexos
+  - IncludeAttachments : Boolean [In]  // Incluir anexos
+  - UseSharedMailbox : Boolean [Plain]  // Usar caixa de correio compartilhada
+  - Mailbox : String [Plain]  // Caixa de correio compartilhada
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.TriggerMailboxArgument [Plain]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - FilterExpression : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.TurnOffAutomaticRepliesConnections
+- optional:
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Mail.TurnOnAutomaticRepliesConnections
+- optional:
+  - StartTime : DateTimeOffset [In]  // Hora de início
+  - EndTime : DateTimeOffset [In]  // Hora final
+  - InternalMessage : String [In]  // Mensagem de respostas automáticas de dentro da organização
+  - SendRepliesOutsideOrganization : Boolean [In]  // Enviar respostas fora da organização do usuário
+  - SendRepliesToContactsOnly : Boolean [In]  // Enviar resposta apenas para os contatos
+  - ExternalMessage : String [In]  // Mensagem de respostas automáticas de fora da organização
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Office365ApplicationScope
+- optional:
+  - RuntimeItemFullPathBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode> [Plain]
+  - ConfigLocation : UiPath.MicrosoftOffice365.Activities.Enums.ActivityConfigLocation [Plain]  // Método de conexão
+  - BrowserItemId : String [In]  // ID de ativo do Office 365
+  - BrowserParentItemId : String [In]  // Método de conexão do Office 365
+  - BrowserItemFriendlyName : String [In]  // Ativos de conexão
+  - BrowserItemFullPath : String [In]  // Caminho completo do ativo de conexão do O365
+  - BrowserRuntimeItemId : String [In]  // ID de ativo do Office 365
+  - BrowserRuntimeParentItemId : String [In]  // Método de conexão do Office 365
+  - BrowserRuntimeItemFriendlyName : String [In]  // Ativos de conexão
+  - BrowserRuntimeItemFullPath : String [In]  // Caminho completo do ativo de conexão do O365
+  - ManualRuntimeItemFullPath : String [In]  // Caminho completo do ativo de conexão do O365
+  - RuntimeItemInputMode : UiPath.MicrosoftOffice365.Activities.Files.Enums.EDriveItemMode [Plain]  // Modo de entrada do ativo para conexão de runtime
+  - ApplicationId : String [In]  // ID do Aplicativo
+  - Tenant : String [In]  // Tenant
+  - TenantId : String [In]  // Tenant
+  - Username : String [In]  // Nome de Usuário
+  - Password : String [In]  // Senha
+  - SecurePassword : Security.SecureString [In]  // SenhaSegura
+  - ApplicationSecret : String [In]  // SegredoDoAplicativo
+  - SecureApplicationSecret : Security.SecureString [In]  // SegredoDoAplicativoSeguro
+  - CertificateAsBase64 : String [In]  // CertificarComoBase64
+  - CertificatePassword : Security.SecureString [In]  // SenhaDoCertificado
+  - AuthenticationType : UiPath.MicrosoftOffice365.Enums.AuthenticationType [Plain]  // Tipo de Autenticação
+  - Services : UiPath.MicrosoftOffice365.Enums.MicrosoftService [Plain] = 0  // Serviços
+  - AuthenticationScopes : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // EscoposDeAutenticação
+  - Environment : UiPath.MicrosoftOffice365.Enums.HostingEnvironment [Plain]  // Ambiente
+  - OAuthApplication : UiPath.MicrosoftOffice365.Enums.OAuthApplication [Plain]  // AplicativoOAuth
+  - OAuth2Username : String [In]  // UsuárioDoOAuth2
+  - Timeout : Int32 [In]  // TempoLimiteEmMs
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - Connector : String [Plain]  // Selecione um conector
+  - EmailAddress : String [In]  // UsuárioDoOAuth2
+  - UseBroker : Nullable<Boolean> [Plain]  // Use Broker
+  - ImpersonatedUserEmailAddress : String [In]  // Endereço de email de usuário personificado
+  - DataStoreLocation : UiPath.MicrosoftOffice365.Activities.Enums.DataStoreLocation [Plain]  // LocalDoArmazenamentoDeDados
+  - Folder : String [In]  // CaminhoDaPastaDoOrchestrator
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - Account : String [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Buckets.CreateBucket
+- optional:
+  - Plan : Microsoft.Graph.PlannerPlan [In]  // Plano
+  - Name : String [In]  // Nome
+  - Result : Microsoft.Graph.PlannerBucket [Out]  // Bucket
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Buckets.DeleteBucket
+- optional:
+  - Bucket : Microsoft.Graph.PlannerBucket [In]  // Bucket
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Buckets.ListBuckets
+- optional:
+  - Plan : Microsoft.Graph.PlannerPlan [In]  // Plano
+  - Result : Microsoft.Graph.PlannerBucket[] [Out]  // Buckets
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Buckets.ListBucketTasks
+- optional:
+  - Bucket : Microsoft.Graph.PlannerBucket [In]  // Bucket
+  - Result : Microsoft.Graph.PlannerTask[] [Out]  // Tarefas
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Plans.CreatePlan
+- optional:
+  - Group : Microsoft.Graph.Group [In]  // Grupo
+  - PlanTitle : String [In]  // Título do Plano
+  - Result : Microsoft.Graph.PlannerPlan [Out]  // Plano
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Plans.GetPlan
+- optional:
+  - PlanID : String [In]  // ID do Plano
+  - Result : Microsoft.Graph.PlannerPlan [Out]  // Plano
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Plans.ListPlans
+- optional:
+  - Group : Microsoft.Graph.Group [In]  // Grupo
+  - Result : Microsoft.Graph.PlannerPlan[] [Out]  // Planos
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Tasks.CreateTask
+- optional:
+  - Plan : Microsoft.Graph.PlannerPlan [In]  // Plano
+  - Bucket : Microsoft.Graph.PlannerBucket [In]  // Bucket
+  - Title : String [In]  // Título
+  - Result : Microsoft.Graph.PlannerTask [Out]  // Tarefa
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Tasks.DeleteTask
+- optional:
+  - Task : Microsoft.Graph.PlannerTask [In]  // Tarefa
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Tasks.GetTask
+- optional:
+  - TaskID : String [In]  // ID da Tarefa
+  - Result : Microsoft.Graph.PlannerTask [Out]  // Tarefa
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Tasks.ListTasks
+- optional:
+  - Plan : Microsoft.Graph.PlannerPlan [In]  // Plano
+  - Result : Microsoft.Graph.PlannerTask[] [Out]  // Tarefas
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Planner.Tasks.UpdateTask
+- optional:
+  - Task : Microsoft.Graph.PlannerTask [In]  // Tarefa
+  - Title : String [In]  // Título
+  - StartDateTime : DateTime [In]  // Data/Hora de Início
+  - DueDateTime : DateTime [In]  // Data/Hora de Conclusão
+  - Assignees : String[] [In]  // Destinatários
+  - OverwriteAssignees : Boolean [Plain]  // Substituir Destinatários
+  - PercentComplete : Int32 [In]  // Porcentagem Concluída
+  - Result : Microsoft.Graph.PlannerTask [Out]  // Tarefa
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.AddListItemConnections`1
+- optional:
+  - Result : T [Out]  // Item da Lista do SharePoint
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserSiteUrl : String [In]  // URL do site
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - State : UiPath.MicrosoftOffice365.Activities.Sharepoint.ActivityState [Plain]
+  - DataRow : Data.DataRow [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - ListNameOrId : String [In]
+  - SiteUrl : String [In]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.AddListItems
+- optional:
+  - List : UiPath.MicrosoftOffice365.Models.Office365SharepointList [In]  // Lista
+  - SingleListItem : Data.DataTable [In]  // Item Único de Lista
+  - MultipleListItems : Data.DataTable [In]  // Itens Múltiplos de Lista
+  - ListItems : UiPath.MicrosoftOffice365.Models.Office365SharepointListItem[] [Out]  // Itens de Lista
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.BulkAddListItemsConnections
+- optional:
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - BrowserSiteUrl : String [In]  // URL do site
+  - List : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - ListItems : Data.DataTable [In]  // Itens da lista a adicionar
+  - HasHeadersRow : Boolean [In]  // Tem linhas de cabeçalhos
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Connector : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.DeleteListItem
+- optional:
+  - ListItem : UiPath.MicrosoftOffice365.Models.Office365SharepointListItem [In]  // List Item
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.DeleteSharepointListItemsConnections`1
+- optional:
+  - Result : T [Out]  // Itens da Lista do SharePoint
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserSiteUrl : String [In]  // URL do site
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ItemIdsList : Collections.Generic.IEnumerable<Activities.InArgument<Object>> [Plain]
+  - ItemIds : Collections.Generic.IEnumerable<Object> [In]
+  - ItemIdsInputModeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Enums.CollectionInputMode> [Plain]
+  - ItemIdsInputMode : UiPath.MicrosoftOffice365.Activities.Enums.CollectionInputMode [Plain]
+  - WorkById : Boolean [Plain]
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode [Plain]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - ColumnsToRetrieveByName : Collections.Generic.IEnumerable<Object> [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - ListNameOrId : String [In]
+  - SiteUrl : String [In]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.ForEachList
+- required:
+  - **SiteUrlOrId** : String [In]  // ID ou URL do site
+- optional:
+  - Filter : String [In]  // Filtro
+  - IncludeColumnsDefinitions : Boolean [Plain]  // Incluir Definições de Colunas
+  - CurrentIndex : Int32 [Out]  // Índice
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Models.Office365SharepointList,Int32> [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.ForEachListConnections
+- required:
+  - **SiteUrlOrId** : String [In]  // ID ou URL do site
+- optional:
+  - CurrentItemVariableName : String [Plain]
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Models.Office365SharepointList,Int32> [Plain]
+  - IncludeColumnsDefinitions : Boolean [In]  // Incluir definição de coluna
+  - Length : Int32 [Out]  // Número de listas processadas
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.ForEachListItem
+- required:
+  - **List** : UiPath.MicrosoftOffice365.Models.Office365SharepointList [In]  // Lista
+- optional:
+  - Filter : String [In]  // Filtro
+  - CurrentIndex : Int32 [Out]  // Índice
+  - Body : Activities.ActivityAction<UiPath.MicrosoftOffice365.Models.Office365SharepointListItem,Int32> [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.ForEachListItemConnections`1
+- optional:
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - BrowserSiteUrl : String [In]  // URL do site
+  - ListNameOrId : String [In]
+  - SiteUrl : String [In]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode [Plain]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - ColumnsToRetrieveByName : Collections.Generic.IEnumerable<Object> [In]
+  - CurrentItemVariableName : String [Plain]
+  - Body : Activities.ActivityAction<T,Int32> [Plain]
+  - Length : Int32 [Out]  // Número de itens processados
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.GetListInfo
+- optional:
+  - SiteUrlOrId : String [In]  // ID ou URL do site
+  - ListTitleOrId : String [In]  // Título ou ID da lista
+  - IncludeColumnsDefinitions : Boolean [Plain]  // Incluir Definições de Colunas
+  - List : UiPath.MicrosoftOffice365.Models.Office365SharepointList [Out]  // Lista 
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.GetListInfo
+- optional:
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - BrowserSiteUrl : String [In]  // URL do site
+  - List : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - IncludeColumnDefinitions : Boolean [In]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Connector : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.GetListItems
+- optional:
+  - List : UiPath.MicrosoftOffice365.Models.Office365SharepointList [In]  // Lista 
+  - Filter : String [In]  // Filtro
+  - ColumnsToRetrieve : Collections.Generic.IEnumerable<String> [In]  // Colunas para recuperar
+  - ListItems : Data.DataTable [Out]  // Itens de Lista
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.GetListItemsConnections`1
+- optional:
+  - Result : T [Out]  // Itens da Lista do SharePoint
+  - BrowserSiteUrl : String [In]  // URL do site
+  - BrowserListId : String [In]  // ID da lista
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ItemIdsList : Collections.Generic.IEnumerable<Activities.InArgument<Object>> [Plain]
+  - ItemIds : Collections.Generic.IEnumerable<Object> [In]
+  - ItemIdsInputModeBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Enums.CollectionInputMode> [Plain]
+  - ItemIdsInputMode : UiPath.MicrosoftOffice365.Activities.Enums.CollectionInputMode [Plain]
+  - WorkById : Boolean [Plain]
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode [Plain]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - ColumnsToRetrieveByName : Collections.Generic.IEnumerable<Object> [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - ListNameOrId : String [In]
+  - SiteUrl : String [In]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.GetSingleSharepointListItemConnections`1
+- optional:
+  - ItemId : Object [In]
+  - Result : T [Out]  // Item da Lista do SharePoint
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserSiteUrl : String [In]  // URL do site
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - WorkById : Boolean [Plain]
+  - FilterSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode [Plain]
+  - QueryFilter : String [In]
+  - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ListItemFilterMode> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - ColumnsToRetrieveByName : Collections.Generic.IEnumerable<Object> [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - ListNameOrId : String [In]
+  - SiteUrl : String [In]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.Triggers.SharepointListItemAdded`1
+- optional:
+  - Operation : String [Plain]
+  - BrowserSiteUrl : String [Plain]  // URL do site
+  - BrowserListId : String [Plain]  // ID da lista
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - ReferenceId : String [Plain]  // ID de referência
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.TriggerColumnFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - List : UiPath.MicrosoftOffice365.Models.Office365SharepointList [Out]
+  - Result : T [Out]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.TriggerListArgument [Plain]
+  - FilterExpression : String [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [Plain]  // Lista do SharePoint
+  - ListNameOrId : String [Plain]
+  - SiteUrl : String [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.Triggers.SharepointListItemUpdated`1
+- optional:
+  - WorkById : Boolean [Plain]
+  - ItemId : Object [Plain]
+  - Operation : String [Plain]
+  - BrowserSiteUrl : String [Plain]  // URL do site
+  - BrowserListId : String [Plain]  // ID da lista
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ObjectName : String [Plain]
+  - ReferenceId : String [Plain]  // ID de referência
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.TriggerColumnFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - List : UiPath.MicrosoftOffice365.Models.Office365SharepointList [Out]
+  - Result : T [Out]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.TriggerListArgument [Plain]
+  - FilterExpression : String [Plain]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [Plain]  // Lista do SharePoint
+  - ListNameOrId : String [Plain]
+  - SiteUrl : String [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - UiPathEventConnector : String [In]
+  - UiPathEvent : String [In]
+  - UiPathEventObjectType : String [In]
+  - UiPathEventObjectId : String [In]
+  - RetryTimeoutSeconds : Int32 [In]  // Tempo esgotado da tentativa
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.SharePoint.UpdateListItem
+- optional:
+  - ListItem : UiPath.MicrosoftOffice365.Models.Office365SharepointListItem [In]  // List Item
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.UpdateListItemConnections`1
+- optional:
+  - ItemId : String [In]  // ID do item da lista
+  - Result : T [Out]  // Item da Lista do SharePoint
+  - BrowserListId : String [In]  // ID da lista
+  - BrowserSiteUrl : String [In]  // URL do site
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - State : UiPath.MicrosoftOffice365.Activities.Sharepoint.ActivityState [Plain]
+  - DataRow : Data.DataRow [In]
+  - ItemSelectionMode : UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode [Plain]
+  - BrowserListFriendlyName : String [In]  // Lista do SharePoint
+  - ListNameOrId : String [In]
+  - SiteUrl : String [In]
+  - ListItemBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Sharepoint.Enums.ItemSelectionMode> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - ContinueOnError : Boolean [In]  // ContinuarComErro
+  - AuthScopesInvalid : Boolean [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.WaitForListItemAdded`1
+- optional:
+  - Operation : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - TriggerListItemId : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.TriggerArgColumnFilterCollection [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.Sharepoint.WaitForListItemUpdated`1
+- optional:
+  - WorkById : Boolean [Plain]
+  - ItemId : Object [In]
+  - Operation : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ListArgument : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
+  - AllColumns : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - ObjectName : String [Plain]
+  - TriggerListItemId : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.TriggerArgColumnFilterCollection [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Sharepoint.Filters.ColumnByNameFilterCollection [Plain]
+  - ColumnsToRetrieve : UiPath.MicrosoftOffice365.Sharepoint.Models.Office365SharepointListColumnSlim[] [Plain]
+  - Connector : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForEmailReceived
+- optional:
+  - BrowserFolderId : String [Plain]  // Pasta de emails
+  - BrowserFolder : String [In]  // Pasta de emails
+  - MailFolderArgument : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailFolderArgument [Plain]
+  - MarkAsRead : Boolean [In]  // Marcar como lido
+  - Operation : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.MailFilterWithVariablesCollection [Plain]
+  - WithAttachmentsOnly : Boolean [In]
+  - IncludeAttachments : Boolean [In]
+  - UseSharedMailbox : Boolean [Plain]
+  - Mailbox : String [In]
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForEmailSent
+- optional:
+  - Operation : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Mail.Filters.MailFilterWithVariablesCollection [Plain]
+  - WithAttachmentsOnly : Boolean [In]
+  - IncludeAttachments : Boolean [In]
+  - UseSharedMailbox : Boolean [Plain]
+  - Mailbox : String [In]
+  - MailboxArg : UiPath.MicrosoftOffice365.Activities.Mail.Models.MailboxArgument [Plain]
+  - MailboxBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.MailboxSelectionMode> [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForEventCreated
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarId : String [In]  // ID do calendário
+  - BrowserCalendarFriendlyName : String [In]  // Nome amigável do calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.EventFilterWithVariablesCollection [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForEventInvitationReceived
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarId : String [In]  // ID do calendário
+  - BrowserCalendarFriendlyName : String [In]  // Nome amigável do calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.EventFilterWithVariablesCollection [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForEventReplied
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarId : String [In]  // ID do calendário
+  - BrowserCalendarFriendlyName : String [In]  // Nome amigável do calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.EventFilterWithVariablesCollection [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForEventUpdated
+- optional:
+  - Operation : String [Plain]
+  - BrowserCalendarId : String [In]  // ID do calendário
+  - BrowserCalendarFriendlyName : String [In]  // Nome amigável do calendário
+  - CalendarArgument : UiPath.MicrosoftOffice365.Activities.Calendar.Models.CalendarArgument [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Calendar.Filters.EventFilterWithVariablesCollection [Plain]
+  - ObjectName : String [Plain]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForFileCreated
+- optional:
+  - Operation : String [Plain]
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - BrowserItemId : String [In]  // ID da Pasta
+  - BrowserItemFriendlyName : String [In]  // No local
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Files.Filters.FileFilterWithVariablesCollection [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForFileUpdated
+- optional:
+  - Operation : String [Plain]
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - BrowserItemId : String [In]  // ID da Pasta
+  - BrowserItemFriendlyName : String [In]  // No local
+  - BrowserDriveId : String [In]  // Repositório
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Files.Filters.FileFilterWithVariablesCollection [Plain]
+  - Connector : String [Plain]
+  - ObjectName : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForRowAddedToTableBottom`1
+- optional:
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - Range : String [In]  // Tabela
+  - AllColumns : UiPath.MicrosoftOffice365.Excel.Contracts.IRangeField[] [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.TableColumnFilterWithVariablesCollection [Plain]
+  - DynamicCriteriaFilter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.TableColumnByNameFilterCollection [Plain]
+  - RowNumber : Int32 [Out]  // Número da linha da tabela
+  - BrowserItemId : String [In]  // ID da pasta de trabalho
+  - BrowserDriveId : String [In]  // ID da pasta de trabalho
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - TemplateDriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForWorksheetCellUpdated
+- optional:
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.WorksheetCellFilterWithVariablesCollection [Plain]
+  - Range : String [In]  // Folha
+  - CellAddress : String [In]  // Endereço da célula
+  - UpdatedCell : UiPath.MicrosoftOffice365.Excel.Models.CellInformation [Out]  // Célula
+  - BrowserItemId : String [In]  // ID da pasta de trabalho
+  - BrowserDriveId : String [In]  // ID da pasta de trabalho
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - TemplateDriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - WorkingWithTemplateWorkbook : Boolean [Plain]
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+
+## UiPath.MicrosoftOffice365.Activities.WaitForWorksheetCreated
+- optional:
+  - Operation : String [Plain]
+  - ObjectName : String [Plain]
+  - Filter : UiPath.MicrosoftOffice365.Activities.Excel.Filters.WorksheetFilterWithVariablesCollection [Plain]
+  - BrowserItemId : String [In]  // ID da pasta de trabalho
+  - BrowserDriveId : String [In]  // ID da pasta de trabalho
+  - BrowserParentItemId : String [In]  // Pasta pai
+  - BrowserParentDriveId : String [In]  // Pasta pai
+  - BrowserItemFriendlyName : String [In]  // Pasta de trabalho
+  - BrowserParentItemFriendlyName : String [In]  // Pasta pai
+  - DriveItemArgument : UiPath.MicrosoftOffice365.Activities.Files.Models.DriveItemArgument [Plain]
+  - ParentFolderObjectName : String [Plain]
+  - RelativePathBindingsKey : String [Plain]
+  - Workbook : UiPath.MicrosoftOffice365.Files.Models.O365DriveRemoteItem [Out]
+  - Connector : String [Plain]
+  - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
+  - ParentResourceKey : String [Plain]
+  - ResourceKey : String [Plain]
+  - JobData : UiPath.MicrosoftOffice365.Activities.Utilities.JobInformation [Out]  // DadosDoTrabalho
+  - ConnectionAccountName : String [Plain]
+  - ConnectionId : String [In]  // Conexão
+  - UseConnectionService : Boolean [Plain]  // Usar Integration Service
+  - BindingsKey : String [Plain]
+  - BindingsVersion : String [Plain]
+  - AuthScopesInvalid : Boolean [Plain]
+  - Result : TResult [Out]
+  - ResultType : Type [Plain]
+  - DisplayName : String [Plain]
+  - Id : String [Plain]
+

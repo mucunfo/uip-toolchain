@@ -1,0 +1,134 @@
+"""Parse rules.yaml + schema validation."""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from ._types import Rule, Severity, Category, Target
+
+
+class SchemaError(Exception):
+    pass
+
+
+_SEVERITY_MAP = {
+    "INFO": Severity.INFO,
+    "WARN": Severity.WARN,
+    "ERROR": Severity.ERROR,
+    "HALT": Severity.HALT,
+}
+
+
+def load_rules(
+    path: Path | str,
+    registered_detectors: set[str] | None = None,
+    registered_fixers: set[str] | None = None,
+) -> list[Rule]:
+    """Parse YAML and validate schema. Raises SchemaError on any violation."""
+    p = Path(path)
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+
+    if not isinstance(raw, dict):
+        raise SchemaError(f"{p}: top-level must be mapping")
+    if raw.get("version") != 1:
+        raise SchemaError(f"{p}: only version 1 supported")
+
+    rules_raw = raw.get("rules", [])
+    if not isinstance(rules_raw, list):
+        raise SchemaError(f"{p}: rules must be a list")
+
+    rules: list[Rule] = []
+    seen_ids: set[str] = set()
+
+    for i, rule_raw in enumerate(rules_raw):
+        rule = _parse_rule(rule_raw, i, registered_detectors, registered_fixers)
+        if rule.id in seen_ids:
+            raise SchemaError(f"duplicate rule id: {rule.id}")
+        seen_ids.add(rule.id)
+        rules.append(rule)
+
+    return rules
+
+
+def _parse_rule(
+    raw: dict[str, Any],
+    idx: int,
+    registered_detectors: set[str] | None,
+    registered_fixers: set[str] | None,
+) -> Rule:
+    if not isinstance(raw, dict):
+        raise SchemaError(f"rule[{idx}]: must be mapping")
+
+    required = ["id", "severity", "category", "target", "title", "description", "detect"]
+    for field_name in required:
+        if field_name not in raw:
+            raise SchemaError(f"rule[{idx}]: missing required field '{field_name}'")
+
+    rid = raw["id"]
+    if not re.match(r"^[A-Z][A-Z0-9]*-\w+$", str(rid)):
+        raise SchemaError(f"rule[{idx}]: invalid id format '{rid}'")
+
+    sev_raw = str(raw["severity"]).upper()
+    if sev_raw not in _SEVERITY_MAP:
+        raise SchemaError(f"rule[{rid}]: invalid severity '{sev_raw}'")
+    severity = _SEVERITY_MAP[sev_raw]
+
+    category = str(raw["category"])
+    if category not in Category.ALL:
+        raise SchemaError(f"rule[{rid}]: invalid category '{category}'")
+
+    target = str(raw["target"])
+    if target not in Target.VALID:
+        raise SchemaError(f"rule[{rid}]: invalid target '{target}'")
+
+    detect = raw["detect"]
+    if not isinstance(detect, dict) or "type" not in detect:
+        raise SchemaError(f"rule[{rid}]: detect must have 'type'")
+
+    detect_type = str(detect["type"])
+    if registered_detectors is not None and detect_type not in registered_detectors:
+        raise SchemaError(f"rule[{rid}]: unknown detect.type '{detect_type}'")
+
+    if detect_type == "regex" and "pattern" in detect:
+        _validate_regex(rid, detect["pattern"])
+    elif detect_type == "regex_with_context" and "pattern" in detect.get("params", {}):
+        _validate_regex(rid, detect["params"]["pattern"])
+
+    fix_raw = raw.get("fix")
+    if fix_raw is not None and not isinstance(fix_raw, dict):
+        raise SchemaError(f"rule[{rid}]: fix must be mapping or null")
+
+    if fix_raw and "mechanical" in fix_raw and fix_raw["mechanical"]:
+        mech = fix_raw["mechanical"]
+        if "type" not in mech:
+            raise SchemaError(f"rule[{rid}]: fix.mechanical missing 'type'")
+        if registered_fixers is not None and mech["type"] not in registered_fixers:
+            raise SchemaError(
+                f"rule[{rid}]: unknown fix.mechanical.type '{mech['type']}'"
+            )
+
+    return Rule(
+        id=rid,
+        severity=severity,
+        category=category,
+        target=target,
+        title=str(raw["title"]),
+        description=str(raw["description"]),
+        detect=detect,
+        applies_to=raw.get("applies_to", {}) or {},
+        fix=fix_raw,
+        references=raw.get("references", []) or [],
+        examples=raw.get("examples", {}) or {},
+        deprecated_at=raw.get("deprecated_at"),
+        replaced_by=raw.get("replaced_by"),
+    )
+
+
+def _validate_regex(rule_id: str, pattern: str) -> None:
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise SchemaError(f"rule[{rule_id}]: invalid regex: {e}")

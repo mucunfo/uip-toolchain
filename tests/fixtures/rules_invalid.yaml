@@ -1,0 +1,16 @@
+version: 1
+rules:
+  - id: X-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: First
+    description: ""
+    detect: {type: regex, pattern: "X"}
+  - id: X-1
+    severity: WARN
+    category: breaking
+    target: all
+    title: Duplicate ID
+    description: ""
+    detect: {type: regex, pattern: "Y"}

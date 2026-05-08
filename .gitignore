@@ -1,0 +1,44 @@
+# Engine intermediate review snapshots — agent uses .tmp/ for these
+.tmp/
+review_*.json
+_findings.json
+*_baseline.json
+*_after_*.json
+*_before_*.json
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs + ad-hoc debug scripts (use .tmp/ instead)
+*.log
+_inspect*.py
+_debug*.py
+_scratch*.py
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
+
+# Per-machine paths — commit models.conf.example template instead
+models.conf
+
+# Analyzer baseline cache (machine-local)
+.uipath-rules-cache/

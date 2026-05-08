@@ -1,0 +1,20 @@
+# Normalize line endings — repo stores LF, checkout uses native EOL.
+* text=auto eol=lf
+
+# XAML, YAML, JSON, Python — text
+*.xaml text
+*.yaml text
+*.yml  text
+*.json text
+*.py   text
+*.md   text
+*.toml text
+*.conf text
+
+# PowerShell scripts — keep CRLF (Windows-native)
+*.ps1 text eol=crlf
+
+# Binary
+*.png binary
+*.jpg binary
+*.ico binary

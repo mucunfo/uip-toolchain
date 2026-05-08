@@ -1,0 +1,6 @@
+<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation">
+  <Sequence sap2010:WorkflowViewState.IdRef="Sequence_1"/>
+  <Assign sap2010:WorkflowViewState.IdRef="Sequence_1"/>
+</Activity>

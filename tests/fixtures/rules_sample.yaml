@@ -1,0 +1,38 @@
+version: 1
+metadata:
+  generated_at: 2026-04-28
+  rule_count: 2
+rules:
+  - id: X-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: Sample breaking rule
+    description: |
+      Test rule for loader.
+    detect:
+      type: regex
+      pattern: 'BAD_PATTERN'
+  - id: A-3
+    severity: WARN
+    category: architectural
+    target: all
+    title: Sample arch rule
+    description: |
+      Multi-line desc.
+      Second line.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Framework/**"]
+    detect:
+      type: regex_pair
+      params:
+        must_have: ["X"]
+        must_not_have: ["Y"]
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: 'X'
+        replacement: 'Y'
+      prose: |
+        Replace X with Y.

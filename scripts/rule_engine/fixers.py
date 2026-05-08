@@ -1,0 +1,1680 @@
+"""Fixer registry — type → callable. Apply mechanical fixes."""
+from __future__ import annotations
+
+import re
+import shutil
+from pathlib import Path
+from typing import Any, Callable
+
+
+REGISTRY: dict[str, Callable] = {}
+
+
+def register(name: str):
+    def decorator(fn):
+        REGISTRY[name] = fn
+        return fn
+    return decorator
+
+
+def _format_property_element_value(prop_type: str | None, default) -> str:
+    """Generate `<InArgument x:TypeArguments="T">{default}</InArgument>` content.
+
+    For unknown types, wraps in raw InArgument. Default value is template-only;
+    runtime XAML parser converts string to target type if compatible.
+    """
+    bare = (prop_type or "x:Object").split("`")[0]
+    if not bare.startswith("System.") and bare != "x:Object":
+        bare_full = "System." + bare
+    else:
+        bare_full = bare
+    type_alias = {
+        "System.String": "x:String",
+        "System.Int32": "x:Int32",
+        "System.Int64": "x:Int64",
+        "System.Boolean": "x:Boolean",
+        "System.Double": "x:Double",
+        "System.Decimal": "x:Decimal",
+        "System.DateTime": "x:DateTime",
+        "x:Object": "x:Object",
+    }.get(bare_full, bare_full)
+    if default is None or default == "":
+        return f'<InArgument x:TypeArguments="{type_alias}" />'
+    # Escape XML
+    safe = str(default).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<InArgument x:TypeArguments="{type_alias}">{safe}</InArgument>'
+
+
+def _arg_already_provided(open_tag: str, content: str, tag_start: int, tag_end: int,
+                          prefix: str, activity: str, prop_name: str) -> bool:
+    """Check if prop is provided as attribute OR property element scoped to this tag."""
+    # Attribute form within open tag body
+    if re.search(rf'(?:(?<=\s)|(?<=^))(?<!\.){re.escape(prop_name)}\s*=', open_tag):
+        return True
+    # Property element form: <prefix:Activity.PropName ...> anywhere in file
+    # (best-effort; XAML structure makes scope hard without full parse)
+    pe_pattern = rf'<{re.escape(prefix)}:{re.escape(activity)}\.{re.escape(prop_name)}\b'
+    if re.search(pe_pattern, content):
+        return True
+    return False
+
+
+@register("add_property_element")
+def apply_add_property_element(file: Path, spec: dict[str, Any], dry_run: bool = True) -> bool:
+    """Insert property element form for a missing required arg.
+
+    Spec:
+        prefix         : XAML prefix (e.g. "ui")
+        activity_local : activity local name (e.g. "WriteRange")
+        prop_name      : missing arg name (e.g. "WorkbookPath")
+        prop_type      : .NET type (e.g. "System.String")
+        default        : optional default value to seed
+        tag_line       : approximate line where finding emitted (used to disambiguate)
+
+    Edits FIRST occurrence of <prefix:activity_local ...> that does not yet
+    have prop_name set. Subsequent occurrences handled by fixpoint loop on
+    re-detection.
+
+    Self-close `<ui:WriteRange ... />` is expanded to `<ui:WriteRange ...>
+    <ui:WriteRange.Foo>...</ui:WriteRange.Foo></ui:WriteRange>`.
+    """
+    prefix = spec.get("prefix")
+    activity = spec.get("activity_local")
+    prop_name = spec.get("prop_name")
+    prop_type = spec.get("prop_type")
+    default = spec.get("default")
+    if not (prefix and activity and prop_name):
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Match opening tag (self-close or not). Capture name, body, terminator.
+    open_tag_re = re.compile(
+        rf'<{re.escape(prefix)}:{re.escape(activity)}\b([^>]*?)(/?)>',
+        re.DOTALL,
+    )
+
+    new_content = None
+    for m in open_tag_re.finditer(content):
+        body = m.group(1) or ""
+        is_self_close = m.group(2) == "/"
+        full_tag = m.group(0)
+        if _arg_already_provided(full_tag, content, m.start(), m.end(),
+                                  prefix, activity, prop_name):
+            continue
+
+        pe_inner = _format_property_element_value(prop_type, default)
+        pe_block = (f'<{prefix}:{activity}.{prop_name}>'
+                    f'{pe_inner}'
+                    f'</{prefix}:{activity}.{prop_name}>')
+
+        if is_self_close:
+            # Replace `<ui:Activity ... />` with
+            # `<ui:Activity ...>\n  <PE/>\n</ui:Activity>`
+            new_open = f'<{prefix}:{activity}{body}>'
+            new_close = f'</{prefix}:{activity}>'
+            replacement = f'{new_open}{pe_block}{new_close}'
+            new_content = content[:m.start()] + replacement + content[m.end():]
+        else:
+            # Find matching close tag. Scan forward respecting nesting.
+            close_tag = f'</{prefix}:{activity}>'
+            close_start = _find_matching_close(content, m.end(), prefix, activity)
+            if close_start < 0:
+                continue
+            new_content = (content[:close_start]
+                           + pe_block
+                           + content[close_start:])
+        break
+
+    if new_content is None or new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+def _find_matching_close(content: str, start: int, prefix: str, activity: str) -> int:
+    """Find offset of matching </prefix:activity> respecting nesting.
+    Returns -1 if not found."""
+    open_pat = re.compile(rf'<{re.escape(prefix)}:{re.escape(activity)}\b[^>]*?(/?)>')
+    close_pat = re.compile(rf'</{re.escape(prefix)}:{re.escape(activity)}\s*>')
+    depth = 1
+    pos = start
+    while depth > 0 and pos < len(content):
+        nxt_open = open_pat.search(content, pos)
+        nxt_close = close_pat.search(content, pos)
+        if nxt_close is None:
+            return -1
+        if nxt_open is not None and nxt_open.start() < nxt_close.start():
+            if nxt_open.group(1) != "/":
+                depth += 1
+            pos = nxt_open.end()
+        else:
+            depth -= 1
+            if depth == 0:
+                return nxt_close.start()
+            pos = nxt_close.end()
+    return -1
+
+
+@register("regex_replace")
+def apply_regex_replace(file: Path, spec: dict[str, Any], dry_run: bool = True) -> bool:
+    """Apply regex replacement. Returns True if file would change."""
+    pattern = spec.get("pattern")
+    replacement = spec.get("replacement", "")
+    if not pattern:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    new_content, n = re.subn(pattern, replacement, content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+_RE_ELEMENT_NAME_CTX = re.compile(r'</?[A-Za-z_][\w.\-]*:?$')
+
+
+def _whole_word_sub_skip_tags(
+    content: str, from_name: str, to_name: str,
+    case_insensitive: bool = True,
+) -> tuple[str, int]:
+    """Whole-word rename, mas pula matches que são nomes de element XML
+    (precedidos por `<` ou `</` ou `<prefix:`). Renames dentro de attribute
+    values, expressões VB, x:Key, Name="...", etc. continuam normais.
+
+    Default `case_insensitive=True`: VB é case-insensitive, então refs como
+    `[Dt_X]` para declaração `dt_X` precisam ser renomeadas. UiPath/VB não
+    permite duas declarações case-distinct no mesmo escopo, então rename
+    case-insensitive é seguro.
+
+    2026-05-01: regression fix — antes era case-sensitive, deixando refs VB
+    com case diferente da declaração órfãs (Studio: BC30451 var não declarada).
+    """
+    flags = re.IGNORECASE if case_insensitive else 0
+    pattern = re.compile(rf"\b{re.escape(from_name)}\b", flags)
+    out_parts: list[str] = []
+    last = 0
+    count = 0
+    for m in pattern.finditer(content):
+        s = m.start()
+        ctx = content[max(0, s - 64):s]
+        if _RE_ELEMENT_NAME_CTX.search(ctx):
+            continue  # skip — match é nome de element/tag
+        out_parts.append(content[last:s])
+        out_parts.append(to_name)
+        last = m.end()
+        count += 1
+    out_parts.append(content[last:])
+    return ("".join(out_parts), count)
+
+
+def _has_orphan_ref(content: str, name: str, exclude: str | None = None) -> bool:
+    """True se houver match case-insensitive whole-word de `name` fora de
+    contexto element-name. Usado pós-rename para detectar refs órfãs que
+    não foram alcançadas pela substituição.
+
+    `exclude` (case-sensitive): match exato deste valor é considerado
+    rename ok, não orphan. Necessário pra case-only renames
+    (`in_StCpfCnpj` → `in_StCPFCNPJ`) onde new name é case-insensitive
+    igual ao old name — sem `exclude` daria false positive.
+    """
+    pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
+    for m in pattern.finditer(content):
+        s = m.start()
+        ctx = content[max(0, s - 64):s]
+        if _RE_ELEMENT_NAME_CTX.search(ctx):
+            continue
+        if exclude is not None and m.group(0) == exclude:
+            continue
+        return True
+    return False
+
+
+@register("rename_attribute")
+def apply_rename_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    from_name = spec.get("from")
+    to_name = spec.get("to")
+    if not from_name or not to_name:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    new_content, n = _whole_word_sub_skip_tags(content, from_name, to_name)
+    if n == 0 or new_content == content:
+        return False
+    # Safety check — orphan ref detection (caso `to_name` colida case-insensitive
+    # com outro identifier não relacionado). Se sobra match de `from_name`
+    # fora de contexto element-name, abortar pra evitar quebra silenciosa.
+    if _has_orphan_ref(new_content, from_name, exclude=to_name):
+        print(f"  [NEEDS_REVIEW] rename_attribute: orphan refs '{from_name}' em {file.name} — fix abortado")
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("rename_argument")
+def apply_rename_argument(
+    file: Path, spec: dict, dry_run: bool = True, project_root: Path | None = None
+) -> bool:
+    """Rename arg `from_name` → `to_name`.
+
+    Callee (file): rename `Name="<from>"` declaração + whole-word `\\b<from>\\b`
+    em todo body (cobre uses em expressões `[in_OldArg.ToString]`).
+
+    Callers (project_root): localizam `WorkflowFileName="...<basename>"` (qualquer
+    separator), trocam `x:Key="<from>"` + `\\b<from>\\b` whole-word.
+    """
+    from_name = spec.get("from")
+    to_name = spec.get("to")
+    if not from_name or not to_name:
+        return False
+    target_wf = spec.get("target_workflow")
+
+    content = file.read_text(encoding="utf-8-sig")
+    # Name="..." declaração é case-sensitive (XML attr value identifies a
+    # specific declaration). Rename só do exact-case match.
+    new_content = re.sub(
+        rf'Name="{re.escape(from_name)}"', f'Name="{to_name}"', content
+    )
+    # Body refs (VB expressions, [argname], etc.) case-insensitive.
+    new_content, _ = _whole_word_sub_skip_tags(new_content, from_name, to_name)
+    changed = new_content != content
+    if changed and _has_orphan_ref(new_content, from_name, exclude=to_name):
+        print(f"  [NEEDS_REVIEW] rename_argument (callee): orphan refs '{from_name}' em {file.name} — fix abortado")
+        return False
+    if changed and not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+
+    if project_root is None or not target_wf:
+        return changed
+
+    # Match callers via WorkflowFileName attribute, accepting both `\` and `/`.
+    basename = target_wf.replace("\\", "/").split("/")[-1]
+    callee_pattern = re.compile(
+        rf'WorkflowFileName="(?:[^"]*[\\/])?{re.escape(basename)}"'
+    )
+    # Class name = stem of basename. Cross-file PropertyElement default-value
+    # syntax uses `this:<ClassName>.<arg>` — present quando caller seta default
+    # via xmlns:this (CLR namespace vazio compartilhado dentro do projeto).
+    target_class = basename.rsplit(".", 1)[0] if "." in basename else basename
+    this_arg_pattern = re.compile(
+        rf'\bthis:{re.escape(target_class)}\.{re.escape(from_name)}\b'
+    )
+    invoke_block_re = re.compile(
+        r'<ui:InvokeWorkflowFile\b[^>]*>.*?</ui:InvokeWorkflowFile>',
+        re.DOTALL,
+    )
+
+    for xaml in project_root.rglob("*.xaml"):
+        if xaml.resolve() == file.resolve():
+            continue
+        try:
+            c = xaml.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        has_invoke = bool(callee_pattern.search(c))
+        has_this_arg = bool(this_arg_pattern.search(c))
+        if not (has_invoke or has_this_arg):
+            continue
+
+        new_c = c
+
+        # 1. <ui:InvokeWorkflowFile> blocks: rename x:Key + body refs.
+        if has_invoke:
+            def _maybe_rename_block(match):
+                block = match.group(0)
+                if not callee_pattern.search(block):
+                    return block
+                new_block = re.sub(
+                    rf'x:Key="{re.escape(from_name)}"', f'x:Key="{to_name}"', block
+                )
+                new_block, _ = _whole_word_sub_skip_tags(new_block, from_name, to_name)
+                return new_block
+            new_c = invoke_block_re.sub(_maybe_rename_block, new_c)
+
+        # 2. PropertyElement default-value cross-file: `this:<Class>.<arg>` em
+        #    attribute form (`this:Class.OldArg="..."`) e element form
+        #    (`<this:Class.OldArg>...</this:Class.OldArg>`). Single sub cobre
+        #    todas ocorrências (regex word-boundary).
+        if has_this_arg or this_arg_pattern.search(new_c):
+            new_c = this_arg_pattern.sub(
+                f'this:{target_class}.{to_name}', new_c
+            )
+
+        if new_c != c:
+            # Orphan check 1 — escopo de InvokeWorkflowFile blocks que apontam
+            # pro callee.
+            orphan_in_callee_blocks = False
+            for blk in invoke_block_re.findall(new_c):
+                if not callee_pattern.search(blk):
+                    continue
+                if _has_orphan_ref(blk, from_name, exclude=to_name):
+                    orphan_in_callee_blocks = True
+                    break
+            if orphan_in_callee_blocks:
+                print(f"  [NEEDS_REVIEW] rename_argument (caller): orphan refs '{from_name}' em {xaml.name} — caller skip")
+                continue
+            # Orphan check 2 — sobrou `this:<Class>.<from>` em algum lugar.
+            if this_arg_pattern.search(new_c):
+                print(f"  [NEEDS_REVIEW] rename_argument (caller): orphan this:{target_class}.{from_name} em {xaml.name} — caller skip")
+                continue
+            changed = True
+            if not dry_run:
+                xaml.write_text(new_c, encoding="utf-8")
+
+    return changed
+
+
+@register("rename_xclass")
+def apply_rename_xclass(
+    file: Path, spec: dict, dry_run: bool = True, project_root: Path | None = None
+) -> bool:
+    """Rename `x:Class` to match filename and propagate `this:` references.
+
+    Side-effects of an x:Class rename that callers must NOT miss:
+      1. PropertyElement default-value blocks in the same file:
+         `<this:OldClass.argName>...</this:OldClass.argName>` → uses `this:`
+         prefix bound to own x:Class. Stale prefix → Studio compile error
+         "Cannot set unknown member".
+      2. Cross-project callers may reference `<this:OldClass.*` or
+         `x:Key="OldClass.*"` (rare, but happens with PropertyElement defaults
+         passed at invocation). Scan project_root and rewrite.
+
+    Spec:
+      to: new class name (default: file.stem)
+      from: old class name (default: detected from current x:Class attr)
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    xclass_re = re.compile(r'(<Activity\b[^>]*\sx:Class=")([^"]+)(")')
+    m = xclass_re.search(content[:5000])
+    if not m:
+        return False
+    current = m.group(2)
+    from_name = spec.get("from") or current
+    to_name = spec.get("to") or file.stem
+    if from_name == to_name:
+        return False
+
+    # 1. x:Class attribute itself
+    new_content = xclass_re.sub(
+        lambda mm: f"{mm.group(1)}{to_name}{mm.group(3)}" if mm.group(2) == from_name else mm.group(0),
+        content,
+    )
+    # 2. Same-file `this:Old.` → `this:New.`
+    this_ref_re = re.compile(rf'\bthis:{re.escape(from_name)}\.')
+    new_content = this_ref_re.sub(f'this:{to_name}.', new_content)
+
+    changed = new_content != content
+    if changed and not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+
+    if project_root is None:
+        return changed
+
+    # 3. Cross-project: callers referencing `this:Old.` ou `x:Key="Old.*"`.
+    # COLLISION CHECK: se outros files também têm `x:Class="<from_name>"`,
+    # este rename NÃO pode propagar cross-project — `this:Old.X` em outro
+    # caller pode estar bindando em qualquer dos files que compartilham
+    # x:Class (Sicoob template antipattern: muitos files começam com
+    # `x:Class="API"`). Auto-rename cross-project bagunçaria refs alheias.
+    # Same-file rename (step 2) é seguro e suficiente.
+    other_files_same_class = []
+    xclass_collision_re = re.compile(
+        rf'<Activity\b[^>]*\sx:Class="{re.escape(from_name)}"'
+    )
+    for xaml in project_root.rglob("*.xaml"):
+        if xaml.resolve() == file.resolve():
+            continue
+        try:
+            head = xaml.read_text(encoding="utf-8-sig")[:5000]
+        except Exception:
+            continue
+        if xclass_collision_re.search(head):
+            other_files_same_class.append(xaml.name)
+    if other_files_same_class:
+        print(
+            f"  [SKIP cross-project this:{from_name}] {file.name}: "
+            f"x:Class=\"{from_name}\" também em {len(other_files_same_class)} "
+            f"outros files ({', '.join(other_files_same_class[:3])}...). "
+            f"Não propaga cross-project."
+        )
+        return changed
+
+    cross_this_re = re.compile(rf'\bthis:{re.escape(from_name)}\.')
+    cross_key_re = re.compile(rf'x:Key="{re.escape(from_name)}\.')
+    for xaml in project_root.rglob("*.xaml"):
+        if xaml.resolve() == file.resolve():
+            continue
+        try:
+            c = xaml.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        new = cross_this_re.sub(f'this:{to_name}.', c)
+        new = cross_key_re.sub(f'x:Key="{to_name}.', new)
+        if new != c:
+            changed = True
+            if not dry_run:
+                xaml.write_text(new, encoding="utf-8")
+
+    return changed
+
+
+@register("dedupe_idref")
+def apply_dedupe_idref(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Renomeia IdRef duplicados dentro de um XAML. Mantém primeira ocorrência;
+    subsequentes recebem suffix `_dedup_<n>`. Atualiza refs no mesmo arquivo
+    (qualquer attribute value contendo o IdRef antigo via `\\b<id>\\b`).
+
+    Idempotente: 2ª chamada não encontra duplicatas, no-op.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    # Match attr `IdRef="X"` em qualquer namespace (sap2010, sap, etc.)
+    idref_re = re.compile(r'\b(?:[\w]+:)?IdRef="([^"]+)"')
+    seen: dict[str, int] = {}
+    duplicates: list[tuple[int, int, str, str]] = []  # (start, end, old, new)
+    for m in idref_re.finditer(content):
+        val = m.group(1)
+        seen[val] = seen.get(val, 0) + 1
+        if seen[val] > 1:
+            new_val = f"{val}_dedup_{seen[val]}"
+            duplicates.append((m.start(1), m.end(1), val, new_val))
+    if not duplicates:
+        return False
+    # Apply replacements in REVERSE order (preserve offsets).
+    new_content = content
+    for start, end, old, new in reversed(duplicates):
+        new_content = new_content[:start] + new + new_content[end:]
+    # Não atualizar refs cross-element — IdRef em XAML 2010 é só identifier
+    # do próprio element, não chave de lookup global. ViewState dict pode
+    # conter IdRef como key — handled implicit (ViewState entry permanece com
+    # old value, mas é só rendering hint; orphan key tolerado por Studio).
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return new_content != content
+
+
+@register("xmlns_assembly_resolve")
+def apply_xmlns_assembly_resolve(file: Path, spec: dict, dry_run: bool = True,
+                                  project_root: Path | None = None) -> bool:
+    """Resolve xmlns prefix com assembly não declarado.
+
+    Spec:
+      assembly: nome do assembly (ex: 'UiPath.Testing.Activities')
+      action: 'add_package' | 'remove'
+      package: nome do pacote a adicionar (se action=add_package)
+      version: versão (se action=add_package)
+      prefix: nome do xmlns prefix (se action=remove, ex: 'uta')
+    """
+    action = spec.get("action")
+    if action == "add_package":
+        package = spec.get("package")
+        version = spec.get("version")
+        if not package or not version or project_root is None:
+            return False
+        proj_json = project_root / "project.json"
+        if not proj_json.exists():
+            return False
+        import json as _json
+        raw = proj_json.read_bytes()
+        bom = raw.startswith(b"\xef\xbb\xbf")
+        try:
+            data = _json.loads(raw.decode("utf-8-sig"))
+        except _json.JSONDecodeError:
+            return False
+        deps = data.setdefault("dependencies", {})
+        pinned = f"[{version}]"
+        if deps.get(package) == pinned:
+            return False
+        deps[package] = pinned
+        new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        if not dry_run:
+            out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
+            proj_json.write_bytes(out)
+        return True
+
+    if action == "remove":
+        prefix = spec.get("prefix")
+        if not prefix:
+            return False
+        content = file.read_text(encoding="utf-8-sig")
+        # Remove xmlns:<prefix>="..." attr from <Activity> root
+        new_content = re.sub(
+            rf'\s+xmlns:{re.escape(prefix)}="[^"]+"', "", content, count=1
+        )
+        # Remove all <prefix:Activity ...> ... </prefix:Activity> blocks
+        # (open+close form)
+        new_content = re.sub(
+            rf'<{re.escape(prefix)}:[^>\s]+\b[^>]*>.*?</{re.escape(prefix)}:[^>]+>',
+            "", new_content, flags=re.DOTALL,
+        )
+        # Remove self-close <prefix:Activity ... />
+        new_content = re.sub(
+            rf'<{re.escape(prefix)}:[^>\s]+\b[^>]*?/>', "", new_content,
+        )
+        if new_content == content:
+            return False
+        if not dry_run:
+            file.write_text(new_content, encoding="utf-8")
+        return True
+    return False
+
+
+@register("arg_default_to_element_form")
+def apply_arg_default_to_element_form(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Convert root attribute `this:Class.<arg>="value"` em element form
+    `<this:Class.<arg>>...InArgument...</this:Class.<arg>>`.
+
+    Spec:
+      class_name: nome do x:Class (ex: 'PlataformaDeCredito')
+      arg_name: nome do argumento (ex: 'in_StCpfCnpj')
+      arg_type: type pulled from <x:Property> (ex: 'x:String', 'x:Int32')
+      value: literal/expression como aparece no attr (ex: '03567879000146' ou '[expr]')
+    """
+    class_name = spec.get("class_name")
+    arg_name = spec.get("arg_name")
+    arg_type = spec.get("arg_type")
+    value = spec.get("value")
+    if not all([class_name, arg_name, arg_type, value is not None]):
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    # Remove attr from <Activity> root
+    attr_re = re.compile(
+        rf'\s+this:{re.escape(class_name)}\.{re.escape(arg_name)}="[^"]*"'
+    )
+    if not attr_re.search(content):
+        return False
+    new_content = attr_re.sub("", content, count=1)
+    # Build element form. VB expression `[expr]` vs literal.
+    is_expr = value.startswith("[") and value.endswith("]")
+    inner_expr = value if is_expr else f"[&quot;{value}&quot;]"
+    element_block = (
+        f'\n  <this:{class_name}.{arg_name}>'
+        f'<InArgument x:TypeArguments="{arg_type}">'
+        f'{inner_expr}</InArgument>'
+        f'</this:{class_name}.{arg_name}>'
+    )
+    # Insert after </x:Members> tag (or before <Sequence> if no members)
+    if "</x:Members>" in new_content:
+        new_content = new_content.replace(
+            "</x:Members>", "</x:Members>" + element_block, 1
+        )
+    else:
+        # Fallback: insert after first <Activity ...> opening tag
+        m = re.search(r"<Activity\b[^>]*>", new_content)
+        if m:
+            new_content = new_content[:m.end()] + element_block + new_content[m.end():]
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("delete_empty_element")
+def apply_delete_empty_element(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Remove element vazio (open+close apenas whitespace, ou self-close).
+    Idempotente. Suporta:
+      - `<Tag>\\s*</Tag>` (open+close empty)
+      - `<Tag\\s*/>` (self-close)
+      - `<Tag attrs="..."\\s*/>` (self-close com attrs)
+
+    Spec:
+      tag: nome local da tag (ex: `Sequence.Variables`, `Sequence`)
+    """
+    tag = spec.get("tag")
+    if not tag:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    # Open+close empty (whitespace-only inside)
+    oc = re.compile(
+        rf'\s*<{re.escape(tag)}\b[^>]*?>\s*</{re.escape(tag)}>\s*'
+    )
+    new_content, n_oc = oc.subn("\n", content)
+    # Self-close (sem content por definição)
+    sc = re.compile(rf'\s*<{re.escape(tag)}\b[^>]*?/>\s*')
+    new_content, n_sc = sc.subn("\n", new_content)
+    if (n_oc + n_sc) == 0 or new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("delete_variable")
+def apply_delete_variable(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Remove `<Variable Name="X">` declaration. Suporta self-close
+    e open+close forms. Idempotente. Match case-sensitive em XML attr,
+    case-insensitive seria perigoso (variável `vX` e `VX` em mesmo escopo
+    são tecnicamente VB-equivalent mas XML-distinct — manter strict)."""
+    name = spec.get("name")
+    if not name:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    # Self-close: <Variable ... Name="X" .../>
+    sc = re.compile(
+        rf'\s*<Variable\b[^>]*?\bName="{re.escape(name)}"[^>]*?/>\s*'
+    )
+    new_content, n_sc = sc.subn("\n", content)
+    if n_sc == 0:
+        # Open+close: <Variable ... Name="X" ...>...</Variable>
+        oc = re.compile(
+            rf'\s*<Variable\b[^>]*?\bName="{re.escape(name)}"[^>]*?>.*?</Variable>\s*',
+            re.DOTALL,
+        )
+        new_content, n_oc = oc.subn("\n", content)
+        if n_oc == 0:
+            return False
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("set_json_field")
+def apply_set_json_field(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Set JSON field at dot-path to canonical value. Idempotent.
+
+    Spec:
+      path: dot-separated key path (ex: 'studioVersion', 'foo.bar.baz')
+      value: scalar value (string/number/bool/null) ou dict/list (full replace)
+    """
+    import json as _json
+    path = spec.get("path")
+    value = spec.get("value")
+    if not path or value is None:
+        return False
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    text = raw.decode("utf-8-sig")
+    try:
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        return False
+    keys = path.split(".")
+    cur = data
+    for k in keys[:-1]:
+        if not isinstance(cur, dict):
+            return False
+        cur = cur.setdefault(k, {})
+    last = keys[-1]
+    if isinstance(cur, dict) and cur.get(last) == value:
+        return False
+    if isinstance(cur, dict):
+        cur[last] = value
+    else:
+        return False
+    new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("json_array_ensure")
+def apply_json_array_ensure(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Ensure JSON array at dot-path contains required values. Append missing.
+    Idempotente; case-insensitive match.
+
+    Spec:
+      path: dot-separated key path (ex: 'runtimeOptions.excludedLoggedData')
+      values: list of required string values to ensure present
+    """
+    import json as _json
+    path = spec.get("path")
+    values = spec.get("values") or []
+    if not path or not values:
+        return False
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    text = raw.decode("utf-8-sig")
+    try:
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        return False
+    keys = path.split(".")
+    cur = data
+    for k in keys[:-1]:
+        if not isinstance(cur, dict):
+            return False
+        cur = cur.setdefault(k, {})
+    last = keys[-1]
+    if not isinstance(cur, dict):
+        return False
+    arr = cur.get(last)
+    if arr is None:
+        arr = []
+    elif not isinstance(arr, list):
+        return False
+    existing_lower = {str(x).lower() for x in arr}
+    missing = [v for v in values if str(v).lower() not in existing_lower]
+    if not missing:
+        return False
+    arr = list(arr) + missing
+    cur[last] = arr
+    new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("set_dependency_pin")
+def apply_set_dependency_pin(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Pin package version em project.json. Idempotente.
+
+    Spec:
+      package: nome exato do pacote (ex: 'UiPath.System.Activities')
+      version: versão pinada formato `[X.Y.Z]` (canonical Sicoob)
+
+    Diferença vs set_json_field: dot-path quebraria em
+    `dependencies.UiPath.System.Activities` (split por `.`). Aqui acessa
+    `data['dependencies'][package]` direto.
+    """
+    import json as _json
+    package = spec.get("package")
+    version = spec.get("version")
+    if not package or not version:
+        return False
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    text = raw.decode("utf-8-sig")
+    try:
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        return False
+    deps = data.get("dependencies")
+    if not isinstance(deps, dict):
+        return False
+    if deps.get(package) == version:
+        return False
+    deps[package] = version
+    new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("force_attribute")
+def apply_force_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Set tag attr to canonical value. Replace se presente com valor diferente,
+    add se ausente. Idempotente.
+
+    Diff vs `set_attribute`:
+      - `set_attribute`: SKIP se attr presente (qualquer valor).
+      - `force_attribute`: REPLACE se attr presente com valor != target.
+
+    Usa pattern lazy `[^>]*?` + grupo opcional `(/?)` (mesma técnica de
+    set_attribute) p/ preservar self-close.
+    """
+    tag = spec.get("tag")
+    attr = spec.get("attribute")
+    value = spec.get("value")
+    if not all([tag, attr, value is not None]):
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    pattern = re.compile(rf"<{re.escape(tag)}\b([^>]*?)(/?)>", re.DOTALL)
+    attr_in_existing = re.compile(rf'(\s){re.escape(attr)}="([^"]*)"')
+
+    def replace(m):
+        existing = m.group(1)
+        self_close = m.group(2)
+        existing_attr = attr_in_existing.search(existing)
+        if existing_attr:
+            if existing_attr.group(2) == value:
+                return m.group(0)
+            new_existing = attr_in_existing.sub(
+                rf'\g<1>{attr}="{value}"', existing, count=1
+            )
+            return f'<{tag}{new_existing}{self_close}>'
+        sep = '' if (existing == '' or existing.endswith(' ')) else ' '
+        return f'<{tag}{existing}{sep}{attr}="{value}"{self_close}>'
+
+    new_content = pattern.sub(replace, content)
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("set_attribute")
+def apply_set_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Insere attr em opening tag se ausente. Suporta `<X attrs>` e `<X attrs/>`
+    em uma única pass — pattern lazy `[^>]*?` + grupo opcional `(/?)` captura
+    self-close marker corretamente. Bug histórico (corrupção em self-close
+    quando tratado em duas passes) corrigido aqui.
+    """
+    tag = spec.get("tag")
+    attr = spec.get("attribute")
+    value = spec.get("value")
+    if not all([tag, attr, value is not None]):
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    pattern = re.compile(rf"<{re.escape(tag)}\b([^>]*?)(/?)>", re.DOTALL)
+
+    def replace(m):
+        existing = m.group(1)
+        self_close = m.group(2)
+        if re.search(rf'\b{re.escape(attr)}\s*=', existing):
+            return m.group(0)
+        sep = '' if (existing == '' or existing.endswith(' ')) else ' '
+        return f'<{tag}{existing}{sep}{attr}="{value}"{self_close}>'
+
+    new_content = pattern.sub(replace, content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("wrap_in_element")
+def apply_wrap_in_element(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    pattern = spec.get("target_pattern")
+    wrapper_open = spec.get("wrapper_open")
+    wrapper_close = spec.get("wrapper_close")
+    if not all([pattern, wrapper_open, wrapper_close]):
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    new_content, n = re.subn(pattern, lambda m: f"{wrapper_open}{m.group(0)}{wrapper_close}", content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("delete_element")
+def apply_delete_element(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    pattern = spec.get("pattern")
+    if not pattern:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    new_content, n = re.subn(pattern, "", content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("rename_invoke_arg_key")
+def apply_rename_invoke_arg_key(
+    file: Path, spec: dict, dry_run: bool = True
+) -> bool:
+    """Rename `x:Key="from_key"` → `x:Key="to_key"` SOMENTE dentro do
+    `<ui:InvokeWorkflowFile>` que aponta para `workflow_basename` (e
+    opcionalmente identificado por `invoke_idref` quando há múltiplos
+    callers ao mesmo callee no caller).
+    """
+    basename = spec.get("workflow_basename")
+    from_key = spec.get("from_key")
+    to_key = spec.get("to_key")
+    idref = spec.get("invoke_idref")
+    if not basename or not from_key or not to_key:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+
+    invoke_block_re = re.compile(
+        r'<ui:InvokeWorkflowFile\b(?P<attrs>[^>]*)>(?P<inner>.*?)</ui:InvokeWorkflowFile>',
+        re.DOTALL,
+    )
+    name_re = re.compile(
+        rf'WorkflowFileName="(?:[^"]*[\\/])?{re.escape(basename)}"'
+    )
+    idref_re = re.compile(rf'sap2010:WorkflowViewState\.IdRef="{re.escape(idref)}"') if idref else None
+    key_re = re.compile(rf'(x:Key=")({re.escape(from_key)})(")')
+
+    changed = [False]
+
+    def _maybe_rename(match):
+        attrs = match.group("attrs")
+        inner = match.group("inner")
+        if not name_re.search(attrs):
+            return match.group(0)
+        if idref_re is not None and not idref_re.search(attrs):
+            return match.group(0)
+        new_inner = key_re.sub(rf'\1{to_key}\3', inner)
+        if new_inner == inner:
+            return match.group(0)
+        changed[0] = True
+        # Reconstruct
+        return match.group(0).replace(inner, new_inner, 1)
+
+    new_content = invoke_block_re.sub(_maybe_rename, content)
+    if not changed[0]:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+_PRIMITIVE_LITERAL_DEFAULTS: dict[str, str] = {
+    "x:String": "",
+    "x:Boolean": "False",
+    "x:Int32": "0",
+    "x:Int64": "0",
+    "x:Double": "0",
+    "x:Decimal": "0",
+    "x:Single": "0",
+}
+
+
+_SELF_CLOSED_INARG_RE = re.compile(
+    r'<InArgument\s+(?P<attrs>[^/>]*?)\s*/>'
+)
+
+
+@register("expand_self_closed_inarg")
+def apply_expand_self_closed_inarg(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """W-1: convert `<InArgument x:Key="X" />` self-closed em caller para
+    forma expandida.
+
+    - Tipos primitivos (`x:String`/`Boolean`/`Int32`/`Int64`/`Double`/
+      `Decimal`/`Single`): emite `<Literal x:TypeArguments="<T>" Value="<default>"/>`
+      com default conforme tipo.
+    - Tipos não-primitivos (Tuple, Dict, classes custom, qualquer com `(` ou
+      `:` que não sejam x:): emite `<x:Null />` — Literal Value="" quebra
+      tipos complexos com 'Set property Value threw exception'.
+
+    Idempotent. Sem-op se nenhum self-closed InArgument com x:Key.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    def expand(m: re.Match) -> str:
+        attrs = m.group("attrs")
+        # only expand caller-side self-closed (must have x:Key)
+        if 'x:Key="' not in attrs:
+            return m.group(0)
+        type_match = re.search(r'x:TypeArguments="([^"]+)"', attrs)
+        if not type_match:
+            return m.group(0)
+        t = type_match.group(1)
+        attrs_clean = attrs.strip()
+        if t in _PRIMITIVE_LITERAL_DEFAULTS:
+            val = _PRIMITIVE_LITERAL_DEFAULTS[t]
+            return (
+                f'<InArgument {attrs_clean}>'
+                f'<Literal x:TypeArguments="{t}" Value="{val}" />'
+                f'</InArgument>'
+            )
+        return f'<InArgument {attrs_clean}><x:Null /></InArgument>'
+
+    new_content = _SELF_CLOSED_INARG_RE.sub(expand, content)
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+_NUM_TYPES_RE = r"x:(?:Int32|Int64|Boolean|Double|Decimal|Single)"
+_NUM_DEFAULT_ELEM_RE = re.compile(
+    rf'(<InArgument\s+x:TypeArguments="{_NUM_TYPES_RE}"\s*>)\[&quot;([^&\]]*)&quot;\](</InArgument>)'
+)
+_NUM_DEFAULT_ATTR_RE = re.compile(
+    r'(this:[A-Za-z_][\w]*\.in_(?:Int|Bl|Db|Dec|Dbl)[A-Za-z]*=")\[&quot;([^&\]]*)&quot;\](")'
+)
+
+
+@register("strip_string_quotes_numeric_default")
+def apply_strip_string_quotes_numeric_default(
+    file: Path, spec: dict, dry_run: bool = True
+) -> bool:
+    """V-2: stripar `&quot;...&quot;` de Default literais numéricos/booleanos.
+
+    Pattern element-form:
+      <InArgument x:TypeArguments="x:Int32">[&quot;60&quot;]</InArgument>
+      → <InArgument x:TypeArguments="x:Int32">[60]</InArgument>
+
+    Pattern attr-form (raiz):
+      this:Class.in_IntFoo="[&quot;60&quot;]"
+      → this:Class.in_IntFoo="[60]"
+
+    Validação: conteúdo deve ser parseável como número (int/float) ou bool.
+    Senão preserva (não é só questão de aspas).
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    def _is_numeric_or_bool(v: str) -> bool:
+        s = v.strip()
+        if s.lower() in ("true", "false"):
+            return True
+        try:
+            float(s.replace(",", "."))
+            return True
+        except ValueError:
+            return False
+
+    def fix_elem(m: re.Match) -> str:
+        prefix, val, suffix = m.groups()
+        if not _is_numeric_or_bool(val):
+            return m.group(0)
+        v = val.strip()
+        if v.lower() in ("true", "false"):
+            v = v.capitalize()
+        return f"{prefix}[{v}]{suffix}"
+
+    def fix_attr(m: re.Match) -> str:
+        prefix, val, suffix = m.groups()
+        if not _is_numeric_or_bool(val):
+            return m.group(0)
+        v = val.strip()
+        if v.lower() in ("true", "false"):
+            v = v.capitalize()
+        return f"{prefix}[{v}]{suffix}"
+
+    new_content = _NUM_DEFAULT_ELEM_RE.sub(fix_elem, content)
+    new_content = _NUM_DEFAULT_ATTR_RE.sub(fix_attr, new_content)
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("move_file")
+def apply_move_file(
+    file: Path, spec: dict, dry_run: bool = True, project_root: Path | None = None
+) -> bool:
+    if project_root is None:
+        return False
+    from_glob = spec.get("from_glob")
+    to_dir = spec.get("to_dir")
+    if not from_glob or not to_dir:
+        return False
+    target_dir = project_root / to_dir
+    sources = list(project_root.glob(from_glob))
+    if not sources:
+        return False
+    if not dry_run:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for src in sources:
+            shutil.move(str(src), str(target_dir / src.name))
+    return True
+
+
+# ---------------------------------------------------------------------------
+# N-5 fixer: insert <ui:LogMessage Level="Trace" .../> after a flagged activity.
+#
+# Key invariants:
+#   - Walker compares FULL tag names (e.g. `Assign` vs `Assign.To` are
+#     distinct). Bug histórico (regex `<Assign\b` casava com `<Assign.To>`)
+#     levou a inserção dentro de `<Assign>` quebrando compile Studio.
+#   - Parent restritivo (single-child / collection-typed / qualified-property
+#     que aceita só specific children) → skip.
+#   - IdRef único: counter scaneado de IdRefs existentes no arquivo, +offset.
+#   - Idempotência: detector re-run não re-emite finding pra mesma activity
+#     porque Trace já estará dentro de proximity_window.
+# ---------------------------------------------------------------------------
+
+# Tag name pattern: prefix:Local with optional `.SubProp` qualified-property
+# part. NOTE: `.` is NOT a word char, so `\b` after the name doesn't work
+# uniformly. Use explicit terminator chars.
+_FULLTAG_RE = re.compile(
+    r'<(?P<slash>/?)\s*(?P<name>[A-Za-z_][\w.\-]*(?::[\w.\-]+)?)(?=[\s/>])'
+    r'(?P<attrs>[^>]*?)(?P<self>/?)>',
+    re.DOTALL,
+)
+
+# Parents que NÃO aceitam sibling LogMessage extra. Inserir Trace ali quebra
+# compile Studio.
+#
+# COBERTURA EM CAMADAS (defesa em profundidade):
+#   1. Heurística `.` em parent_local → rejeita TODOS qualified-property
+#      elements (Assign.To, If.Then, ui:HttpClient.Headers, etc.). Sem
+#      precisar enumerar caso a caso.
+#   2. `_COLLECTION_LOCAL_NAMES` → rejeita typed collections.
+#   3. Esta lista (mínima): non-dot, non-collection special parents que
+#      rejeitam activities mas precisam ser nomeados explicitamente.
+#   4. Layer 2 (Studio Analyzer gate) → ground truth final. Pega o que
+#      escapar das camadas 1-3.
+#
+# Itens removidos desta lista (cobertos pela camada 1 ou 2):
+#   - Todas entries com `.` (Assign.To, ui:HttpClient.Headers, etc.)
+#   - Typed collections (movidas pra _COLLECTION_LOCAL_NAMES)
+#   - Long tail de qualified-property singletons (Layer 2 captura)
+# Parents non-qualified que rejeitam LogMessage E NÃO são wrap-able
+# (tipos com signature/shape específica).
+_N5_RESTRICTIVE_PARENT_NAMES = frozenset({
+    # ActivityFunc: generic signature (Func<T1, ..., TN, TResult>) — wrap
+    # quebraria type contract.
+    "ActivityFunc",
+    # Argument shapes — wrapper elements que não comportam activities
+    "InArgument", "OutArgument", "InOutArgument", "Literal",
+    # Variable/Property/Member containers — accept declarations, not activities
+    "Variable", "Variables", "Property", "Members",
+})
+
+# Parents non-qualified que aceitam single Activity child — wrap em Sequence
+# converte em multi-child container, mantém type contract.
+_N5_WRAP_ABLE_NON_QUALIFIED = frozenset({
+    # ActivityAction: delegate body — accept single Activity. Sequence é
+    # Activity-shape, wrap legítimo.
+    "ActivityAction",
+})
+
+
+# Pattern pra detectar parent qualname tipo collection (sufixo `:List`,
+# `:Dictionary`, etc.) — defesa adicional caso prefix aliasing varie.
+_COLLECTION_LOCAL_NAMES = frozenset({
+    "BindingList", "List", "Dictionary", "Collection",
+    "HashSet", "Queue", "Stack", "ObservableCollection",
+    "ReadOnlyCollection",
+})
+
+
+def _n5_walk_to_element_end(content: str, opening_offset: int):
+    """Return offset just after closing tag of element at opening_offset.
+    Tag name comparison is EXACT — `Assign` and `Assign.To` are distinct.
+    Returns (end_offset, tag_name) or (None, None)."""
+    m = _FULLTAG_RE.match(content, opening_offset)
+    if not m or m.group("slash") == "/":
+        return None, None
+    name = m.group("name")
+    if m.group("self") == "/":
+        return m.end(), name
+    depth = 1
+    pos = m.end()
+    while pos < len(content):
+        m2 = _FULLTAG_RE.search(content, pos)
+        if m2 is None:
+            return None, None
+        n2 = m2.group("name")
+        if n2 != name:
+            pos = m2.end()
+            continue
+        if m2.group("slash") == "/":
+            depth -= 1
+            pos = m2.end()
+            if depth == 0:
+                return pos, name
+        elif m2.group("self") == "/":
+            pos = m2.end()
+        else:
+            depth += 1
+            pos = m2.end()
+    return None, None
+
+
+def _n5_find_immediate_parent_via_lxml(content: bytes, target_line: int,
+                                         target_local: str):
+    """Use lxml to find target activity at given line, return parent's full
+    qualified name (prefix:Local or just Local). Returns None if not found
+    or activity has no parent."""
+    try:
+        from lxml import etree
+    except ImportError:
+        return None
+    parser = etree.XMLParser(remove_blank_text=False, recover=False,
+                              huge_tree=True)
+    try:
+        root = etree.fromstring(content, parser)
+    except etree.XMLSyntaxError:
+        return None
+    # Walk all elements; match by sourceline + localname/qname
+    for elem in root.iter():
+        if elem.sourceline != target_line:
+            continue
+        qn = etree.QName(elem.tag)
+        local = qn.localname
+        prefix = elem.prefix
+        qual = f"{prefix}:{local}" if prefix else local
+        # target_local may be "Assign" or "ui:HttpClient" — match either form
+        if local != target_local and qual != target_local:
+            continue
+        parent = elem.getparent()
+        if parent is None:
+            return None
+        pqn = etree.QName(parent.tag)
+        plocal = pqn.localname
+        pprefix = parent.prefix
+        return f"{pprefix}:{plocal}" if pprefix else plocal
+    return None
+
+
+_IDREF_RE = re.compile(r'\b(?:[\w]+:)?IdRef="([^"]+)"')
+_DISPLAYNAME_RE = re.compile(r'\bDisplayName="([^"]*)"')
+
+
+def _n5_next_idref(content: str, base: str = "LogMessage_Auto") -> str:
+    """Return next unused IdRef of form `<base>_<n>`. Scans existing IdRefs."""
+    used = set(_IDREF_RE.findall(content))
+    n = 1
+    while f"{base}_{n}" in used:
+        n += 1
+    return f"{base}_{n}"
+
+
+def _n5_unique_display_name(content: str, base: str) -> str:
+    """Return unique DisplayName based on `base`. Se `base` já usado no arquivo,
+    appenda ` #<n>` até virar único.
+
+    Evita ST-NMG-004 (DisplayName repetido > limite 1 por workflow). Activity
+    original com DisplayName duplicado já viola — Trace inserido com mesmo
+    DisplayName amplifica. Usar suffix garante uniqueness do INSERT mesmo se
+    o source duplicava.
+    """
+    used = set(_DISPLAYNAME_RE.findall(content))
+    if base not in used:
+        return base
+    n = 2
+    while True:
+        candidate = f"{base} #{n}"
+        if candidate not in used:
+            return candidate
+        n += 1
+
+
+@register("add_prefixo_arg")
+def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
+                           project_root: Path | None = None) -> bool:
+    """Declare `in_StPrefixoLog` arg + rewrite literal LogMessage Messages
+    pra usar prefixo (N-3 path 1).
+
+    Spec:
+        prefixo_arg : nome do arg (default "in_StPrefixoLog")
+
+    Behavior:
+      1. Adiciona `<x:Property Name="<prefixo_arg>" Type="InArgument(x:String)" />`
+         em `<x:Members>` (idempotent — skip se já existe).
+      2. Adiciona default-value block `<this:<Class>.<prefixo_arg>>` com Literal
+         vazio APÓS `</x:Members>`. Cobre callers que não bindam.
+      3. Reescreve Messages literais `Message="[&quot;X&quot;]"` para
+         `Message="[<prefixo_arg> + &quot;X&quot;]"`. Limita a literal-string
+         expressions — não toca expressions complexas.
+
+    Cuidado: Path 2 N-3 (Messages com expressões complexas que não usam
+    prefixo) NÃO é coberto aqui — cascade via re-detect próxima iter.
+    """
+    prefixo_arg = spec.get("prefixo_arg") or "in_StPrefixoLog"
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Idempotent: se já declara, no-op.
+    if re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content):
+        return False
+
+    new_content = content
+
+    # Step 1: x:Property declaration. Insere depois da última <x:Property> em
+    # <x:Members>, ou imediatamente após `<x:Members>` (sem properties existentes).
+    members_open = re.search(r'<x:Members\b[^>]*>', new_content)
+    if members_open is None:
+        # No <x:Members> block — workflow malformed for our purposes.
+        return False
+    members_end_close = re.search(r'</x:Members\s*>', new_content)
+    if members_end_close is None:
+        return False
+    # Indentation hint: use indentation of last property line, or 4 spaces.
+    members_text = new_content[members_open.end():members_end_close.start()]
+    last_prop = list(re.finditer(r'(\s*)<x:Property\b', members_text))
+    if last_prop:
+        indent = last_prop[-1].group(1).lstrip("\n")
+        if not indent.strip():
+            # whitespace-only — keep
+            pass
+        else:
+            indent = "    "
+    else:
+        indent = "    "
+    insert_str = f'\n{indent}<x:Property Name="{prefixo_arg}" Type="InArgument(x:String)" />'
+    insertion_point = members_end_close.start()
+    # Strip trailing whitespace before </x:Members> to preserve clean format
+    new_content = (new_content[:insertion_point]
+                   + insert_str + "\n" + members_text[-len(re.match(r'\s*$', members_text).group(0)):]
+                   if False
+                   else new_content[:insertion_point].rstrip(" \t\n") + insert_str + "\n  "
+                        + new_content[insertion_point:])
+
+    # Step 2a: garantir xmlns:this declarado no <Activity> root. Sem isso,
+    # `<this:<Class>.<arg>>` quebra XML (unbound prefix).
+    if 'xmlns:this=' not in new_content[:5000]:
+        # Insert antes do `>` que fecha <Activity ...>
+        activity_open_re = re.compile(r'(<Activity\b[^>]*?)(>)', re.DOTALL)
+        am = activity_open_re.search(new_content)
+        if am is None:
+            return False
+        new_content = (new_content[:am.start()]
+                       + am.group(1)
+                       + ' xmlns:this="clr-namespace:"'
+                       + am.group(2)
+                       + new_content[am.end():])
+
+    # Step 2b: default-value block após </x:Members>. Class name extraído do
+    # <Activity x:Class="<Name>"> — Sicoob convention this:<Class>.<arg>.
+    cls_m = re.search(r'<Activity\b[^>]*\bx:Class="([^"]+)"', new_content)
+    if cls_m is None:
+        return False
+    class_name = cls_m.group(1)
+    # Insert depois do </x:Members> recém-emitido. Encontrar nova posição.
+    members_close_re = re.compile(r'</x:Members\s*>')
+    mc = members_close_re.search(new_content)
+    if mc is None:
+        return False
+    default_block = (
+        f'\n  <this:{class_name}.{prefixo_arg}>'
+        f'<InArgument x:TypeArguments="x:String">'
+        f'<Literal x:TypeArguments="x:String" Value="" />'
+        f'</InArgument>'
+        f'</this:{class_name}.{prefixo_arg}>'
+    )
+    # Idempotent check
+    if f'this:{class_name}.{prefixo_arg}' not in new_content:
+        new_content = (new_content[:mc.end()] + default_block
+                       + new_content[mc.end():])
+
+    # Step 3: rewrite literal Messages `[&quot;X&quot;]` →
+    # `[<prefixo_arg> + &quot;X&quot;]`. Cobre só literal-string form.
+    msg_re = re.compile(r'(<ui:LogMessage\b[^>]*\bMessage=")\[&quot;([^"]*)&quot;\](")')
+    def _rewrite(m):
+        return f'{m.group(1)}[{prefixo_arg} + &quot;{m.group(2)}&quot;]{m.group(3)}'
+    new_content = msg_re.sub(_rewrite, new_content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("remove_anticipatory_log")
+def apply_remove_anticipatory_log(file: Path, spec: dict, dry_run: bool = True,
+                                    project_root: Path | None = None) -> bool:
+    """Remove `<ui:LogMessage>` antecipatório (N-10).
+
+    Spec (from heuristics.logs.detect_n10_log_anticipatory):
+        log_line     : 1-based line number of LogMessage opening tag
+        parent_name  : qualified parent name (validation guard)
+
+    Behavior:
+      1. Locate `<ui:LogMessage` opening at log_line (or nearby ±1 lines).
+      2. Walk to element end via name-aware walker (paired or self-close).
+      3. Remove element + leading whitespace of the line (clean line removal).
+      4. Idempotente: skip se line não tem mais LogMessage.
+
+    Cuidado: remoção pode amplificar N-5 (log que cobria activity próxima).
+    Layer 2 analyzer-gate captura compile errors. N-5 fixer próxima iter
+    re-insere Trace dentro do window (engine self-heals via fixpoint loop).
+    """
+    log_line = spec.get("log_line")
+    if not log_line:
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    lines = content.splitlines(keepends=True)
+    n_lines = len(lines)
+    if log_line < 1 or log_line > n_lines:
+        return False
+
+    # Locate <ui:LogMessage opening at log_line ±1.
+    log_offset = None
+    for delta in (0, -1, 1):
+        ln = log_line - 1 + delta
+        if ln < 0 or ln >= n_lines:
+            continue
+        ln_offset = sum(len(s) for s in lines[:ln])
+        ln_text = lines[ln]
+        idx = ln_text.find("<ui:LogMessage")
+        if idx >= 0:
+            cand_offset = ln_offset + idx
+            mc = _FULLTAG_RE.match(content, cand_offset)
+            if mc and mc.group("name") == "ui:LogMessage" and mc.group("slash") != "/":
+                log_offset = cand_offset
+                break
+    if log_offset is None:
+        return False
+
+    # Find element end (paired or self-close).
+    end_offset, _ = _n5_walk_to_element_end(content, log_offset)
+    if end_offset is None:
+        return False
+
+    # Determine line-start before log_offset (for clean line removal —
+    # remove leading whitespace + trailing newline of the LogMessage line block).
+    line_start = content.rfind("\n", 0, log_offset) + 1
+    # If preceding chars are whitespace only, drop them.
+    leading = content[line_start:log_offset]
+    if leading and leading.strip() == "":
+        snip_start = line_start
+    else:
+        snip_start = log_offset
+    # Drop trailing newline after end_offset if present (avoid double blank line).
+    snip_end = end_offset
+    if snip_end < len(content) and content[snip_end] == "\n":
+        snip_end += 1
+
+    new_content = content[:snip_start] + content[snip_end:]
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True
+
+
+@register("insert_trace_log")
+def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
+                            project_root: Path | None = None) -> bool:
+    """Insert <ui:LogMessage Level="Trace" .../> as next sibling after a
+    flagged activity (N-5).
+
+    Spec (from heuristics.logs.detect_n5_trace_log_significant):
+        activity_offset    : byte offset of activity opening tag
+        activity_name      : fully-qualified tag name (e.g. "Assign", "ui:HttpClient")
+        activity_line      : 1-based line number for lxml lookup
+        trace_level        : "Trace" (typically)
+        has_prefixo        : True if workflow declares in_StPrefixoLog arg
+        proximity_window   : detector window size (used for safety check)
+
+    Behavior:
+      1. Parse via lxml to find IMMEDIATE PARENT of target activity.
+      2. If parent in restrictive list → skip (returns False).
+      3. Else walk forward via name-aware regex to find activity end offset.
+      4. Skip if Trace already exists within proximity_window after activity.
+      5. Insert LogMessage tag with matching indentation as next sibling.
+      6. Return True if changed.
+    """
+    activity_name = spec.get("activity_name")
+    activity_line = spec.get("activity_line")
+    trace_level = spec.get("trace_level") or "Trace"
+    has_prefixo = bool(spec.get("has_prefixo"))
+    window = int(spec.get("proximity_window") or 600)
+    if not activity_name or not activity_line:
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Locate activity by line + name match. Detector offsets reference
+    # `active_content` (CommentOut stripped) — não mapeiam direto ao raw file.
+    # Resolver via line é robusto: scan a linha apontada e linhas próximas
+    # procurando primeiro `<<activity_name>` que casa.
+    lines = content.splitlines(keepends=True)
+    n_lines = len(lines)
+    if activity_line < 1 or activity_line > n_lines:
+        return False
+    # Compute offset of start of the line.
+    line_start_offset = sum(len(s) for s in lines[: activity_line - 1])
+    # Search within a small window of lines (line ±2) — CommentOut stripping
+    # rarely shifts more than a couple lines but be safe.
+    activity_offset = None
+    m = None
+    for delta in (0, -1, 1, -2, 2):
+        ln = activity_line - 1 + delta
+        if ln < 0 or ln >= n_lines:
+            continue
+        ln_offset = sum(len(s) for s in lines[:ln])
+        ln_text = lines[ln]
+        # Find each `<` in line_text and try to match
+        for col_idx in range(len(ln_text)):
+            if ln_text[col_idx] != "<":
+                continue
+            cand_offset = ln_offset + col_idx
+            mc = _FULLTAG_RE.match(content, cand_offset)
+            if mc is None:
+                continue
+            if mc.group("slash") == "/":
+                continue
+            if mc.group("name") == activity_name:
+                activity_offset = cand_offset
+                m = mc
+                break
+        if m is not None:
+            break
+    if m is None:
+        return False
+
+    # 2. Detect parent via lxml — restrictive check.
+    target_local_only = activity_name.split(":", 1)[-1]
+    parent_qual = _n5_find_immediate_parent_via_lxml(
+        content.encode("utf-8"), activity_line, target_local_only,
+    )
+    if parent_qual is None:
+        # Couldn't resolve parent → conservative skip.
+        return False
+    # F34: schema-driven classification (authoritative). Hardcoded fallback
+    # quando schema não cobre o parent (rare — UiPath core activities).
+    try:
+        from .heuristics.activity_meta import classify_parent_for_logmessage
+        schema_class = classify_parent_for_logmessage(parent_qual)
+    except Exception:
+        schema_class = "unknown"
+    parent_local = parent_qual.split(":", 1)[-1]
+    if schema_class == "restrictive":
+        return False
+    if schema_class == "open":
+        # Multi-child container — sem wrap necessário, insert direto.
+        is_wrap_able_non_qualified = False
+    elif schema_class == "wrap_able":
+        is_wrap_able_non_qualified = True  # treat as wrap-able regardless suffix
+    else:
+        # Unknown — fallback hardcoded lists (legacy behavior).
+        if parent_qual in _N5_RESTRICTIVE_PARENT_NAMES:
+            return False
+        if parent_local in _COLLECTION_LOCAL_NAMES:
+            return False
+        is_wrap_able_non_qualified = parent_local in _N5_WRAP_ABLE_NON_QUALIFIED
+    # Qualified-property parents (`Foo.Bar`): tentamos wrap em Sequence se for
+    # single-child slot conhecido. Outros = skip.
+    #
+    # Wrap-safe suffixes (parent property aceita 1 Activity-shape child):
+    #   .Then, .Else      — If/IfElseIfBlock branches
+    #   .Action           — Catch.Action, Transition.Action
+    #   .Body             — generic body slot
+    #   .ActivityBody     — RetryScope.ActivityBody (ActivityAction wrapper —
+    #                       wrap-able pq Sequence implementa ActivityAction body)
+    #   .RetryAction      — RetryScope.RetryAction (idem)
+    #   .Entry, .Exit     — State.Entry, State.Exit
+    #
+    # Wrap-UNSAFE suffixes (parent property exige tipo specific NÃO Activity):
+    #   .To, .Value       — Assign.To/.Value (InArgument/OutArgument shape)
+    #   .Condition        — VB expression, não Activity
+    #   .Variables        — Variable[] coleção
+    #   .Arguments        — Dictionary
+    #   .AssignOperations — collection tipada
+    #   .Headers/.Cookies/.Parameters — collections
+    is_wrap_able = False
+    if "." in parent_local:
+        suffix = parent_local.rsplit(".", 1)[-1]
+        wrap_safe_suffixes = {
+            "Then", "Else", "Action", "Body",
+            "ActivityBody", "RetryAction",
+            "Entry", "Exit",
+        }
+        if suffix in wrap_safe_suffixes:
+            is_wrap_able = True
+        else:
+            return False
+    if is_wrap_able_non_qualified:
+        is_wrap_able = True
+
+    # 3. Find activity end offset.
+    end_offset, _ = _n5_walk_to_element_end(content, activity_offset)
+    if end_offset is None:
+        return False
+
+    # 4. Safety: skip if a Trace already follows within proximity_window.
+    look = content[end_offset:end_offset + window]
+    if re.search(rf'<ui:LogMessage\b[^>]*\bLevel="{re.escape(trace_level)}"',
+                  look):
+        return False
+
+    # 5. Build LogMessage. Indentation = same as activity's line.
+    line_start = content.rfind("\n", 0, activity_offset) + 1
+    line_prefix = content[line_start:activity_offset]
+    indent = re.match(r"^(\s*)", line_prefix).group(1)
+    display = ""
+    m_dn = re.search(r'\bDisplayName="([^"]*)"', m.group(0))
+    if m_dn:
+        display = m_dn.group(1)
+    if not display:
+        display = activity_name
+    # Sanitize for embedding inside attribute value (XML-escape).
+    safe_disp = (display.replace("&", "&amp;").replace("<", "&lt;")
+                 .replace(">", "&gt;").replace('"', "&quot;"))
+    idref = _n5_next_idref(content, base="LogMessage_Auto")
+    # Message DEVE ser VB expression form `[...]` em Studio Windows target.
+    # Literal sem brackets é parseado por VB compiler como código → erros
+    # BC30109/BC30451 (`'Assign' is a class type`, identifiers undeclared).
+    if has_prefixo:
+        msg_attr = (
+            f'Message="[in_StPrefixoLog + &quot;Concluído: '
+            f'{safe_disp}&quot;]"'
+        )
+    else:
+        msg_attr = f'Message="[&quot;Concluído: {safe_disp}&quot;]"'
+    # DisplayName único por insert: "Trace: <activity>". Evita ST-MRD-002
+    # (default "Log Message") + ST-NMG-004 (DisplayName repetido limite 1).
+    # Suffix `#<n>` se base já usada no arquivo (cobre caso source com 2+
+    # activities de mesmo DisplayName).
+    base_display = f"Trace: {display}"[:120]
+    trace_display = _n5_unique_display_name(content, base_display)
+    safe_trace_disp = (trace_display.replace("&", "&amp;")
+                       .replace("<", "&lt;").replace(">", "&gt;")
+                       .replace('"', "&quot;"))
+    log_tag = (
+        f'<ui:LogMessage DisplayName="{safe_trace_disp}" '
+        f'sap:VirtualizedContainerService.HintSize="334,91" '
+        f'sap2010:WorkflowViewState.IdRef="{idref}" '
+        f'Level="{trace_level}" '
+        f'{msg_attr} />'
+    )
+    insert_block = "\n" + indent + log_tag
+
+    if is_wrap_able:
+        # Wrap: substituir activity por <Sequence>activity\n+log</Sequence>.
+        # Parent é qualified-property single-child slot (.Then/.Else/.Action/
+        # .Body). Sequence é Activity-shape — aceita pelo slot.
+        original_activity = content[activity_offset:end_offset]
+        # Re-indent activity dentro do Sequence (+2 chars).
+        # Pra Sicoob convenção, mantém formatting original — wrap externo só.
+        wrap_indent = indent
+        inner_indent = wrap_indent + "  "
+        # Re-indent activity body com inner_indent (linha-a-linha).
+        activity_lines = original_activity.split("\n")
+        re_indented = activity_lines[0]
+        if len(activity_lines) > 1:
+            re_indented += "\n" + "\n".join(
+                (inner_indent + ln.lstrip(" \t")) if ln.strip() else ln
+                for ln in activity_lines[1:]
+            )
+        # Build Sequence wrapper. DisplayName herda do activity ou usa "Sequence — Trace wrap".
+        seq_disp = f"Sequence (wrap N-5: {display})"[:120]
+        safe_seq = (seq_disp.replace("&", "&amp;").replace("<", "&lt;")
+                    .replace(">", "&gt;").replace('"', "&quot;"))
+        wrapper = (
+            f'<Sequence DisplayName="{safe_seq}">\n'
+            f'{inner_indent}{re_indented}\n'
+            f'{inner_indent}{log_tag}\n'
+            f'{wrap_indent}</Sequence>'
+        )
+        new_content = (content[:activity_offset] + wrapper
+                       + content[end_offset:])
+    else:
+        new_content = content[:end_offset] + insert_block + content[end_offset:]
+    if new_content == content:
+        return False
+    if not dry_run:
+        file.write_text(new_content, encoding="utf-8")
+    return True

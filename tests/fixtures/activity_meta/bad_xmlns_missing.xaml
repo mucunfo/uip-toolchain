@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ui:WriteRange WorkbookPath="C:\foo.xlsx" SheetName="Plan1"/>
+</Activity>

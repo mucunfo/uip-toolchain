@@ -1,0 +1,6 @@
+<Activity xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities">
+  <Sequence>
+    <!-- <ui:CommentOut><Assign DisplayName="dead"/></ui:CommentOut> -->
+    <Assign DisplayName="alive"/>
+  </Sequence>
+</Activity>
