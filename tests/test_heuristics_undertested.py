@@ -98,20 +98,25 @@ def test_s15_empty_inside_outer_sequence_flagged(tmp_path):
 
 
 def test_s15_empty_in_required_parent_skipped(tmp_path):
+    # empty_sequence.py:19-39 lista If.Then E If.Else como required (Studio
+    # exige child em ambos branches quando If.Else está presente).
+    # Catch handler é optional → empty Sequence dentro de Catch flagged.
     body = '''<?xml version="1.0" encoding="utf-8"?>
 <Activity xmlns="x" xmlns:x="x">
-  <If>
-    <If.Then><Sequence /></If.Then>
-    <If.Else><Sequence /></If.Else>
-  </If>
+  <TryCatch>
+    <TryCatch.Try><Sequence /></TryCatch.Try>
+    <TryCatch.Catches>
+      <Catch x:TypeArguments="s:Exception"><Sequence /></Catch>
+    </TryCatch.Catches>
+  </TryCatch>
 </Activity>
 '''
     fc = _write_xaml(tmp_path, body)
     findings = detect_empty_sequence(_rule("S-15"), fc, _project(tmp_path))
-    # If.Then é required → skip; If.Else é optional → flagged.
+    # TryCatch.Try required → skip; Catch optional → flagged.
     flagged_parents = [f.message for f in findings]
-    assert any("If.Else" in m for m in flagged_parents)
-    assert not any("If.Then" in m for m in flagged_parents)
+    assert any("Catch" in m for m in flagged_parents)
+    assert not any("TryCatch.Try" in m for m in flagged_parents)
 
 
 # ---------------------------------------------------------------------------

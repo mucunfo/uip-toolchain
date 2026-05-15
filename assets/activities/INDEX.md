@@ -1,6 +1,6 @@
 ﻿# UiPath Activities - Master Index
-Generated: 2026-05-07 04:39
-Total: 1552 activities across 19 packages
+Generated: 2026-05-14 13:01
+Total: 1560 activities across 20 packages
 
 - [uipath.callout.activities](uipath.callout.activities.md) (1)
 - [uipath.cryptography.activities](uipath.cryptography.activities.md) (8)
@@ -10,6 +10,7 @@ Total: 1552 activities across 19 packages
 - [uipath.integrationservice.activities](uipath.integrationservice.activities.md) (16)
 - [uipath.mail.activities](uipath.mail.activities.md) (50)
 - [uipath.microsoftoffice365.activities](uipath.microsoftoffice365.activities.md) (182)
+- [uipath.ocr.activities](uipath.ocr.activities.md) (8)
 - [uipath.pdf.activities](uipath.pdf.activities.md) (13)
 - [uipath.presentations.activities](uipath.presentations.activities.md) (47)
 - [uipath.system.activities.runtime.portable](uipath.system.activities.runtime.portable.md) (214)

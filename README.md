@@ -7,7 +7,7 @@ Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML
 | Arquivo | Papel |
 |---|---|
 | `README.md` | este — setup, hooks, scripts, fluxo |
-| `rules.yaml` | **fonte única** de regras (227 hoje: A/S/P/I/T/W/D/J/X + per-package; 51 deterministic + 176 LLM-dep) |
+| `rules.yaml` | **fonte única** de regras (233 hoje: A/S/P/I/T/W/D/J/X + per-package; 58 deterministic + 170 contextual + 5 structural) |
 | `ARCHITECTURE.md` | manual operacional (schema, decision tree, file map) |
 | `projects.yaml` | REF + golden projects (regression baseline + known_exceptions) |
 | `models.conf` | paths de projetos modelo (lookup de exemplos via `xaml_example.py`) |

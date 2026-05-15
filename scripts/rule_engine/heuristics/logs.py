@@ -155,10 +155,19 @@ def detect_n5_trace_log_significant(rule, fc, pc):
 
     trace_positions = [m.start() for m in re_log_trace.finditer(content)]
 
+    # Activities cujo PARENT é restrictive collection (sc:BindingList of
+    # IfElseIfBlock items, ActivityFunc.Body slot etc.) NAO podem receber
+    # Trace como sibling — wrap quebra layout. Exclui da deteccao porque
+    # Trace conceitualmente pertence ao BODY interno da activity, nao como
+    # sibling externo.
+    _EXCLUDE_BY_NAME = exclude_ui | {
+        "IfElseIfBlock",  # children of sc:BindingList em IfElseIf collection
+    }
+
     activity_hits: list[tuple[int, str]] = []
     for m in re_ui_activity.finditer(content):
         name = m.group(1)
-        if name in exclude_ui:
+        if name in _EXCLUDE_BY_NAME:
             continue
         activity_hits.append((m.start(), f"ui:{name}"))
     if re_default_activity is not None:
@@ -170,9 +179,51 @@ def detect_n5_trace_log_significant(rule, fc, pc):
         re.search(r'<x:Property\b[^>]*Name="in_StPrefixoLog"', content)
     )
 
+    # Find activity end offset via tag matching (handles self-close + nested).
+    # Proximity window measured from END of activity, NOT start — activities
+    # com declaracoes inline longas (>1000 chars) tinham falsos positivos.
+    def _walk_to_end(start: int, local_name: str) -> int | None:
+        # `start` aponta para '<' do open tag.
+        # Find end of open tag first.
+        i = content.find(">", start)
+        if i == -1:
+            return None
+        if content[i - 1] == "/":
+            return i + 1  # self-close
+        depth = 1
+        cursor = i + 1
+        # Match nested <local_name ...> | </local_name>.
+        # Negative lookahead `(?![\w.])` evita match `<Assign.To>` /
+        # `<Assign.Value>` (qualified properties) como aninhamento.
+        open_re = re.compile(rf'<{re.escape(local_name)}(?![\w.])')
+        close_re = re.compile(rf'</{re.escape(local_name)}\s*>')
+        while depth > 0 and cursor < len(content):
+            nxt_o = open_re.search(content, cursor)
+            nxt_c = close_re.search(content, cursor)
+            if nxt_c is None:
+                return None
+            if nxt_o is not None and nxt_o.start() < nxt_c.start():
+                # nested open — but skip if self-close
+                eo = content.find(">", nxt_o.end())
+                if eo == -1:
+                    return None
+                if content[eo - 1] == "/":
+                    cursor = eo + 1
+                else:
+                    depth += 1
+                    cursor = eo + 1
+            else:
+                depth -= 1
+                cursor = nxt_c.end()
+        return cursor if depth == 0 else None
+
     for pos, name in activity_hits:
-        # Log conta só se estiver DEPOIS da activity, dentro da janela.
-        if any(0 < (tp - pos) <= window for tp in trace_positions):
+        # Compute end offset of this activity to measure proximity FROM end.
+        # Passa QUALIFIED name (ui:MessageBox) — XAML tags são qualified.
+        end_off = _walk_to_end(pos, name)
+        ref = end_off if end_off is not None else pos
+        # Log conta só se estiver DEPOIS do END da activity, dentro da janela.
+        if any(0 <= (tp - ref) <= window for tp in trace_positions):
             continue
         line = _line_for(content, pos)
         # Per-finding fix_mechanical spec — drives `insert_trace_log` fixer.
@@ -337,12 +388,29 @@ def detect_n10_log_anticipatory(rule, fc, pc):
         # Determine if this child is a LogMessage (self-close OR open)
         is_log = name == "ui:LogMessage"
         is_qualified = _n10_is_qualified_property(name)
+        # Skip auto-inserts pelo fixer N-5 (`insert_trace_log`): por construção
+        # eles SAO posicionados como next-sibling de activity executable. Se
+        # parecem antecipatorios eh because eles foram movidos OR parent layout
+        # changed — caso raro, ignorar evita false-positive N-5↔N-10 oscillation.
+        is_auto_insert = False
+        if is_log:
+            tag_src = full
+            if 'sap2010:WorkflowViewState.IdRef="LogMessage_Auto_' in tag_src:
+                is_auto_insert = True
+            elif 'DisplayName="Log Message -' in tag_src or 'DisplayName="Registrar' in tag_src:
+                # "Registrar" mantido legacy (XAMLs antigos pre-2026-05); "Log Message -" eh padrao novo
+                is_auto_insert = True
         # Update parent frame: handle child arrival
         if stack and not is_qualified:
             parent = stack[-1]
+            # ActivityAction body é reativo (Catch/ForEach lambda/etc.) — LogMessage
+            # primeiro filho NAO eh antecipatorio, eh logging de reacao ao evento
+            # que disparou ActivityAction. Skip N-10 nesse contexto.
+            parent_is_reactive = (parent[0] == "ActivityAction")
             if is_log:
-                # check predecessor
-                if not parent[1]:
+                # check predecessor (skip se auto-insert — by-construction OK,
+                # ou se parent é ActivityAction reativo)
+                if not parent[1] and not is_auto_insert and not parent_is_reactive:
                     log_line = _line_for(content, m.start())
                     fix_mech_spec = {
                         "type": "remove_anticipatory_log",
@@ -710,6 +778,56 @@ def _extract_first_word(msg_attr_value: str) -> str | None:
     if not m:
         return None
     return m.group(1)
+
+
+_RE_LOGMSG_OPEN_DN = re.compile(
+    r'<ui:LogMessage\b[^>]*\bDisplayName="([^"]*)"',
+    re.DOTALL,
+)
+_POOR_DN_PATTERNS = [
+    re.compile(r'^\s*Trace\s*:'),
+    re.compile(r'^\s*Log\s*:'),
+    # "Log Message" exact ja em _POOR_DN_EXACT; "Log Message - <empty>" e "Log Message -X"
+    # (sem espaco) caem em prefix sem contexto util:
+    re.compile(r'^\s*Log Message\s*-\s*$'),  # "Log Message -" ou "Log Message - "
+]
+_POOR_DN_EXACT = {"Log Message", "Log", "LogMessage", "Message"}
+
+
+def detect_n17_log_displayname_quality(rule, fc, pc):
+    """N-17: LogMessage DisplayName deve ser descritivo (Sicoob convention).
+
+    Falhas:
+      - DisplayName igual a default Studio ('Log Message', 'Log', 'LogMessage')
+      - Prefix 'Trace:', 'Log -', 'Log:' (template auto-gen herdou DisplayName pobre)
+      - Não usa verbo no infinitivo (-ar/-er/-ir) na primeira palavra significativa
+
+    Bom DisplayName: 'Log Message - <contexto>' (convencao Sicoob: ActivityType + contexto).
+    """
+    content = fc.active_content
+    findings = []
+    for m in _RE_LOGMSG_OPEN_DN.finditer(content):
+        dn = m.group(1).strip()
+        if not dn:
+            continue
+        is_poor = False
+        if dn in _POOR_DN_EXACT:
+            is_poor = True
+        else:
+            for pat in _POOR_DN_PATTERNS:
+                if pat.match(dn):
+                    is_poor = True
+                    break
+        if not is_poor:
+            continue
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=f"{rule.title}: DisplayName '{dn[:60]}' nao-descritivo — verbo infinitivo + acao",
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
 
 
 def detect_n15_log_infinitive(rule, fc, pc):

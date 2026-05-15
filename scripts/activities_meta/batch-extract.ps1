@@ -37,6 +37,35 @@ function Get-PreferredTfmDir([string]$libDir) {
   return $null
 }
 
+# Resolve companion contracts/dependency dirs for a given activities package.
+# Cecil precisa do *.Contracts.dll baseado em (ex: OCRAsyncCodeActivity vive em
+# uipath.ocr.contracts). Sem isso, Resolve() falha e classes derivadas batem em
+# `Test-IsActivity = false` → activities reais viram DataObjects.
+# Heurística: nome do pkg `uipath.<X>.activities` → procura `uipath.<X>.contracts`.
+function Get-CompanionSearchDirs([string]$pkgName) {
+  $dirs = @()
+  $base = $pkgName -replace '\.activities$', '' -replace '\.activities\.', '.'
+  $base = $pkgName -replace '\.activities(\.|$)', '$1'
+  # Try sibling packages: uipath.<X>.contracts, uipath.contracts, uipath.<X>.activities.contracts
+  $candidates = @(
+    ($pkgName -replace '\.activities$', '.contracts'),
+    ($pkgName -replace '\.activities\.runtime.*$', '.contracts'),
+    ($pkgName -replace '\.activities$', '.activities.contracts'),
+    ($pkgName -replace '\.activities\.runtime.*$', '.activities.contracts')
+  ) | Sort-Object -Unique
+  foreach ($c in $candidates) {
+    $dir = Join-Path $NugetCache $c
+    if (Test-Path $dir) {
+      $latestC = Get-LatestVersion $dir
+      if ($latestC) {
+        $tfm = Get-PreferredTfmDir (Join-Path $latestC.FullName "lib")
+        if ($tfm) { $dirs += $tfm }
+      }
+    }
+  }
+  return $dirs
+}
+
 $packages = Get-ChildItem $NugetCache -Directory | Where-Object { $_.Name -like "uipath*activities*" -or $_.Name -eq "uipath.system.activities" -or $_.Name -eq "uipath.uiautomation.activities" }
 "Found $($packages.Count) packages"
 
@@ -54,11 +83,14 @@ foreach ($pkg in $packages) {
     $_.Name -notmatch "\.resources\.dll$"
   }
 
+  $companionDirs = Get-CompanionSearchDirs $pkg.Name
+
   foreach ($dll in $dlls) {
     $outFile = Join-Path $OutDir ("{0}__{1}.json" -f $pkg.Name, $dll.BaseName)
     Write-Host ("EXTRACT {0}/{1}/{2}" -f $pkg.Name, $latest.Name, $dll.Name)
     try {
-      $r = & $extractor -ActivityDll $dll.FullName -OutJson $outFile -StudioDir $StudioDir -ExtraSearchDirs @($tfmDir) 2>&1
+      $extraDirs = @($tfmDir) + $companionDirs
+      $r = & $extractor -ActivityDll $dll.FullName -OutJson $outFile -StudioDir $StudioDir -ExtraSearchDirs $extraDirs 2>&1
       $j = Get-Content $outFile -Raw | ConvertFrom-Json
       $totalEntries = if ($j.EntryCount) { $j.EntryCount } else { $j.ActivityCount }
       if ($totalEntries -gt 0 -and $j.ActivityCount -gt 0) {

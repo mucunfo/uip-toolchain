@@ -1,0 +1,46 @@
+# APIs exclusivas de versão > pin Sicoob.
+#
+# Consumido por heuristic `scripts.rule_engine.heuristics.pin_alert.detect_pin_alert`
+# (rule D-PIN-ALERT em rules.yaml).
+#
+# Para cada package, lista APIs/atributos/elementos XAML que só existem em
+# versões >= `introduced_in`. Quando `project.json::dependencies[<package>]`
+# tem versão pinada < `introduced_in` AND algum XAML do projeto contém o
+# `pattern`, o detector emite finding ERROR.
+#
+# Caso típico: Activity Migrator (Studio GA) ignora pin Sicoob e instala
+# latest stable do pacote, injetando APIs novas em XAMLs migrados. Quando
+# o engine realinha o package ao pin (regra D-1*), as APIs órfãs ficam
+# no XAML e geram `UIPATH:LOAD ERROR` no Studio analyzer.
+#
+# Adicionar novos casos conforme aparecerem em produção. Formato:
+#
+# <PackageName>:
+#   apis:
+#     - pattern: '<regex>'              # ASCII regex, usado por re.finditer no XAML content
+#       introduced_in: 'X.Y.Z'          # primeira versão pública onde a API existe
+#       where: xaml_attribute|xaml_element  # informativo (não muda matching)
+#       fix: 'texto curto pt-BR'        # prose fix no finding
+
+UiPath.UIAutomation.Activities:
+  apis:
+    - pattern: 'RetryScope\.LogRetriedExceptions'
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo LogRetriedExceptions (não existe em UIA pin Sicoob 25.10.8).'
+    - pattern: 'RetryScope\.RetriedExceptionsLogLevel'
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo RetriedExceptionsLogLevel (não existe em UIA pin Sicoob 25.10.8).'
+    - pattern: 'CopyFile\.DestinationResource'
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo DestinationResource. Usar Destination (path local).'
+    - pattern: 'CopyFile\.PathResource'
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo PathResource. Usar Path (path local).'
+    - pattern: '<uix:NWindowOperation\b'
+      introduced_in: '25.10.21'
+      where: xaml_element
+      fix: 'Activity NWindowOperation não disponível no pin 25.10.8. Substituir por NApplicationCard CloseMode="Always" no scope envolvente.'

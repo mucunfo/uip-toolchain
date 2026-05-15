@@ -111,7 +111,8 @@ class Runner:
                     ))
                     continue
 
-                # Apply suppressions
+                # Apply suppressions — ERROR/HALT NUNCA podem ser silenciados
+                # (proibição arquitetural; ver CLAUDE.md project root).
                 for f in findings:
                     if f.severity in (Severity.WARN, Severity.INFO):
                         if is_suppressed_at(suppressions, f.rule_id, f.line):

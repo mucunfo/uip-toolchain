@@ -1276,11 +1276,115 @@ def _n5_unique_display_name(content: str, base: str) -> str:
         n += 1
 
 
+def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
+                             arg_name: str, default_expr: str = '""',
+                             dry_run: bool = True) -> int:
+    """Cross-file cascade: scan all XAMLs in project_root that invoke
+    callee_file via <ui:InvokeWorkflowFile WorkflowFileName="..."/> and
+    insert `<InArgument x:Key="<arg_name>">...</InArgument>` se ausente.
+
+    Heurística do default expression no caller:
+      1. Se caller declara x:Property `<arg_name>` → usa `[<arg_name>]`
+      2. Senão se caller tem Variable `v<ArgNameWithoutPrefix>` → `[v<...>]`
+      3. Senão fallback: `default_expr` (default `""`)
+
+    Returns: number of callers modified.
+
+    Idempotent: callers que já passam o arg são pulados.
+    """
+    if project_root is None or not project_root.exists():
+        return 0
+
+    callee_basename = callee_file.name  # e.g. PreProcessamento.xaml
+    # Path patterns a procurar em WorkflowFileName — / ou \\ separator
+    # Stripping project_root prefix, normalize.
+    try:
+        rel = callee_file.relative_to(project_root)
+        rel_posix = rel.as_posix()  # forward slashes
+        rel_winsep = rel_posix.replace("/", "\\")
+    except Exception:
+        rel_posix = callee_basename
+        rel_winsep = callee_basename
+
+    # WorkflowFileName="..." pode usar / ou \\ ou \\\\ no XML
+    name_patterns = {callee_basename, rel_posix, rel_winsep,
+                     rel_winsep.replace("\\", "\\\\")}
+
+    modified = 0
+    for caller in project_root.rglob("*.xaml"):
+        if caller == callee_file:
+            continue
+        try:
+            ctext = caller.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        # Find all <ui:InvokeWorkflowFile ...WorkflowFileName="...callee..."...>...</ui:InvokeWorkflowFile>
+        # Process each Invoke block independently.
+        new_ctext = ctext
+        # Determine default-expr para esse caller (uma vez).
+        if re.search(rf'<x:Property\b[^>]*Name="{re.escape(arg_name)}"', ctext):
+            caller_default = f"[{arg_name}]"
+        else:
+            # Variable v + capitalized arg_name without leading prefix
+            # e.g. in_StPrefixoLog → vStPrefixoLog
+            short = re.sub(r'^(in|out|io)_', '', arg_name)
+            var_candidate = f"v{short}"
+            if re.search(rf'<Variable\b[^>]*\bName="{re.escape(var_candidate)}"', ctext):
+                caller_default = f"[{var_candidate}]"
+            else:
+                caller_default = default_expr
+
+        # Pattern InvokeWorkflowFile block (non-greedy)
+        invoke_re = re.compile(
+            r'(<ui:InvokeWorkflowFile\b[^>]*?\bWorkflowFileName="([^"]+)"[^>]*>)'
+            r'(.*?)'
+            r'(</ui:InvokeWorkflowFile>)',
+            re.DOTALL,
+        )
+        def _rewrite_invoke(m):
+            opening, wf_name, body, closing = m.group(1), m.group(2), m.group(3), m.group(4)
+            # Match callee?
+            wf_norm = wf_name.replace("\\", "/")
+            wf_basename = wf_norm.split("/")[-1]
+            if wf_basename.lower() != callee_basename.lower():
+                return m.group(0)
+            # Idempotent: já passa?
+            if re.search(rf'\bx:Key="{re.escape(arg_name)}"', body):
+                return m.group(0)
+            # Encontra <ui:InvokeWorkflowFile.Arguments> ... </ui:InvokeWorkflowFile.Arguments>
+            args_re = re.compile(
+                r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
+                re.DOTALL,
+            )
+            am = args_re.search(body)
+            new_in_arg = (
+                f'\n          <InArgument x:TypeArguments="x:String" '
+                f'x:Key="{arg_name}">{caller_default}</InArgument>'
+            )
+            if am:
+                # Insert before closing </ui:InvokeWorkflowFile.Arguments>
+                new_body = body[:am.start()] + am.group(1) + am.group(2) + new_in_arg + "\n        " + am.group(3) + body[am.end():]
+            else:
+                # No Arguments block — add one before </ui:InvokeWorkflowFile>
+                new_body = body + (
+                    f'\n        <ui:InvokeWorkflowFile.Arguments>'
+                    f'{new_in_arg}\n        </ui:InvokeWorkflowFile.Arguments>\n      '
+                )
+            return opening + new_body + closing
+
+        new_ctext = invoke_re.sub(_rewrite_invoke, new_ctext)
+        if new_ctext != ctext:
+            modified += 1
+            if not dry_run:
+                _write_preserving_bom(caller, new_ctext, _file_has_bom(caller))
+    return modified
+
+
 @register("add_prefixo_arg")
 def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
                            project_root: Path | None = None) -> bool:
     """Declare `in_StPrefixoLog` arg + rewrite literal LogMessage Messages
-    pra usar prefixo (N-3 path 1).
+    pra usar prefixo (N-3 path 1) + **cascade callers** (cross-file).
 
     Spec:
         prefixo_arg : nome do arg (default "in_StPrefixoLog")
@@ -1293,6 +1397,11 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
       3. Reescreve Messages literais `Message="[&quot;X&quot;]"` para
          `Message="[<prefixo_arg> + &quot;X&quot;]"`. Limita a literal-string
          expressions — não toca expressions complexas.
+      4. **Cascade**: scan callers que invocam este callee via
+         `<ui:InvokeWorkflowFile WorkflowFileName="...callee.xaml"/>` e
+         insere `<InArgument x:Key="<prefixo_arg>">[expr]</InArgument>`
+         em cada `<ui:InvokeWorkflowFile.Arguments>` que ainda não passa.
+         Default expr heurístico (caller's own arg, var, ou "").
 
     Cuidado: Path 2 N-3 (Messages com expressões complexas que não usam
     prefixo) NÃO é coberto aqui — cascade via re-detect próxima iter.
@@ -1300,8 +1409,18 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
     prefixo_arg = spec.get("prefixo_arg") or "in_StPrefixoLog"
     content = file.read_text(encoding="utf-8-sig")
 
-    # Idempotent: se já declara, no-op.
-    if re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content):
+    # Idempotent: se já declara, **ainda assim cascade nos callers** (defesa).
+    already_declared = bool(
+        re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content)
+    )
+    if already_declared:
+        # Skip Step 1-3, mas cascade Step 4.
+        if project_root:
+            modified = _cascade_arg_to_callers(
+                project_root, file, prefixo_arg, default_expr='""',
+                dry_run=dry_run,
+            )
+            return modified > 0
         return False
 
     new_content = content
@@ -1380,6 +1499,392 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
         return f'{m.group(1)}[{prefixo_arg} + &quot;{m.group(2)}&quot;]{m.group(3)}'
     new_content = msg_re.sub(_rewrite, new_content)
 
+    callee_changed = (new_content != content)
+    if callee_changed and not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+
+    # Step 4: cascade callers (cross-file). Sempre roda quando project_root
+    # presente, mesmo se callee não mudou (defensivo p/ idempotência).
+    cascade_changed = False
+    if project_root:
+        modified = _cascade_arg_to_callers(
+            project_root, file, prefixo_arg, default_expr='""',
+            dry_run=dry_run,
+        )
+        cascade_changed = (modified > 0)
+
+    return callee_changed or cascade_changed
+
+
+@register("guard_linq_arg_ref")
+def apply_guard_linq_arg_ref(file: Path, spec: dict, dry_run: bool = True,
+                              project_root: Path | None = None) -> bool:
+    """W-2 fixer: wrap LINQ over arg reference com null guard.
+
+    Patterns:
+      `in_X.Contains(y)` → `If(in_X Is Nothing, False, in_X.Contains(y))`
+      `in_X.Any(...)`    → `If(in_X Is Nothing, False, in_X.Any(...))`
+      `in_X.Where(...)`  → `If(in_X Is Nothing, Enumerable.Empty(Of T)(), in_X.Where(...))`  ← SKIP (type-dependent)
+      `in_X.Select(...)` → idem SKIP
+      `in_X.First`       → SKIP (typed return)
+
+    Heuristic: so wrap Contains/Any (Boolean return — default False).
+    Outros = skip pra evitar type mismatch.
+
+    File-level: aplica em todas LINQ ocorrências num só call.
+    Idempotent: skip se already guarded (`Is Nothing` preceding).
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Pattern: (in|io)_<Name>.<Method>(<args>)
+    # Type heurística via Hungarian prefix do argumento:
+    #   in_BlX, in_ArrStX, in_DTabX, in_StX, in_IntX, in_DictX ...
+    pat = re.compile(
+        r'\b((?:in|io)_[A-Za-z_][A-Za-z0-9_]*)\.(Contains|Any|Select|Where|First|Single|All|AsEnumerable)\(([^()]*(?:\([^()]*\)[^()]*)*)\)'
+    )
+
+    def _default_for(arg: str, meth: str) -> str | None:
+        """Pick a sensible default Nothing fallback by Hungarian prefix + method."""
+        # Boolean-return methods (always safe to default False)
+        if meth in ("Contains", "Any", "All"):
+            return "False"
+        # Strip 'in_'/'io_' prefix to inspect type marker
+        bare = re.sub(r'^(in|io)_', '', arg)
+        # DataTable: DTab → SKIP — guard sozinho no Select e enganoso. Caller
+        # frequentemente faz `.Select(...)(0)("Field")` — wrap parcial troca NRE
+        # por IndexOutOfRange (array vazio + indexing). Caller deve manualmente
+        # wrappar a chain COMPLETA com `If(dt Is Nothing OrElse dt.Select(...).Length = 0, default, ...)`.
+        # Historico: 47 ocorrencias quebradas em 19 XAMLs (sustentacao 2026-05).
+        if bare.startswith('DTab'):
+            return None
+        if meth == 'AsEnumerable':
+            return None
+        # Array: ArrSt/ArrInt/etc → Select/Where return IEnumerable
+        if bare.startswith('Arr'):
+            if meth in ('Select', 'Where'):
+                return f'{arg}'  # idem self (already empty if Nothing → conceptually OK but unsafe)
+            return None
+        # Dict / List — type-dependent — skip
+        if bare.startswith(('Dict', 'Lst')):
+            return None
+        return None
+
+    changed = 0
+
+    def _rewrite(m):
+        nonlocal changed
+        arg, meth, args = m.group(1), m.group(2), m.group(3)
+        full = m.group(0)
+        return _wrap_or_keep(content, m, arg, meth, args, full)
+
+    def _wrap_or_keep(ct, m, arg, meth, args, full):
+        nonlocal changed
+        pos = m.start()
+        window_before = ct[max(0, pos - 100):pos]
+        if f"{arg} Is Nothing" in window_before or f"If({arg} " in window_before:
+            return full  # already guarded
+        default = _default_for(arg, meth)
+        if default is None:
+            return full  # type-dependent, skip
+        changed += 1
+        return f"If({arg} Is Nothing, {default}, {arg}.{meth}({args}))"
+
+    new_content = pat.sub(_rewrite, content)
+    if changed == 0 or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+_POOR_DN_PREFIXES = ("Trace: ", "Trace:", "Log - ", "Log -", "Log:")
+_POOR_DN_DEFAULTS = {"Log Message", "Log", "LogMessage", "Message", "Write Line"}
+
+
+def _is_poor_log_displayname(dn: str) -> bool:
+    if not dn:
+        return True
+    if dn.strip() in _POOR_DN_DEFAULTS:
+        return True
+    for p in _POOR_DN_PREFIXES:
+        if dn.startswith(p):
+            return True
+    # "Log - TX_END", "Log Message", "Log X" — first word "Log" plain
+    if dn.lower().startswith("log "):
+        return True
+    return False
+
+
+def _improve_log_displayname(old: str, message: str) -> str:
+    """Generate replacement DisplayName from old DN + Message body.
+
+    Heuristics:
+      1. Strip known bad prefixes from old DN → keep tail context
+      2. If tail empty, try first 5 words from Message body (strip [..]/&quot;)
+      3. Fallback: "Registrar evento de log"
+    """
+    tail = old.strip()
+    for p in _POOR_DN_PREFIXES:
+        if tail.startswith(p):
+            tail = tail[len(p):].strip()
+            break
+    if tail in _POOR_DN_DEFAULTS or not tail or tail.lower() == "log":
+        tail = ""
+    if not tail and message:
+        # Extract literal between &quot;...&quot; or between "..."
+        m = re.search(r'&quot;([^&]+?)&quot;', message)
+        if not m:
+            m = re.search(r'"([^"]+)"', message)
+        if m:
+            words = re.findall(r"[A-Za-zÀ-ÿ0-9_]+", m.group(1))[:5]
+            tail = " ".join(words)
+    if not tail:
+        return "Log Message - evento generico"
+    return f"Log Message - {tail}"[:120]
+
+
+@register("rename_poor_log_displayname")
+def apply_rename_poor_log_displayname(file: Path, spec: dict, dry_run: bool = True,
+                                        project_root: Path | None = None) -> bool:
+    """N-17 fixer: renomeia DisplayName pobre em <ui:LogMessage>.
+
+    Pobre = começa com 'Trace:', 'Log -', 'Log:' ou é default 'Log Message'/'Log'.
+    Padrão Sicoob: verbo infinitivo + descrição. Replace por 'Registrar - <tail>'.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    pat = re.compile(r'(<ui:LogMessage\b[^>]*\bDisplayName=")([^"]*)("[^>]*?\bMessage=")([^"]*)(")')
+    changed = 0
+
+    def _rewrite(m):
+        nonlocal changed
+        dn_open, dn_val, mid, msg_val, end = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+        if not _is_poor_log_displayname(dn_val):
+            return m.group(0)
+        new_dn = _improve_log_displayname(dn_val, msg_val)
+        if new_dn == dn_val:
+            return m.group(0)
+        changed += 1
+        safe = (new_dn.replace("&", "&amp;").replace("<", "&lt;")
+                     .replace(">", "&gt;").replace('"', "&quot;"))
+        return f'{dn_open}{safe}{mid}{msg_val}{end}'
+
+    new_content = pat.sub(_rewrite, content)
+    # Also handle LogMessages where Message is BEFORE DisplayName (less common)
+    pat2 = re.compile(r'(<ui:LogMessage\b[^>]*\bMessage=")([^"]*)("[^>]*?\bDisplayName=")([^"]*)(")')
+
+    def _rewrite2(m):
+        nonlocal changed
+        msg_open, msg_val, mid, dn_val, end = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+        if not _is_poor_log_displayname(dn_val):
+            return m.group(0)
+        new_dn = _improve_log_displayname(dn_val, msg_val)
+        if new_dn == dn_val:
+            return m.group(0)
+        changed += 1
+        safe = (new_dn.replace("&", "&amp;").replace("<", "&lt;")
+                     .replace(">", "&gt;").replace('"', "&quot;"))
+        return f'{msg_open}{msg_val}{mid}{safe}{end}'
+
+    new_content = pat2.sub(_rewrite2, new_content)
+
+    if changed == 0 or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("strip_annotation_text")
+def apply_strip_annotation_text(file: Path, spec: dict, dry_run: bool = True,
+                                 project_root: Path | None = None) -> bool:
+    """S-5 / S-5b fixer: remove `sap2010:Annotation.AnnotationText="..."` attrs.
+
+    Sicoob policy: codigo auto-explicativo via DisplayName + variable names.
+    AnnotationText so quando absolutamente imprescindivel. Migrator-injected
+    annotations sao TODOs nao-resolvidos — strip apos review.
+
+    Spec params (opcionais):
+        text_prefix : substring que deve aparecer no INICIO do texto pra
+                      remover. Quando ausente, remove TODOS annotations
+                      (comportamento S-5). Quando presente, remove SOMENTE
+                      annotations cujo texto começa por esse prefixo
+                      (comportamento S-5b, restrito a markers do Migrator).
+
+    Idempotent: file unchanged if no annotation attr present.
+    Cross-file scope: NO. Local-only file edit.
+    """
+    params = spec.get("params") if isinstance(spec.get("params"), dict) else {}
+    text_prefix = params.get("text_prefix")
+
+    content = file.read_text(encoding="utf-8-sig")
+    # Match attribute (with surrounding whitespace) — works for single and
+    # multi-line annotation text (XML preserves newlines as &#xA;).
+    attr_re = re.compile(r'\s+sap2010:Annotation\.AnnotationText="([^"]*)"')
+
+    if text_prefix:
+        # XML attributes têm `[` literal; comparamos contra texto cru do
+        # atributo (sem unescape — `[PostMigration Action Required]` aparece
+        # literal porque colchetes não precisam escape em XML attribute).
+        def _replace(m: re.Match) -> str:
+            attr_text = m.group(1)
+            return "" if attr_text.startswith(text_prefix) else m.group(0)
+        new = attr_re.sub(_replace, content)
+    else:
+        new = attr_re.sub("", content)
+
+    if new == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new, _file_has_bom(file))
+    return True
+
+
+@register("prefix_complex_log_message")
+def apply_prefix_complex_log_message(file: Path, spec: dict, dry_run: bool = True,
+                                       project_root: Path | None = None) -> bool:
+    """N-3 path 2 fixer: prepend `in_StPrefixoLog &` em LogMessage Messages
+    com expressões complexas (que NÃO usam o arg de prefixo).
+
+    Safety:
+      - Wrap só se expr contém literal string (`&quot;...&quot;`) OU `.ToString`
+        OU operadores de concat string (`&` ou `+` com strings). Se expr é puro
+        numeric/boolean, skip (poderia mudar tipo).
+      - Idempotent: skip se `in_StPrefixoLog` já presente.
+      - File-level: aplica em TODAS LogMessages elegíveis num só call.
+
+    Spec:
+        prefixo_arg : nome do arg (default "in_StPrefixoLog")
+
+    Não toca path 1 (literal-only `[&quot;X&quot;]`) — coberto por
+    `apply_add_prefixo_arg`.
+    """
+    params = spec.get("params") if isinstance(spec.get("params"), dict) else spec
+    prefixo_arg = params.get("prefixo_arg") or spec.get("prefixo_arg") or "in_StPrefixoLog"
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Requer prefixo_arg declarado no workflow — senão path 1 deve rodar antes.
+    if not re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content):
+        return False
+
+    msg_re = re.compile(r'(<ui:LogMessage\b[^>]*\bMessage=")\[([^"]+)\]"')
+
+    def _is_safe_to_wrap(expr: str) -> bool:
+        # Already uses prefixo_arg
+        if prefixo_arg in expr:
+            return False
+        # Has string literal
+        if "&quot;" in expr:
+            return True
+        # Has ToString
+        if ".ToString" in expr:
+            return True
+        # Has vbLf (line break literal)
+        if "vbLf" in expr or "vbCrLf" in expr:
+            return True
+        return False
+
+    changed_count = 0
+
+    def _rewrite(m):
+        nonlocal changed_count
+        opening = m.group(1)
+        expr = m.group(2)
+        if not _is_safe_to_wrap(expr):
+            return m.group(0)
+        changed_count += 1
+        # Wrap com `+` (string concat, evita VB validator FP em `&amp;`→`amp`).
+        return f'{opening}[{prefixo_arg} + ({expr})]"'
+
+    new_content = msg_re.sub(_rewrite, content)
+    if changed_count == 0 or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("cascade_caller_in_args")
+def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
+                                  project_root: Path | None = None) -> bool:
+    """Cascade fixer for A-19b: caller falta argumento In declarado pelo callee.
+
+    Cross-file: file aqui = CALLER (não callee). Spec contém info do callee
+    + arg ausente. Add `<InArgument x:Key="<arg>">[default]</InArgument>`
+    no bloco InvokeWorkflowFile.Arguments do caller.
+
+    Spec:
+        callee_path : path relativo do callee (ex: 'Processamento/PreProcessamento.xaml')
+        arg_name    : nome do argumento ausente
+        invoke_idref: opcional, IdRef do InvokeWorkflowFile a desambiguar
+        default_expr: opcional, expressão default (heurística se omitido)
+
+    Idempotente: se caller já passa arg, no-op.
+    """
+    # spec may be {"params": {...}} or flat. Accept both.
+    params = spec.get("params") if isinstance(spec.get("params"), dict) else spec
+    callee_path = params.get("callee_path", "") or spec.get("callee_path", "")
+    arg_name = params.get("arg_name", "") or spec.get("arg_name", "")
+    if not arg_name:
+        return False
+    target_invoke_idref = params.get("invoke_idref") or spec.get("invoke_idref")
+    default_expr = params.get("default_expr") or spec.get("default_expr")
+
+    callee_basename = Path(callee_path).name if callee_path else None
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Heurística default-expr: usa arg do próprio caller, var local, ou "".
+    if default_expr is None:
+        if re.search(rf'<x:Property\b[^>]*Name="{re.escape(arg_name)}"', content):
+            default_expr = f"[{arg_name}]"
+        else:
+            short = re.sub(r'^(in|out|io)_', '', arg_name)
+            var_candidate = f"v{short}"
+            if re.search(rf'<Variable\b[^>]*\bName="{re.escape(var_candidate)}"', content):
+                default_expr = f"[{var_candidate}]"
+            else:
+                default_expr = '""'
+
+    invoke_re = re.compile(
+        r'(<ui:InvokeWorkflowFile\b[^>]*?\bWorkflowFileName="([^"]+)"[^>]*?>)'
+        r'(.*?)'
+        r'(</ui:InvokeWorkflowFile>)',
+        re.DOTALL,
+    )
+
+    def _rewrite(m):
+        opening, wf_name, body, closing = m.group(1), m.group(2), m.group(3), m.group(4)
+        if callee_basename:
+            wf_norm = wf_name.replace("\\", "/")
+            wf_basename = wf_norm.split("/")[-1]
+            if wf_basename.lower() != callee_basename.lower():
+                return m.group(0)
+        if target_invoke_idref:
+            idref_m = re.search(r'IdRef="([^"]+)"', opening)
+            if not idref_m or idref_m.group(1) != target_invoke_idref:
+                return m.group(0)
+        if re.search(rf'\bx:Key="{re.escape(arg_name)}"', body):
+            return m.group(0)
+        new_in_arg = (
+            f'\n          <InArgument x:TypeArguments="x:String" '
+            f'x:Key="{arg_name}">{default_expr}</InArgument>'
+        )
+        args_re = re.compile(
+            r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
+            re.DOTALL,
+        )
+        am = args_re.search(body)
+        if am:
+            new_body = (body[:am.start()] + am.group(1) + am.group(2)
+                        + new_in_arg + "\n        " + am.group(3) + body[am.end():])
+        else:
+            new_body = body + (
+                f'\n        <ui:InvokeWorkflowFile.Arguments>'
+                f'{new_in_arg}\n        </ui:InvokeWorkflowFile.Arguments>\n      '
+            )
+        return opening + new_body + closing
+
+    new_content = invoke_re.sub(_rewrite, content)
     if new_content == content:
         return False
     if not dry_run:
@@ -1587,6 +2092,9 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
             "Then", "Else", "Action", "Body",
             "ActivityBody", "RetryAction",
             "Entry", "Exit",
+            "Try", "Finally",  # TryCatch.Try / TryCatch.Finally — single-child Activity slot
+            "Default",  # FlowSwitch.Default, Switch.Default — single-child
+            "True", "False",  # FlowDecision.True / FlowDecision.False
         }
         if suffix in wrap_safe_suffixes:
             is_wrap_able = True
@@ -1630,11 +2138,17 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
         )
     else:
         msg_attr = f'Message="[&quot;Concluído: {safe_disp}&quot;]"'
-    # DisplayName único por insert: "Trace: <activity>". Evita ST-MRD-002
-    # (default "Log Message") + ST-NMG-004 (DisplayName repetido limite 1).
-    # Suffix `#<n>` se base já usada no arquivo (cobre caso source com 2+
-    # activities de mesmo DisplayName).
-    base_display = f"Trace: {display}"[:120]
+    # DisplayName usa verbo infinitivo (Sicoob N-15) + sanitized activity context.
+    # Strip prefixes ruins do source DisplayName (`Trace:`, `Log -`, `Log Message`).
+    # Evita ST-MRD-002 (default "Log Message") + ST-NMG-004 (DisplayName repetido).
+    _sanitized = display
+    for _prefix in ("Trace: ", "Trace:", "Log - ", "Log -", "Log Message", "Log:", "Log "):
+        if _sanitized.startswith(_prefix):
+            _sanitized = _sanitized[len(_prefix):].strip()
+            break
+    if not _sanitized or _sanitized.lower() in ("log", "logmessage", "message"):
+        _sanitized = activity_name.split(":", 1)[-1]
+    base_display = f"Log Message - {_sanitized} concluido"[:120]
     trace_display = _n5_unique_display_name(content, base_display)
     safe_trace_disp = (trace_display.replace("&", "&amp;")
                        .replace("<", "&lt;").replace(">", "&gt;")
@@ -1683,4 +2197,187 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
         return False
     if not dry_run:
         _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("remove_xml_comment_root")
+def apply_remove_xml_comment_root(file: Path, spec: dict, dry_run: bool = True,
+                                    project_root: Path | None = None) -> bool:
+    """S-17 fixer: remove XmlComment as direct child of <Activity> root.
+
+    Studio compiler aborta com 'Unable to cast XmlComment to XmlElement' quando
+    comment esta entre <Activity> open tag e o primeiro child element.
+
+    Remove ALL XmlComments na regiao entre Activity-open e first-element.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    activity_re = re.compile(r'<Activity\b[^>]*?>', re.DOTALL)
+    m = activity_re.search(content)
+    if m is None:
+        return False
+    activity_end = m.end()
+    first_elem_re = re.compile(r'<(?!!|\?)[A-Za-z]')
+    fe = first_elem_re.search(content, activity_end)
+    if fe is None:
+        return False
+    first_elem_start = fe.start()
+    gap = content[activity_end:first_elem_start]
+    comment_re = re.compile(r'\n?\s*<!--.*?-->\n?', re.DOTALL)
+    new_gap, n = comment_re.subn('\n', gap)
+    if n == 0:
+        return False
+    new_gap = re.sub(r'\n\s*\n+', '\n', new_gap)
+    new_content = content[:activity_end] + new_gap + content[first_elem_start:]
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("project_manifest_remove_stale_entries")
+def apply_project_manifest_remove_stale_entries(
+    file: Path, spec: dict, dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """J-8 fixer: remove entries from a project.json array (`key_path`)
+    whose `filename_field` references a file that does not exist on disk.
+
+    Spec:
+      key_path: dot-separated path do array
+                (default: 'designOptions.fileInfoCollection')
+      filename_field: nome do campo dentro de cada entry (default: 'fileName')
+
+    Idempotente; no-op se array faltando/vazio ou todos arquivos existem.
+    Preserva BOM. Mantém indent=2 + trailing newline (mesmo padrão dos
+    fixers JSON existentes).
+    """
+    import json as _json
+    key_path = spec.get("key_path", "designOptions.fileInfoCollection")
+    filename_field = spec.get("filename_field", "fileName")
+    if not key_path or not filename_field:
+        return False
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    text = raw.decode("utf-8-sig")
+    try:
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        return False
+
+    keys = key_path.split(".")
+    cur = data
+    for k in keys[:-1]:
+        if not isinstance(cur, dict):
+            return False
+        cur = cur.get(k)
+        if cur is None:
+            return False
+    if not isinstance(cur, dict):
+        return False
+    last = keys[-1]
+    arr = cur.get(last)
+    if not isinstance(arr, list) or not arr:
+        return False
+
+    root = Path(project_root) if project_root is not None else file.parent
+    kept = []
+    for entry in arr:
+        if not isinstance(entry, dict):
+            kept.append(entry)
+            continue
+        fname = entry.get(filename_field)
+        if not fname or not isinstance(fname, str):
+            kept.append(entry)
+            continue
+        rel = fname.replace("\\", "/")
+        target = (root / rel).resolve()
+        if target.exists():
+            kept.append(entry)
+        # else: drop entry
+
+    if len(kept) == len(arr):
+        return False  # no-op
+
+    cur[last] = kept
+    new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("gitignore_append_lines")
+def apply_gitignore_append_lines(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """HY-4 fixer: garante entries obrigatórios em .gitignore.
+
+    Spec:
+      missing: list[str] de linhas faltando (injetadas pela heuristic).
+      defaults: list[str] de entries obrigatórios (fallback se missing ausente).
+    Idempotente; cria .gitignore se ausente. Preserva CRLF se já existente,
+    senão LF. Append no fim com bloco separador.
+    """
+    missing = spec.get("missing") or spec.get("defaults") or []
+    if not missing:
+        return False
+    if file.exists():
+        try:
+            existing_bytes = file.read_bytes()
+        except OSError:
+            return False
+        eol = b"\r\n" if b"\r\n" in existing_bytes else b"\n"
+        existing_text = existing_bytes.decode("utf-8", errors="replace")
+        existing_lines = {ln.strip() for ln in existing_text.splitlines() if ln.strip()}
+        to_add = [m for m in missing if m not in existing_lines]
+        if not to_add:
+            return False
+        new_block = (eol.decode("ascii")).join(
+            ["", "# Engine rule-engine HY-4 — required entries"] + to_add + [""]
+        )
+        if not existing_text.endswith("\n") and not existing_text.endswith("\r\n"):
+            new_block = (eol.decode("ascii")) + new_block
+        new_text = existing_text + new_block
+    else:
+        new_text = "\n".join(
+            ["# Generated by rule-engine HY-4"] + list(missing) + [""]
+        )
+    if not dry_run:
+        file.write_text(new_text, encoding="utf-8", newline="")
+    return True
+
+
+@register("normalize_eol_crlf")
+def apply_normalize_eol_crlf(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """HY-5 fixer: normaliza EOL → CRLF (Windows + XAML Studio std).
+    Idempotente; preserva BOM. Re-encode UTF-8 igual ao read.
+    """
+    try:
+        raw = file.read_bytes()
+    except OSError:
+        return False
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    body = raw[3:] if bom else raw
+    # Normalize: CRLF → LF first, depois LF → CRLF
+    normalized = body.replace(b"\r\n", b"\n").replace(b"\r", b"\n").replace(b"\n", b"\r\n")
+    new_raw = (b"\xef\xbb\xbf" if bom else b"") + normalized
+    if new_raw == raw:
+        return False
+    if not dry_run:
+        file.write_bytes(new_raw)
+    return True
+
+
+@register("strip_bom")
+def apply_strip_bom(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """HY-6 fixer: strip UTF-8 BOM. JSON convention sem BOM.
+    Idempotente; no-op se já sem BOM.
+    """
+    try:
+        raw = file.read_bytes()
+    except OSError:
+        return False
+    if not raw.startswith(b"\xef\xbb\xbf"):
+        return False
+    if not dry_run:
+        file.write_bytes(raw[3:])
     return True

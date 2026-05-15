@@ -19,6 +19,8 @@ from scripts.rule_engine._types import Finding
 _REQUIRED_PARENTS = frozenset({
     # Classic control flow — Then/Else/Body são exigidos pela activity:
     "If.Then",                    # If sem Then = compile error
+    "If.Else",                    # quando presente, exige 1 child (regex_replace
+                                  # simples não pode remover If.Else wrapper junto)
     "While.Body", "DoWhile.Body", # loop body required
     "ForEach.Body", "ParallelForEach.Body",
     # TryCatch.Try — Try block sempre tem 1 activity body

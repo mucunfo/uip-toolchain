@@ -1,6 +1,6 @@
 ﻿# uipath.microsoftoffice365.activities
-Assembly: UiPath.MicrosoftOffice365.Activities v3.6.10.0
-PackageVersion: 3.6.10
+Assembly: UiPath.MicrosoftOffice365.Activities v3.5.10.0
+PackageVersion: 3.5.10
 ActivityCount: 182
 
 ## UiPath.MicrosoftOffice365.Activities.Calendar.AddAttachment
@@ -1419,7 +1419,6 @@ ActivityCount: 182
   - SheetName : String [In]  // Nome da planilha
   - GlobalRange : String [In]  // Intervalo global
   - HasHeaders : Boolean [In]  // Tem cabeçalhos
-  - IgnoreEmptyValues : Boolean [In]  // Ignorar linhas/colunas vazias
   - ReadAs : UiPath.MicrosoftOffice365.Enums.ValuesType [In]  // O que ler
   - Result : T [Out]  // Intervalo de leitura
   - RangeInformation : UiPath.MicrosoftOffice365.Excel.Models.RangeInformation [Out]  // Informações do intervalo
@@ -2384,7 +2383,7 @@ ActivityCount: 182
   - SimpleSearch : String [In]  // Pesquisa simples
   - FreeTextFilter : String [In]
   - QueryFilter : String [In]
-  - SortOptions : UiPath.MicrosoftOffice365.Files.Enums.SortOrder [Plain]  // Classificar por
+  - SortOptions : UiPath.MicrosoftOffice365.Files.Enums.SortOrder [Plain]  // Sort by
   - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode> [Plain]
   - Length : Int32 [Out]  // Quantidade total de arquivos/pastas processados
   - Connector : String [Plain]
@@ -2530,7 +2529,7 @@ ActivityCount: 182
   - SimpleSearch : String [In]
   - FreeTextFilter : String [In]
   - QueryFilter : String [In]
-  - SortOptions : UiPath.MicrosoftOffice365.Files.Enums.SortOrder [Plain]  // Classificar por
+  - SortOptions : UiPath.MicrosoftOffice365.Files.Enums.SortOrder [Plain]  // Sort by
   - FilterSelectionBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Files.Enums.SearchSelectionMode> [Plain]
   - Connector : String [Plain]
   - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
@@ -3132,7 +3131,6 @@ ActivityCount: 182
 - optional:
   - Email : UiPath.MicrosoftOffice365.Models.Office365Message [In]  // MensagemDoEmail
   - DestinationPath : String [In]  // Caminho de destino
-  - CreateMissingFolders : Boolean [In]
   - ConflictResolution : UiPath.MicrosoftOffice365.Enums.ConflictBehavior [In]  // Se um arquivo já existirem
   - BodyAsHtml : Boolean [In]  // Retornar Corpo como HTML
   - Result : UiPath.Platform.ResourceHandling.ILocalResource [Out]  // Email
@@ -3739,7 +3737,6 @@ ActivityCount: 182
   - ContinueOnError : Boolean [In]  // ContinuarComErro
   - Connector : String [Plain]  // Selecione um conector
   - EmailAddress : String [In]  // UsuárioDoOAuth2
-  - UseBroker : Nullable<Boolean> [Plain]  // Use Broker
   - ImpersonatedUserEmailAddress : String [In]  // Endereço de email de usuário personificado
   - DataStoreLocation : UiPath.MicrosoftOffice365.Activities.Enums.DataStoreLocation [Plain]  // LocalDoArmazenamentoDeDados
   - Folder : String [In]  // CaminhoDaPastaDoOrchestrator
@@ -3928,7 +3925,7 @@ ActivityCount: 182
   - BrowserSiteUrl : String [In]  // URL do site
   - List : UiPath.MicrosoftOffice365.Activities.Sharepoint.Models.ListArgument [Plain]
   - ListItems : Data.DataTable [In]  // Itens da lista a adicionar
-  - HasHeadersRow : Boolean [In]  // Tem linhas de cabeçalhos
+  - HasHeadersRow : Boolean [In]  // Has headers row
   - RequiredScopes : Collections.Generic.IEnumerable<Collections.Generic.IEnumerable<String>> [Plain]
   - Connector : String [Plain]
   - AuthScopesInvalid : Boolean [Plain]

@@ -137,9 +137,15 @@ rules:
         module: scripts.rule_engine.heuristics.windows
         function: detect_w2_linq_no_guard
     fix:
+      apply_class: deterministic
+      mechanical:
+        type: guard_linq_arg_ref
+        params: {}
       prose: |
         Guardar antes do LINQ: `[arg Is Nothing OrElse Not arg.Contains(x)]`,
         `[If(arg Is Nothing, defaultExpr, arg.Where(...))]`.
+        Auto-fix cobre apenas Contains/Any (Boolean retorno). Where/Select/First
+        type-dependent — manual.
 
   - id: W-3
     severity: WARN
@@ -634,6 +640,46 @@ rules:
         attended_markers: [attended]
         attended_negative_markers: [unattended]
 
+  - id: J-8
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "fileInfoCollection com fileName apontando file inexistente"
+    description: |
+      `project.json::designOptions.fileInfoCollection[].fileName` referencia
+      arquivo que não existe no disco. Studio publish FALHA com:
+
+        "O caso de teste não foi encontrado no caminho esperado. Restaure o
+         arquivo recriando-o no caminho especificado ou a partir do controle
+         de origem. Se preferir, simplesmente remova o caso de teste ausente."
+
+      Studio analyze (uipcli analyze) NÃO valida isso — só publish detecta.
+
+      Causa típica: TC deletado em refactor mas manifest project.json não
+      atualizado. Engine atua como guardrail antes do publish.
+
+      Detector é genérico p/ outros fileInfo-style arrays no project.json
+      (e.g. `webServices`), parametrizado via `key_path` + `filename_field`.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.project_manifest
+        function: detect_j8_stale_fileinfo_entries
+        key_path: designOptions.fileInfoCollection
+        filename_field: fileName
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: project_manifest_remove_stale_entries
+        key_path: designOptions.fileInfoCollection
+        filename_field: fileName
+      prose: |
+        Remover entry de `project.json::designOptions.fileInfoCollection`
+        cujo `fileName` aponta arquivo inexistente. Ou restaurar arquivo
+        se foi deletado por engano (git checkout do path original).
+
 # ---- X — Compile/runtime preventers (extraídos de lints atuais) ----
 
   - id: X-1
@@ -989,6 +1035,76 @@ rules:
       params:
         module: scripts.rule_engine.heuristics.transaction_item
         function: detect_a19b_in_args_missing
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: cascade_caller_in_args
+        params: {}
+
+  - id: N-17
+    severity: WARN
+    category: architectural
+    target: all
+    title: "LogMessage DisplayName pobre/nao-descritivo"
+    description: |
+      DisplayName de LogMessage deve seguir convencao Sicoob:
+      `<ActivityType> - <contexto>`. Mantem o nome original do tipo de
+      activity ("Log Message") e adiciona contexto especifico.
+      Casos pobres:
+        - Default Studio sem contexto: 'Log Message', 'Log', 'LogMessage'
+        - Auto-gerado abreviado: 'Trace: X', 'Log - X', 'Log: X'
+      Bom: 'Log Message - Cadastro realizado', 'Log Message - Token obtido',
+      'Log Message - Transacao concluida'.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Tests/**", "**/Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.logs
+        function: detect_n17_log_displayname_quality
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: rename_poor_log_displayname
+        params: {}
+      prose: |
+        Auto-fix `rename_poor_log_displayname` substitui DisplayName pobre
+        por 'Log Message - <contexto>' usando contexto do DN antigo ou Message body.
+
+  - id: N-16
+    severity: WARN
+    category: architectural
+    target: all
+    title: "LogMessage sem rastreabilidade semantica"
+    description: |
+      Conteudo da Message em <ui:LogMessage> deve gerar rastreabilidade real
+      em producao: acao especifica + contexto (IDs, valores runtime) +
+      distinguivel de outras logs.
+
+      Falhas detectadas por LLM validator (Claude Code CLI):
+      - Termos genericos sem contexto: "OK", "Concluido", "Pronto", "Done"
+      - Literais curtos sem variable references
+      - Mensagens duplicadas em multiplas activities
+      - Sem placeholder runtime (`vXxx`, `in_Xxx`, `&` concatenations)
+
+      Validator cacheia veredito por hash da mensagem
+      em `.uipath-rules-cache/llm_logmsg.json` — re-runs sao baratas.
+
+      Fail-open: erro de LLM (CLI ausente, network, etc) NAO emite finding.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Tests/**", "**/Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.log_traceability
+        function: detect_n16_log_semantic_traceability
+    fix:
+      prose: |
+        Reescrever Message com contexto: incluir variable/argument
+        references (ex: `in_StPrefixoLog + "Validou coop " + vStCoopId`)
+        OU IDs/valores especificos. Evitar literais genericos.
 
   - id: A-19c
     severity: WARN
@@ -1099,6 +1215,45 @@ rules:
     detect:
       type: regex
       pattern: 'sap2010:Annotation\.AnnotationText'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_annotation_text
+        params: {}
+
+  - id: S-5b
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Annotation [PostMigration Action Required] do Activity Migrator"
+    description: |
+      Activity Migrator injeta `sap2010:Annotation.AnnotationText` começando
+      com `[PostMigration Action Required]` em TryCatch (e outras activities)
+      ao migrar Legacy→Windows, sinalizando ações manuais pós-migração.
+
+      Esses markers DEVEM ser removidos após o desenvolvedor revisar e tratar
+      o ponto. Permanecer no XAML = item pendente esquecido.
+
+      Diferente da S-5 (annotations gerais — exclui REFramework template),
+      S-5b ataca SOMENTE markers do Migrator em QUALQUER arquivo (sem exclude
+      REFramework — Migrator injeta nele justamente).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: 'sap2010:Annotation\.AnnotationText="\[PostMigration Action Required\]'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_annotation_text
+        params:
+          text_prefix: "[PostMigration Action Required]"
+      prose: |
+        Revisar o conteúdo do annotation, aplicar refactor necessário (ex:
+        migrar Classic exception → Modern), depois remover o annotation.
+        Fixer mecânico remove o atributo XAML. Se a recomendação do Migrator
+        não se aplica (ex: chain credentials Sicoob A-3), também remover —
+        annotation é ferramenta de revisão, não comentário permanente.
 
   - id: S-6
     severity: WARN
@@ -1541,6 +1696,142 @@ rules:
         Remover `<Sequence.Variables>` vazio. Studio tolera Sequence sem o
         bloco. Idempotente — no-op se já removido.
 
+  - id: S-17
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "XmlComment direct child de <Activity> quebra Studio compiler"
+    description: |
+      Comments XML como `<!-- ... -->` posicionados como direct child de
+      `<Activity>` root (entre open tag e first child element) ABORTAM
+      Studio compiler com `Unable to cast object of type 'System.Xml.XmlComment'
+      to type 'System.Xml.XmlElement'`. Build da biblioteca falha em
+      PREPROCESSING.
+
+      Origem comum: scripts de mass-suppress que injetam reasons cosmeticas
+      (VIOLA CLAUDE.md). Tambem ocorre quando dev escreve notas em local
+      errado — deveria usar `sap2010:Annotation.AnnotationText` attribute.
+
+      Fix mecanico: remover comment. Caso queira preservar como documentacao,
+      mover para `sap2010:Annotation.AnnotationText` no elemento descritivo
+      apropriado (Activity, Sequence, etc.).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.xml_pollution
+        function: detect_s17_xml_comment_root
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: remove_xml_comment_root
+        params: {}
+      prose: |
+        Auto-fix `remove_xml_comment_root` apaga TODO `<!--...-->` no espaco
+        entre `<Activity ...>` open e primeiro child element. Idempotente.
+
+  - id: S-18
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "ActivityFunc body vazio em .OCREngine/.CVEngine"
+    description: |
+      Property `.OCREngine` / `.CVEngine` em activities Modern UI (ex:
+      `<uix:NApplicationCard.OCREngine>`) recebe `<ActivityFunc>` callback
+      que precisa de activity child real (OCR/CV engine activity). Body
+      vazio — só `<ActivityFunc.Argument>` com DelegateInArgument
+      placeholder — não satisfaz Studio compiler.
+
+      Studio falha compile com:
+        `OCR Engine must be set` (NApplicationCard.OCREngine vazio)
+        `CV Engine must be set`  (NApplicationCard.CVEngine vazio)
+
+      Causa típica: Activity Migrator pós Legacy→Windows deixa
+      placeholder sem plugar OCR engine activity. ActivityFunc tem somente
+      bloco Argument, sem activity dentro.
+
+      Fix: inserir activity OCR/CV no body do ActivityFunc. Para Sicoob,
+      default é `<p1:UiPathScreenOCR>` do pacote `UiPath.OCR.Activities`
+      (pin D-1k = 3.24.0). xmlns canônico:
+      `http://schemas.uipath.com/workflow/activities/ocr`.
+
+      Por ser structural (depende de decidir qual engine plugar — pode ser
+      `UiPathScreenOCR`, `UiPathDocumentOCR`, `MicrosoftOCR`, etc.), engine
+      NÃO aplica fix mecânico. Detector emite alerta + prose; correção
+      via subagent `uipath-creator` / dev humano.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.empty_activityfunc
+        function: detect_empty_ocr_activityfunc
+    fix:
+      apply_class: structural
+      prose: |
+        Plug activity OCR/CV no body do ActivityFunc. Default Sicoob:
+        ```xml
+        <p1:UiPathScreenOCR ApiKey="{x:Null}" Endpoint="{x:Null}" Output="{x:Null}"
+          PredictionId="{x:Null}" Text="{x:Null}" UseAccents="{x:Null}"
+          UseLocalServer="{x:Null}" ComputeSkewAngle="False" ExtractWords="True"
+          Image="[Image]" Language="en" NoopExecution="False" Profile="Screen"
+          Scale="1" Timeout="100000" />
+        ```
+        Adicionar `xmlns:p1="http://schemas.uipath.com/workflow/activities/ocr"`
+        no root do XAML se ausente. Confirmar `UiPath.OCR.Activities` em
+        `project.json::dependencies` (pin D-1k = 3.24.0).
+
+  - id: S-19
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Production XAML invoca workflow listado em ignoredFiles (publish-breaking)"
+    description: |
+      `<ui:InvokeWorkflowFile WorkflowFileName="..."/>` em XAML production
+      (fora `Tests/`) referencia file que está em
+      `project.json::designOptions.processOptions.ignoredFiles`.
+
+      Studio analyzer (uipcli analyze) NÃO detecta esse caso e passa
+      "production-ready" — mas Studio Publish gera ERROR:
+        ```
+        The following invoked workflows are missing: <file>
+        Called from: <caller>
+        ```
+
+      Causa típica: mock condicional (`in_BlUsarMockSisbrWeb=True`) invocado
+      via static reference; mock listado em `ignoredFiles` para reduzir
+      tamanho do package. Studio publish valida static reference, ignora
+      conditional gating runtime.
+
+      Bug exato confirmado em PRD com `MockSisbrWeb.xaml` —
+      `ImportarXmlComRetry.xaml` invoca mock; publish quebra.
+
+      Detector cruza ignoredFiles × WorkflowFileName de cada XAML
+      production (exclui `Tests/**`).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "Tests/**"
+        - "**/.local/**"
+        - "**/.tmp/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.invoke_refs
+        function: detect_invoke_ignoredfile_ref
+    fix:
+      apply_class: structural
+      prose: |
+        Verificar se file referenciado precisa ser invocado:
+        - Caso sim (mock dependency baked into prod): remover de
+          `project.json::designOptions.processOptions.ignoredFiles`.
+        - Caso não: refatorar caller para não invocar o file static.
+        Studio publish revalida — confirmar zero S-19 antes de publicar.
+
   - id: S-8b
     severity: WARN
     category: architectural
@@ -1766,7 +2057,11 @@ rules:
           - "/launch.xaml"
           - "launch.xaml"
     fix:
-      apply_class: structural
+      apply_class: deterministic
+      mechanical:
+        type: prefix_complex_log_message
+        params:
+          prefixo_arg: in_StPrefixoLog
       prose: |
         Path 1 (workflow não declara in_StPrefixoLog): fixer
         `add_prefixo_arg` adiciona x:Property + this:<Class>.in_StPrefixoLog
@@ -1774,8 +2069,10 @@ rules:
         `[&quot;X&quot;]` para `[in_StPrefixoLog + &quot;X&quot;]`.
         Callers que não bindam usam default vazio (compile-safe).
 
-        Path 2 (LogMessage não usa prefixo): manual — Messages com
-        expressões complexas exigem interpretação contextual.
+        Path 2 (LogMessage não usa prefixo, expr complexa):
+        `prefix_complex_log_message` faz wrap `[in_StPrefixoLog & (<expr>)]`
+        com guards de tipo (só wrap se expr é String-y: contém literal,
+        .ToString, vbLf, etc.).
 
   - id: N-4
     severity: INFO
@@ -1920,13 +2217,16 @@ rules:
       diferente.
     applies_to:
       include: ["**/*.xaml"]
-      exclude: ["Framework/**", "Tests/**"]
+      exclude: ["Tests/**"]
     detect:
       type: python
       params:
         module: scripts.rule_engine.heuristics.logs
         function: detect_n6_invoke_log_level
-        exclude_paths: *chain_exclude_paths
+        exclude_paths:
+          - "tests/"
+          - "/launch.xaml"
+          - "launch.xaml"
         level_attribute: Level
         canonical_value: Info
         accepted_values:
@@ -1958,13 +2258,16 @@ rules:
       diferente.
     applies_to:
       include: ["**/*.xaml"]
-      exclude: ["Framework/**", "Tests/**"]
+      exclude: ["Tests/**"]
     detect:
       type: python
       params:
         module: scripts.rule_engine.heuristics.logs
         function: detect_n7_invoke_log_entry_exit
-        exclude_paths: *chain_exclude_paths
+        exclude_paths:
+          - "tests/"
+          - "/launch.xaml"
+          - "launch.xaml"
         expected_attributes:
           LogEntry: OnlyInvocation
           LogExit: OnlySuccessfulReturn
@@ -2506,11 +2809,17 @@ rules:
     description: |
       Asset name em TC deve vir de variável de ambiente de teste
       (`vStAssetTeste`, `in_StConfigPath`, etc.), não literal.
+
+      Whitelist arquitetural: bootstrap asset Sicoob
+      (`*Configuracao_Performer` / `*Configuracao_Dispatcher`) é obrigatório
+      literal — chicken-and-egg pra resolver path do Config.xlsx antes do
+      InitAllSettings carregar `in_Config`. Mesmo padrão de Main.xaml
+      produção. Detector skipa esse caso.
     applies_to:
       include: ["Tests/**/*.xaml"]
     detect:
       type: regex
-      pattern: 'AssetName="(?!\[)[^"]+"'
+      pattern: 'AssetName="(?!\[)(?![^"]*Configuracao_(?:Performer|Dispatcher)")[^"]+"'
 
 # ---- D — Dependencies ----
 
@@ -2518,17 +2827,20 @@ rules:
     severity: ERROR
     category: breaking
     target: windows
-    title: "UiPath.System.Activities >= 25.4.4"
+    title: "UiPath.System.Activities == [25.4.4]"
     description: |
-      Pin Sicoob: `UiPath.System.Activities` versão exata `[25.4.4]`.
+      Pin EXATO Sicoob: `UiPath.System.Activities` `[25.4.4]`.
       Versões anteriores não corrigem WorkerProcess.exe .NET 6 detection.
+      Versões posteriores (latest stable injetado por Activity Migrator)
+      podem introduzir APIs exclusivas que quebram quando engine realinha
+      ao pin. Drift em qualquer direção (maior OU menor) é violação policy.
     applies_to:
       include: ["project.json"]
     detect:
       type: nuget_version_check
       params:
         package: UiPath.System.Activities
-        min: "25.4.4"
+        exact: "25.4.4"
     fix:
       apply_class: deterministic
       mechanical:
@@ -2542,17 +2854,21 @@ rules:
     severity: ERROR
     category: breaking
     target: windows
-    title: "UiPath.UIAutomation.Activities >= 25.10.8"
+    title: "UiPath.UIAutomation.Activities == [25.10.8]"
     description: |
-      Pin Sicoob: `[25.10.8]`. Versões anteriores não têm fixes Modern
-      activities (Find Elements, ScreenPlay).
+      Pin EXATO Sicoob: `UiPath.UIAutomation.Activities` `[25.10.8]`.
+      Versões anteriores não têm fixes Modern activities (Find Elements,
+      ScreenPlay). Versões posteriores (ex: 25.10.21 injetado por Activity
+      Migrator) trazem APIs exclusivas (RetryScope.LogRetriedExceptions,
+      CopyFile.DestinationResource, NWindowOperation) que quebram quando
+      engine realinha ao pin. Drift em qualquer direção é violação policy.
     applies_to:
       include: ["project.json"]
     detect:
       type: nuget_version_check
       params:
         package: UiPath.UIAutomation.Activities
-        min: "25.10.8"
+        exact: "25.10.8"
     fix:
       apply_class: deterministic
       mechanical:
@@ -2566,16 +2882,18 @@ rules:
     severity: ERROR
     category: breaking
     target: windows
-    title: "UiPath.Excel.Activities >= 3.1.2"
+    title: "UiPath.Excel.Activities == [3.1.2]"
     description: |
-      Pin Sicoob: `[3.1.2]`.
+      Pin EXATO Sicoob: `UiPath.Excel.Activities` `[3.1.2]`. Drift em
+      qualquer direção (maior OU menor) é violação policy — Activity
+      Migrator pode injetar latest stable; engine realinha ao pin.
     applies_to:
       include: ["project.json"]
     detect:
       type: nuget_version_check
       params:
         package: UiPath.Excel.Activities
-        min: "3.1.2"
+        exact: "3.1.2"
     fix:
       apply_class: deterministic
       mechanical:
@@ -2589,17 +2907,19 @@ rules:
     severity: ERROR
     category: breaking
     target: windows
-    title: "UiPath.Database.Activities >= 1.10.1"
+    title: "UiPath.Database.Activities == [1.10.1]"
     description: |
-      Pin Sicoob: `[1.10.1]`. Pré-1.10.0 tinha bug Try/Catch em Windows
-      que corrompia routing BusinessException × SystemException.
+      Pin EXATO Sicoob: `UiPath.Database.Activities` `[1.10.1]`.
+      Pré-1.10.0 tinha bug Try/Catch em Windows que corrompia routing
+      BusinessException × SystemException. Drift em qualquer direção
+      (maior OU menor) é violação policy.
     applies_to:
       include: ["project.json"]
     detect:
       type: nuget_version_check
       params:
         package: UiPath.Database.Activities
-        min: "1.10.1"
+        exact: "1.10.1"
     fix:
       apply_class: deterministic
       mechanical:
@@ -2610,20 +2930,22 @@ rules:
         Pinar `dependencies."UiPath.Database.Activities" = "[1.10.1]"`.
 
   - id: D-1e
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.WebAPI.Activities >= 1.20.1"
+    title: "UiPath.WebAPI.Activities == [1.20.1]"
     description: |
-      Pin Sicoob: `[1.20.1]`. v1.20.0 foi withdrawn. v1.20.1 corrige
-      UTF-8 file download corruption.
+      Pin EXATO Sicoob: `UiPath.WebAPI.Activities` `[1.20.1]`. v1.20.0 foi
+      withdrawn. v1.20.1 corrige UTF-8 file download corruption. Drift em
+      qualquer direção (maior OU menor) é violação policy — Activity
+      Migrator pode injetar latest stable; engine realinha ao pin.
     applies_to:
       include: ["project.json"]
     detect:
       type: nuget_version_check
       params:
         package: UiPath.WebAPI.Activities
-        min: "1.20.1"
+        exact: "1.20.1"
     fix:
       apply_class: deterministic
       mechanical:
@@ -2635,15 +2957,17 @@ rules:
 
   # D-1f..o: pacotes adicionais pinados (Migração - Legacy.xlsx Dependências)
   - id: D-1f
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.Cryptography.Activities >= 1.4.2"
-    description: "Pin Sicoob: 1.4.2 (Migração Legacy)."
+    title: "UiPath.Cryptography.Activities == [1.4.2]"
+    description: |
+      Pin EXATO Sicoob: `[1.4.2]` (Migração Legacy). Drift em qualquer
+      direção (maior OU menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.Cryptography.Activities, min: "1.4.2" }
+      params: { package: UiPath.Cryptography.Activities, exact: "1.4.2" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2653,15 +2977,17 @@ rules:
       prose: 'Pinar `dependencies."UiPath.Cryptography.Activities" = "[1.4.2]"`.'
 
   - id: D-1g
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.DocumentUnderstanding.OCR.LocalServer >= 1.5.1"
-    description: "Pin Sicoob: 1.5.1."
+    title: "UiPath.DocumentUnderstanding.OCR.LocalServer == [1.5.1]"
+    description: |
+      Pin EXATO Sicoob: `[1.5.1]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.DocumentUnderstanding.OCR.LocalServer, min: "1.5.1" }
+      params: { package: UiPath.DocumentUnderstanding.OCR.LocalServer, exact: "1.5.1" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2671,15 +2997,17 @@ rules:
       prose: 'Pinar `dependencies."UiPath.DocumentUnderstanding.OCR.LocalServer" = "[1.5.1]"`.'
 
   - id: D-1h
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.IntelligentOCR.Activities >= 6.24.0"
-    description: "Pin Sicoob: 6.24.0."
+    title: "UiPath.IntelligentOCR.Activities == [6.24.0]"
+    description: |
+      Pin EXATO Sicoob: `[6.24.0]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.IntelligentOCR.Activities, min: "6.24.0" }
+      params: { package: UiPath.IntelligentOCR.Activities, exact: "6.24.0" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2689,15 +3017,17 @@ rules:
       prose: 'Pinar `dependencies."UiPath.IntelligentOCR.Activities" = "[6.24.0]"`.'
 
   - id: D-1i
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.Mail.Activities >= 1.24.2"
-    description: "Pin Sicoob: 1.24.2."
+    title: "UiPath.Mail.Activities == [1.24.2]"
+    description: |
+      Pin EXATO Sicoob: `[1.24.2]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.Mail.Activities, min: "1.24.2" }
+      params: { package: UiPath.Mail.Activities, exact: "1.24.2" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2707,15 +3037,17 @@ rules:
       prose: 'Pinar `dependencies."UiPath.Mail.Activities" = "[1.24.2]"`.'
 
   - id: D-1j
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.MicrosoftOffice365.Activities >= 2.7.24"
-    description: "Pin Sicoob: 2.7.24."
+    title: "UiPath.MicrosoftOffice365.Activities == [2.7.24]"
+    description: |
+      Pin EXATO Sicoob: `[2.7.24]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.MicrosoftOffice365.Activities, min: "2.7.24" }
+      params: { package: UiPath.MicrosoftOffice365.Activities, exact: "2.7.24" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2725,33 +3057,38 @@ rules:
       prose: 'Pinar `dependencies."UiPath.MicrosoftOffice365.Activities" = "[2.7.24]"`.'
 
   - id: D-1k
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.OCR.Activities >= 3.22.0"
-    description: "Pin Sicoob: 3.22.0."
+    title: "UiPath.OCR.Activities == [3.24.0]"
+    description: |
+      Pin EXATO Sicoob: `[3.24.0]`. Drift em qualquer direção (maior OU
+      menor) é violação policy. Alinhado com peer dependency de
+      UIA.Runtime 25.10.29 (requer OCR.Activities >= 3.24.0).
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.OCR.Activities, min: "3.22.0" }
+      params: { package: UiPath.OCR.Activities, exact: "3.24.0" }
     fix:
       apply_class: deterministic
       mechanical:
         type: set_dependency_pin
         package: UiPath.OCR.Activities
-        version: "[3.22.0]"
-      prose: 'Pinar `dependencies."UiPath.OCR.Activities" = "[3.22.0]"`.'
+        version: "[3.24.0]"
+      prose: 'Pinar `dependencies."UiPath.OCR.Activities" = "[3.24.0]"`.'
 
   - id: D-1l
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.PDF.Activities >= 3.22.1"
-    description: "Pin Sicoob: 3.22.1."
+    title: "UiPath.PDF.Activities == [3.22.1]"
+    description: |
+      Pin EXATO Sicoob: `[3.22.1]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.PDF.Activities, min: "3.22.1" }
+      params: { package: UiPath.PDF.Activities, exact: "3.22.1" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2761,15 +3098,17 @@ rules:
       prose: 'Pinar `dependencies."UiPath.PDF.Activities" = "[3.22.1]"`.'
 
   - id: D-1m
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPath.Testing.Activities >= 24.10.4"
-    description: "Pin Sicoob: 24.10.4."
+    title: "UiPath.Testing.Activities == [24.10.4]"
+    description: |
+      Pin EXATO Sicoob: `[24.10.4]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPath.Testing.Activities, min: "24.10.4" }
+      params: { package: UiPath.Testing.Activities, exact: "24.10.4" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2779,15 +3118,17 @@ rules:
       prose: 'Pinar `dependencies."UiPath.Testing.Activities" = "[24.10.4]"`.'
 
   - id: D-1n
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UiPathTeam.SharePoint.Activities >= 2.0.3"
-    description: "Pin Sicoob: 2.0.3."
+    title: "UiPathTeam.SharePoint.Activities == [2.0.3]"
+    description: |
+      Pin EXATO Sicoob: `[2.0.3]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UiPathTeam.SharePoint.Activities, min: "2.0.3" }
+      params: { package: UiPathTeam.SharePoint.Activities, exact: "2.0.3" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2797,15 +3138,17 @@ rules:
       prose: 'Pinar `dependencies."UiPathTeam.SharePoint.Activities" = "[2.0.3]"`.'
 
   - id: D-1o
-    severity: WARN
-    category: architectural
+    severity: ERROR
+    category: breaking
     target: windows
-    title: "UipathTeam.XML.Activities >= 1.1.0"
-    description: "Pin Sicoob: 1.1.0."
+    title: "UipathTeam.XML.Activities == [1.1.0]"
+    description: |
+      Pin EXATO Sicoob: `[1.1.0]`. Drift em qualquer direção (maior OU
+      menor) é violação policy.
     applies_to: { include: ["project.json"] }
     detect:
       type: nuget_version_check
-      params: { package: UipathTeam.XML.Activities, min: "1.1.0" }
+      params: { package: UipathTeam.XML.Activities, exact: "1.1.0" }
     fix:
       apply_class: deterministic
       mechanical:
@@ -2813,6 +3156,93 @@ rules:
         package: UipathTeam.XML.Activities
         version: "[1.1.0]"
       prose: 'Pinar `dependencies."UipathTeam.XML.Activities" = "[1.1.0]"`.'
+
+  - id: D-PINALERT
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "API exclusiva de versão > pin detectada em XAML"
+    description: |
+      XAML usa API/activity introduzida em versão > pin atual do pacote.
+
+      Causa típica: Activity Migrator (Studio GA, headless) pega latest
+      stable do pacote (ignora pin Sicoob declarado em project.json) e
+      injeta APIs novas durante a migração Windows. Quando engine realinha
+      o pacote ao pin via D-1* (fix mecânico), as APIs órfãs sobrevivem
+      no XAML e geram `UIPATH:LOAD ERROR` no analyzer do Studio.
+
+      D-PIN-ALERT cruza `project.json::dependencies` (pin atual por pacote)
+      com `assets/version_exclusive_apis.yaml` (APIs e versão de origem).
+      Para cada API exclusiva de versão > pin encontrada no XAML, emite
+      finding com fix textual.
+
+      Lista de APIs mantida em `assets/version_exclusive_apis.yaml` —
+      adicionar novos casos conforme aparecerem.
+    applies_to:
+      include: ["*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.pin_alert
+        function: detect_pin_alert
+    fix:
+      apply_class: contextual  # fix depende da API (remove attr vs replace activity)
+      prose: |
+        Ver `fix:` específico no message do finding. Tipicamente:
+        - Atributo XAML exclusivo de versão > pin: REMOVER do XAML.
+        - Activity exclusiva de versão > pin: substituir por equivalente
+          Modern presente na pin (ex: NWindowOperation → NApplicationCard
+          CloseMode="Always").
+        Após edit manual, re-rodar review p/ confirmar que UIPATH:LOAD não
+        dispara mais.
+
+  - id: D-2
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "NuGet peer dependency conflict (NU1605 prevention)"
+    description: |
+      Dependência primária em `project.json::dependencies` tem peer
+      requirement (declarada no `.nuspec` do package) que conflita com pin
+      de outra dependência no mesmo `project.json`.
+
+      Exemplo conceitual:
+        UIA 25.10.29 → peer `UiPath.UIAutomation.Activities.Runtime [25.10.29]`
+        Project pin `UiPath.UIAutomation.Activities.Runtime [25.10.8]`
+        → downgrade. Studio Publish gera `NU1605: package downgrade`.
+
+      Studio analyzer (uipcli analyze) NÃO valida peer compat — passa
+      silencioso. Engine valida cruzando cache local de `.nupkg`
+      (extrai `.nuspec` via ZIP) com `project.json::dependencies`.
+
+      Detector resolve peer requirement de cada primary dep no cache local
+      e checa se versão pinada do peer satisfaz o range (`[X.Y.Z]`,
+      `>=X.Y.Z`, etc.). Conflito → finding com `(primary, peer, expected,
+      actual)`. Não usa `dotnet restore` (offline-safe, determinístico).
+
+      Cache padrão: `~/.nuget/packages/<id>/<version>/<id>.nuspec`.
+      Override via param `nupkgs_cache_dir`.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.nuget_peer
+        function: detect_nuget_peer_conflict
+    fix:
+      apply_class: contextual  # fix depende de qual lado realinhar (primary vs peer)
+      prose: |
+        Resolver conflito atualizando pin para versão compatível:
+        - Option A: alinhar peer ao requirement da primary (recomendado se
+          primary é o pacote core, ex: UIA).
+        - Option B: downgrade da primary para versão cujo peer requirement
+          satisfaz o pin atual.
+        Consultar `.nuspec` do package primário (`<dependencies><group>
+        <dependency>`) para ver requirement exato. Após edit, re-rodar
+        review p/ confirmar zero D-2.
 
 # ============================================================
 # Batch 4 — Per-package (Windows target)
@@ -4456,6 +4886,88 @@ rules:
           [&quot;True&quot;] → [True]
         Validação parseable: float() OR true/false. Senão preserva.
 
+  - id: V-3
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Double-escape de entidade XML em expressão VB"
+    description: |
+      Pattern `&amp;gt;`, `&amp;lt;`, `&amp;quot;` dentro de qualquer
+      atributo XAML que carrega expressão VB (`Code`, `Expression`, `Condition`,
+      `Message`, `OutputMessageFormat`, `ExpressionText`, default literal de
+      InArgument etc.) quebra Studio compile.
+
+      Causa raiz: ferramenta/script geradora aplicou XML escape duas vezes.
+      XAML parser decodifica uma vez (`&amp;gt;` → `&amp;gt;`), VB compiler
+      vê literal `&amp;gt;` e tenta `gt`/`lt`/`quot` como identificador:
+
+        BC30451: 'gt' is not declared.
+        BC30037: Character is not valid.
+        BC30198: ')' expected.
+
+      Single-encode correto: `&amp;gt;` (XAML decode → `>`, VB vê operador).
+
+      Detector é fileset-wide pra pegar pattern em qualquer attribute
+      (regex não consegue ancorar atributo VB de forma confiável em XAML
+      multilinha). False positive aceitável só se XAML tem texto display-
+      only com literal `&amp;gt;` — pathológico, suprimir individualmente.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '(?:Condition|Expression|ExpressionText)="[^"]*&amp;(?:gt|lt|quot);[^"]*"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: '((?:Condition|Expression|ExpressionText)="[^"]*)&amp;(gt|lt|quot);'
+        replacement: '\1&\2;'
+      prose: |
+        Substituir `&amp;XXX;` por `&amp;XXX;` (single-encode).
+        Exemplo: `[Not (lst.Count &amp;gt; 0)]` → `[Not (lst.Count &amp;gt; 0)]`.
+        XAML parser decodifica `&amp;gt;` → `>`, VB compila OK.
+
+  - id: V-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "DisplayName/Annotation com entity double-escape — render quebrado UI"
+    description: |
+      `DisplayName="texto -&amp;amp;gt; algo"` no FILE renderiza Studio UI
+      como literal `texto -&amp;gt; algo` (entity text não decoded) em vez
+      de `texto -> algo`.
+
+      Para Studio mostrar `>` corretamente, atributo deve ser single-encode
+      `DisplayName="texto -&amp;gt; algo"`: XAML parser decodifica `&amp;gt;`
+      → `>`, UI exibe `>`.
+
+      Causa raiz: ferramenta/script geradora aplicou XML escape duas vezes.
+      V-3 cobre contextos de expressão VB (`Expression`, `Condition`,
+      `ExpressionText`); V-4 cobre attrs plain-text de display
+      (`DisplayName`, `AnnotationText`).
+
+      Não é breaking — Studio compila normalmente; só render UI fica feio.
+      Severidade WARN; deterministic fix.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '(?:DisplayName|AnnotationText)="[^"]*&amp;amp;(?:gt|lt|quot|amp);[^"]*"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: '((?:DisplayName|AnnotationText)="[^"]*)&amp;amp;(gt|lt|quot|amp);'
+        replacement: '\1&amp;\2;'
+      prose: |
+        Stripar duplo-encode: `&amp;amp;XXX;` → `&amp;XXX;`. XAML parser
+        decodifica `&amp;XXX;` → `XXX` (caractere real); Studio UI exibe
+        corretamente. Re-rodar fixer até convergir (cobre múltiplas
+        ocorrências no mesmo attribute).
+    examples:
+      bad: 'DisplayName="Item -&amp;amp;gt; Próximo"'
+      good: 'DisplayName="Item -&amp;gt; Próximo"'
+
   - id: U-6
     severity: WARN
     category: architectural
@@ -4763,3 +5275,372 @@ rules:
       prose: |
         Remover atribuição redundante. Studio re-emite atributo no save se
         usuário alterar e voltar — comportamento idempotente.
+
+# ============================================================
+# Batch CX — Complexity metrics (workflow-level)
+# ============================================================
+
+  - id: CX-1
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Cyclomatic complexity excessiva (McCabe)"
+    description: |
+      Soma de decision points no workflow excede threshold McCabe.
+      Inclui: If, Switch/FlowSwitch cases, While/DoWhile, ForEach/
+      ParallelForEach, TryCatch.Catches, Parallel branches, FlowDecision.
+      Industry standard: >10 manutenibilidade degrada; >20 = refactor
+      obrigatório (extract sub-workflows).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["**/Framework/**", "**/Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.complexity
+        function: detect_cx1_cyclomatic
+        threshold_warn: 10
+        threshold_error: 20
+    fix:
+      apply_class: contextual
+      prose: |
+        Extrair branches em sub-workflows. Aplicar pattern Strategy
+        ou State-Machine. Refactor reduz cyclomatic via decomposição
+        modular (A-5).
+
+  - id: CX-2
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Nesting depth excessiva"
+    description: |
+      Profundidade de elementos executáveis aninhados excede threshold.
+      UiPath BP guideline: aninhar > 5 níveis indica lógica complexa em
+      escopo único. >8 = refactor mandatório.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["**/Framework/**", "**/Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.complexity
+        function: detect_cx2_depth
+        threshold_warn: 5
+        threshold_error: 8
+    fix:
+      apply_class: contextual
+      prose: |
+        Achatar via early-return em sub-workflow (extract). Guard clauses
+        no início. Switch/FlowDecision substitui If aninhado quando
+        múltiplas branches simétricas.
+
+  - id: CX-3
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Fan-out excessivo (callees diretos)"
+    description: |
+      Workflow invoca número alto de outros workflows. Sinal de coupling
+      e responsabilidade difusa. >10 callees = revisar coesão; >15 =
+      candidato a orquestrador-de-orquestrador, refactor.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["**/Main.xaml", "**/Framework/**", "**/Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.complexity
+        function: detect_cx3_fanout
+        threshold_warn: 10
+        threshold_error: 15
+    fix:
+      apply_class: contextual
+      prose: |
+        Agrupar callees relacionados em sub-orquestradores intermediários.
+        Aplicar pattern Facade quando vários callees servem mesmo
+        conceito de negócio.
+
+  - id: CX-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Activity count excessivo"
+    description: |
+      Total de elementos executáveis no workflow excede threshold.
+      Sicoob convention stricter que UiPath default (500): >100 = revisão;
+      >300 = quebrar em sub-workflows. Combina com A-17 (~150 linhas).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["**/Framework/**", "**/Tests/**"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.complexity
+        function: detect_cx4_activities
+        threshold_warn: 100
+        threshold_error: 300
+    fix:
+      apply_class: contextual
+      prose: |
+        Decompor por conceito (A-5). Workflows grandes geralmente
+        encadeiam múltiplos passos independentes — extrair cada
+        passo em workflow próprio + orquestrador slim.
+
+  - id: CX-5
+    severity: WARN
+    category: architectural
+    target: all
+    title: "God-workflow composite (≥3 métricas excedidas)"
+    description: |
+      Workflow excede simultaneamente ≥3 das métricas: lines>200,
+      activities>50, depth>5, args>7. Indicador forte de violação de
+      Single Responsibility — refactor obrigatório.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["**/Framework/**", "**/Tests/**", "**/Main.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.complexity
+        function: detect_cx5_god_workflow
+        threshold_lines: 200
+        threshold_activities: 50
+        threshold_depth: 5
+        threshold_args: 7
+        min_tripped: 3
+    fix:
+      apply_class: contextual
+      prose: |
+        Refactor obrigatório. Cada métrica excedida é sinal independente
+        de god-workflow. Plano: (1) listar conceitos distintos no
+        workflow; (2) extrair cada conceito em workflow próprio;
+        (3) reduzir args agrupando em Dictionary/DataTable (N-4);
+        (4) re-medir até zerar findings.
+
+# ============================================================
+# Batch HY — CI/CD hygiene
+# ============================================================
+
+  - id: HY-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Merge conflict markers leftover"
+    description: |
+      Linha começa com `<<<<<<<`, `=======` ou `>>>>>>>` — marcador de
+      conflito git não resolvido. Publish quebra silente (XAML inválido,
+      JSON parse error). Sempre ERROR breaking.
+    applies_to:
+      include: ["**/*.xaml", "**/*.json", "**/*.yaml", "**/*.yml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.hygiene
+        function: detect_hy1_merge_markers
+    fix:
+      apply_class: contextual
+      prose: |
+        Resolver conflito manualmente. Auto-resolve picks side arbitrário,
+        risco de perda de código. Escolher side correto, remover markers,
+        re-test.
+
+  - id: HY-2
+    severity: WARN
+    category: architectural
+    target: all
+    title: "project.json.description é placeholder Studio default"
+    description: |
+      Description = "Blank Process" / "Blank Library" / "Process
+      Description" / vazio. Indica projeto criado sem descrição
+      preenchida — quebra discoverability em Orchestrator + Studio.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.hygiene
+        function: detect_hy2_placeholder_description
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_json_field
+        path: description
+      prose: |
+        Preencher description com resumo claro do propósito do projeto
+        (process: o que automatiza; library: que activities expõe).
+        Fixer auto seta "Projeto Sicoob — <name>" como baseline; revisar.
+
+  - id: HY-3
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Main.xaml vazio (sem activity executável)"
+    description: |
+      Main.xaml com root Activity → Sequence vazio (sem children).
+      Sinal de projeto não desenvolvido ou esqueleto abandonado.
+    applies_to:
+      include: ["**/Main.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.hygiene
+        function: detect_hy3_main_empty
+    fix:
+      apply_class: contextual
+      prose: |
+        Implementar lógica do Main ou remover projeto se descontinuado.
+        Para REFramework, Main deve referenciar Framework state machine.
+
+  - id: HY-4
+    severity: WARN
+    category: architectural
+    target: all
+    title: ".gitignore ausente ou faltando entries Sicoob obrigatórios"
+    description: |
+      .gitignore deve incluir mínimo: `.local/`, `bin/`, `obj/`, `*.user`,
+      `.uipath/`. Entries ausentes causam commit de cache local e
+      artefatos build no repo.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.hygiene
+        function: detect_hy4_gitignore
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: gitignore_append_lines
+        defaults: [".local/", "bin/", "obj/", "*.user", ".uipath/"]
+      prose: |
+        Adicionar entries faltantes em .gitignore. Fixer append no fim
+        com bloco separador comentado.
+
+  - id: HY-5
+    severity: INFO
+    category: architectural
+    target: all
+    title: "EOL mix CRLF+LF no mesmo arquivo"
+    description: |
+      Arquivo contém ambos CRLF e LF puro. XAML Studio convention =
+      CRLF (Windows). Mix causa diff noise em PR + merge falsos.
+    applies_to:
+      include: ["**/*.xaml", "**/*.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.hygiene
+        function: detect_hy5_eol_mix
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: normalize_eol_crlf
+      prose: |
+        Normalizar EOL → CRLF. Fixer converte preservando BOM.
+
+  - id: HY-6
+    severity: INFO
+    category: architectural
+    target: all
+    title: "BOM UTF-8 em arquivo JSON"
+    description: |
+      project.json (e demais .json) por convenção UTF-8 sem BOM.
+      BOM causa parse erros em ferramentas Node/Python sem
+      `utf-8-sig`. Studio salva sem BOM por default.
+    applies_to:
+      include: ["**/*.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.hygiene
+        function: detect_hy6_bom_json
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_bom
+      prose: |
+        Strip BOM. Fixer remove 3 bytes iniciais 0xEF 0xBB 0xBF.
+
+# ============================================================
+# Batch TCC — Test Case Coverage
+# ============================================================
+
+  - id: TCC-1
+    severity: WARN
+    category: testing
+    target: all
+    title: "Workflow produção sem Test Case correspondente"
+    description: |
+      Performer com workflow produção (fora Framework/Tests/Data/Main)
+      sem TC_<stem>.xaml em pasta `Tests/`. Convenção Sicoob exige TC
+      por workflow.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/Framework/**"
+        - "**/Tests/**"
+        - "**/Data/**"
+        - "**/Main.xaml"
+        - "**/TC_*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.test_coverage
+        function: detect_tc_cov_1_missing
+    fix:
+      apply_class: contextual
+      prose: |
+        Criar Tests/TC_<workflow>.xaml exercitando Given-When-Then.
+        Mock externos (DB/API/SMTP). Cobre golden path + 1 edge case
+        mínimo.
+
+  - id: TCC-3
+    severity: WARN
+    category: testing
+    target: all
+    title: "Performer sem pasta Tests/"
+    description: |
+      Projeto Performer (name suffix `_Performer`) sem pasta `Tests/`
+      no root, ou pasta vazia. Indica ausência total de TC. Bloqueia
+      sustentação por falta de regression suite.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.test_coverage
+        function: detect_tc_cov_3_no_tests_folder
+    fix:
+      apply_class: contextual
+      prose: |
+        Criar pasta `Tests/` no root do Performer. Adicionar TC mínimo
+        cobrindo golden path. CI deve falhar enquanto vazio.
+
+  - id: TCC-4
+    severity: INFO
+    category: testing
+    target: all
+    title: "Workflow com >3 in_args mas 0-1 Test Cases (low variation)"
+    description: |
+      Workflow com >3 argumentos in_/io_ tem só 0-1 TC. Proxy de
+      cobertura de data-variation pobre — alta probabilidade de
+      regressão não detectada por mudança de payload.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/Framework/**"
+        - "**/Tests/**"
+        - "**/Data/**"
+        - "**/Main.xaml"
+        - "**/TC_*.xaml"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.test_coverage
+        function: detect_tc_cov_4_low_arg_variation
+        arg_threshold: 3
+    fix:
+      apply_class: contextual
+      prose: |
+        Adicionar TCs por variação de input significativa. Ou usar
+        Data Service / Test Data Queues p/ parametrizar (TEST-6).

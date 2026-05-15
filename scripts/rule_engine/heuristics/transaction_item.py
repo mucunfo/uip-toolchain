@@ -380,21 +380,32 @@ def detect_a19b_in_args_missing(rule, fc, pc):
         }
         if not required:
             continue
-        # Args com default-value via `this:<Class>.<arg>` block (attribute ou
-        # property-element form) são opcionais p/ caller — Studio resolve com
-        # default literal. Excluir do `required`.
+        # Args com default-value NON-EMPTY via `this:<Class>.<arg>` block.
+        # Empty defaults (`<Literal Value=""/>` ou `<InArgument/>` sem Literal)
+        # disparam warning "missing or misconfigured" no Studio Designer →
+        # caller deve passar explícito. Excluir apenas defaults com valor real.
         with_default = set()
         for arg_name in required:
-            # Attribute form: `this:<Class>.<arg>="value"` no <Activity> root
+            # Attribute form: `this:<Class>.<arg>="<non-empty>"` no <Activity>.
             attr_re = re.compile(
-                rf'\bthis:\w+\.{re.escape(arg_name)}=\"[^\"]*\"'
+                rf'\bthis:\w+\.{re.escape(arg_name)}="([^"]+)"'
             )
-            # Element form: `<this:<Class>.<arg>>...</this:<Class>.<arg>>`
-            elem_re = re.compile(
-                rf'<this:\w+\.{re.escape(arg_name)}\b'
-            )
-            if attr_re.search(callee_content) or elem_re.search(callee_content):
+            attr_m = attr_re.search(callee_content)
+            if attr_m and attr_m.group(1).strip():
                 with_default.add(arg_name)
+                continue
+            # Element form: `<this:<Class>.<arg>>...</this:<Class>.<arg>>`
+            # com Literal não-vazio
+            elem_re = re.compile(
+                rf'<this:\w+\.{re.escape(arg_name)}\b[^>]*>(.*?)</this:\w+\.{re.escape(arg_name)}\s*>',
+                re.DOTALL,
+            )
+            em = elem_re.search(callee_content)
+            if em:
+                body = em.group(1)
+                lit_m = re.search(r'<Literal\b[^>]*\bValue="([^"]*)"', body)
+                if lit_m and lit_m.group(1).strip():
+                    with_default.add(arg_name)
         required -= with_default
 
         args_match = _RE_INVOKE_ARGS.search(invoke.group(0))
@@ -406,11 +417,28 @@ def detect_a19b_in_args_missing(rule, fc, pc):
         if not missing:
             continue
 
-        findings.append(Finding(
-            rule_id=rule.id, severity=rule.severity, category=rule.category,
-            file=str(fc.path), line=_line_for(content, invoke.start()),
-            message=f"{rule.title}: {target} falta {sorted(missing)}",
-            fix_mechanical=(rule.fix or {}).get("mechanical"),
-            fix_prose=(rule.fix or {}).get("prose"),
-        ))
+        # IdRef do invoke p/ desambiguar múltiplas chamadas no mesmo caller
+        idref_m = re.search(r'IdRef="([^"]+)"', invoke.group(0))
+        invoke_idref = idref_m.group(1) if idref_m else None
+
+        # 1 finding por arg ausente — fixer atômico cascade_caller_in_args
+        base_mech = (rule.fix or {}).get("mechanical")
+        for arg_name in sorted(missing):
+            mech_per_finding = None
+            if base_mech:
+                mech_per_finding = dict(base_mech)
+                mech_per_finding["params"] = {
+                    **(base_mech.get("params") or {}),
+                    "callee_path": target,
+                    "arg_name": arg_name,
+                }
+                if invoke_idref:
+                    mech_per_finding["params"]["invoke_idref"] = invoke_idref
+            findings.append(Finding(
+                rule_id=rule.id, severity=rule.severity, category=rule.category,
+                file=str(fc.path), line=_line_for(content, invoke.start()),
+                message=f"{rule.title}: {target} falta '{arg_name}'",
+                fix_mechanical=mech_per_finding,
+                fix_prose=(rule.fix or {}).get("prose"),
+            ))
     return findings

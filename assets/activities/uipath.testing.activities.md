@@ -1,6 +1,6 @@
 ﻿# uipath.testing.activities
-Assembly: UiPath.Testing.Activities v25.10.2.0
-PackageVersion: 25.10.2
+Assembly: UiPath.Testing.Activities v25.10.0.0
+PackageVersion: 25.10.0
 ActivityCount: 25
 
 ## UiPath.Testing.Activities.AddTestDataQueueItem
@@ -223,7 +223,7 @@ ActivityCount: 25
 - required:
   - **FilePath** : String [In]  // Arquivo
 - optional:
-  - Value : String [Out]  // Generate Random Value
+  - Value : String [Out]  // Random Value
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
