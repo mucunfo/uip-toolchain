@@ -119,6 +119,40 @@ def detect_securestring_argument_outside_chain(
     if has_chain:
         return []
 
+    # Cross-file chain check: callee NAO declara in_Credenciais mas ALGUM caller
+    # passa SecureString derivada de in_Credenciais(...).Item2 ou
+    # in_Credenciais("X").Item2 — caso da cadeia Sicoob (REFramework).
+    # Se algum caller passa via chain pattern, callee EH parte da chain.
+    if pc is not None and pc.root is not None:
+        try:
+            callee_basename = fc.path.name
+            for other in pc.root.rglob("*.xaml"):
+                if other == fc.path:
+                    continue
+                try:
+                    other_text = other.read_text(encoding="utf-8-sig")
+                except OSError:
+                    continue
+                if callee_basename not in other_text:
+                    continue
+                # Look for InArgument SecureString in InvokeWorkflowFile to this callee
+                # whose VALUE expression references one of the chain_args
+                invoke_re = re.compile(
+                    rf'<ui:InvokeWorkflowFile\b[^>]*?\bWorkflowFileName="[^"]*{re.escape(callee_basename)}"[^>]*?>'
+                    r'(.*?)'
+                    r'</ui:InvokeWorkflowFile>',
+                    re.DOTALL,
+                )
+                for im in invoke_re.finditer(other_text):
+                    body = im.group(1)
+                    # Heuristic: any InArgument that references a chain_arg
+                    for ca in chain_args:
+                        if re.search(rf'\b{re.escape(ca)}\s*\(', body):
+                            return []  # caller uses chain pattern — callee accepted
+        except Exception:
+            # Cross-file analysis is best-effort; never block detection
+            pass
+
     findings: list[Finding] = []
     pattern = re.compile(
         r'<x:Property\s+[^>]*Name="([^"]*)"[^>]*Type="((?:In|Out|InOut)Argument\([^)]*SecureString[^)]*\))"',
@@ -351,12 +385,24 @@ def detect_json_version_compare(rule: Rule, fc: FileContext, pc) -> list[Finding
 
 @register("nuget_version_check")
 def detect_nuget_version_check(rule: Rule, fc: FileContext, pc) -> list[Finding]:
+    """Pin/min check em project.json::dependencies.
+
+    Param `exact:` (preferred) — exige versão idêntica; qualquer drift (maior
+    OU menor) é violação. Usado para pin strict Sicoob (Activity Migrator GA
+    ignora pin do projeto e pega latest stable; sem `exact`, version drift
+    >pin passava silencioso).
+
+    Param `min:` (legacy/backward compat) — só flagueia se actual < min.
+
+    Quando ambos são declarados, `exact` tem precedência.
+    """
     if pc is None:
         return []
     deps = pc.project_json.get("dependencies", {})
     params = rule.detect.get("params", {})
     package = params.get("package")
     min_v = params.get("min")
+    exact_v = params.get("exact")
     if not package or package not in deps:
         return []
 
@@ -364,15 +410,25 @@ def detect_nuget_version_check(rule: Rule, fc: FileContext, pc) -> list[Finding]
     m = re.match(r"\[?([\d.]+)", raw)
     if not m:
         return []
-    actual = _parse_version(m.group(1))
+    actual_str = m.group(1)
+    actual = _parse_version(actual_str)
 
-    if min_v and actual >= _parse_version(min_v):
+    # exact takes precedence over min
+    if exact_v:
+        if actual == _parse_version(exact_v):
+            return []
+        violation = f"esperado [{exact_v}], atual {raw}"
+    elif min_v:
+        if actual >= _parse_version(min_v):
+            return []
+        violation = f"mínimo {min_v}, atual {raw}"
+    else:
         return []
 
     return [Finding(
         rule_id=rule.id, severity=rule.severity, category=rule.category,
         file=str(pc.root / "project.json"), line=1,
-        message=f"{rule.title}: {package}={raw} (mínimo {min_v})",
+        message=f"{rule.title}: {package}={raw} ({violation})",
         fix_mechanical=(rule.fix or {}).get("mechanical"),
         fix_prose=(rule.fix or {}).get("prose"),
     )]

@@ -1,6 +1,6 @@
 ﻿# uipath.uiautomation.activities.runtime
-Assembly: UiPath.CV.Activities v25.10.21.0
-PackageVersion: 25.10.21
+Assembly: UiPath.CV.Activities v25.10.27.0
+PackageVersion: 25.10.27
 ActivityCount: 341
 
 ## UiPath.Core.Activities.Activate
@@ -2780,7 +2780,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2804,7 +2803,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2828,7 +2826,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2843,10 +2840,12 @@ ActivityCount: 341
   - Result : String [Out]  // Property task result
   - CustomConfiguration : String [In]  // Property custom configuration
   - ClipboardMode : UiPath.UIAutomationNext.Enums.NTypeByClipboardMode [In]  // Property type by clipboard
+  - TraceAttachMode : UiPath.UIAutomationNext.Enums.NTraceAttachMode [In]  // Property trace attach mode
   - MaxIterations : Int32 [In]  // Property max iterations
   - IsDOMEnabled : Boolean [In]
   - IsVariableSecurityDisabled : Boolean [In]
   - ExecutionTrace : String [Out]
+  - TraceFiles : UiPath.UIAutomationNext.Models.NUITaskTraceFiles [Out]
   - InteractionMode : UiPath.UIAutomationNext.Enums.NChildInteractionMode [In]  // Property interaction mode
   - Target : UiPath.UIAutomationNext.TargetAnchorable [Plain]
   - ClickOffset : UiPath.UIAutomationNext.ClickOffset [Plain]
@@ -2860,7 +2859,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2921,7 +2919,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2947,7 +2944,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2972,7 +2968,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -2994,7 +2989,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3015,7 +3009,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3044,7 +3037,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - Result : TResult [Out]
   - ResultType : Type [Plain]
   - DisplayName : String [Plain]
@@ -3075,7 +3067,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3101,7 +3092,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
 
 ## UiPath.UIAutomationNext.Activities.NClosePopup
 - xmlns: `http://schemas.uipath.com/workflow/activities/uix`
@@ -3124,7 +3114,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3151,7 +3140,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3175,7 +3163,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3207,7 +3194,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3239,7 +3225,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3261,7 +3246,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3292,7 +3276,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3313,7 +3296,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3335,7 +3317,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3361,7 +3342,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3381,7 +3361,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3407,7 +3386,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3430,7 +3408,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3452,7 +3429,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3473,7 +3449,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3498,7 +3473,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3522,7 +3496,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3551,7 +3524,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3577,7 +3549,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
 
 ## UiPath.UIAutomationNext.Activities.NMouseScroll
 - xmlns: `http://schemas.uipath.com/workflow/activities/uix`
@@ -3601,7 +3572,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3627,7 +3597,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
 
 ## UiPath.UIAutomationNext.Activities.NNavigateBrowser
 - xmlns: `http://schemas.uipath.com/workflow/activities/uix`
@@ -3646,7 +3615,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -3658,7 +3626,6 @@ ActivityCount: 341
   - OutUiElement : UiPath.Core.UiElement [Out]
   - Target : UiPath.UIAutomationNext.TargetAnchorable [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - Timeout : Double [In]  // Property timeout
   - DelayAfter : Double [In]  // Property delay after
   - DelayBefore : Double [In]  // Property delay before
@@ -3691,7 +3658,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3714,7 +3680,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3741,7 +3706,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3762,7 +3726,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3785,7 +3748,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3803,7 +3765,6 @@ ActivityCount: 341
   - OutUiElement : UiPath.Core.UiElement [Out]  // Property sap session window
   - Target : UiPath.UIAutomationNext.TargetAnchorable [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - Timeout : Double [In]  // Property timeout
   - DelayAfter : Double [In]  // Property delay after
   - DelayBefore : Double [In]  // Property delay before
@@ -3865,7 +3826,6 @@ ActivityCount: 341
   - OutUiElement : UiPath.Core.UiElement [Out]
   - Target : UiPath.UIAutomationNext.TargetAnchorable [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - Timeout : Double [In]  // Property timeout
   - DelayAfter : Double [In]  // Property delay after
   - DelayBefore : Double [In]  // Property delay before
@@ -3900,7 +3860,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3912,7 +3871,6 @@ ActivityCount: 341
   - AlterIfDisabled : Boolean [In]
   - Target : UiPath.UIAutomationNext.TargetAnchorable [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - Items : Collections.Generic.List<String> [Plain]
   - Timeout : Double [In]  // Property timeout
   - DelayAfter : Double [In]  // Property delay after
@@ -3950,7 +3908,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -3987,7 +3944,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4010,7 +3966,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -4030,7 +3985,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4050,7 +4004,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4072,7 +4025,6 @@ ActivityCount: 341
   - RequiresInitialization : Boolean [Plain]
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -4094,7 +4046,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4121,7 +4072,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4155,7 +4105,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4175,7 +4124,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4200,7 +4148,6 @@ ActivityCount: 341
   - Version : UiPath.UIAutomationNext.Enums.NActivityVersion [Plain] = 0
   - ForceRefreshView : Boolean [Plain]
   - HealingAgentBehavior : UiPath.UIAutomationNext.Enums.NChildHealingAgentBehavior [In]  // Property healing agent behaviour
-  - ElementSearchBehavior : UiPath.UIAutomationNext.Activities.IElementSearchBehavior [Plain]
   - InUiElement : UiPath.Core.UiElement [In]  // Property in ui element
   - DisplayName : String [Plain]
   - Id : String [Plain]
@@ -4212,6 +4159,7 @@ ActivityCount: 341
   - Target : UiPath.UIAutomationNext.TargetAnchorable [Plain]  // Property target
   - Timeout : Double [In]  // Property timeout
   - OutUiElement : UiPath.Core.UiElement [Out]  // Property out ui element
+  - InUiElement : UiPath.Core.UiElement [In]
 
 ## UiPath.UIAutomationNext.Activities.SupportsSpecialKeysAttribute
 - xmlns: `http://schemas.uipath.com/workflow/activities/uix`

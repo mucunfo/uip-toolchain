@@ -18,6 +18,7 @@ e gate é skipado (warning only).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -197,7 +198,6 @@ def run_analyzer(
 def _project_signature(project_root: Path) -> str:
     """Hash de SHA1(project.json mtime + xaml count + max xaml mtime).
     Usado como cache key — invalida quando projeto muda materialmente."""
-    import hashlib
     h = hashlib.sha1()
     pj = project_root / "project.json"
     if pj.is_file():
@@ -210,13 +210,29 @@ def _project_signature(project_root: Path) -> str:
     return h.hexdigest()[:16]
 
 
+def _engine_cache_dir(project_root: Path) -> Path:
+    """Cache dir per-project, alojado em `<engine_root>/.tmp/analyzer_cache/<sig>/`.
+
+    Antes ficava em `<project_root>/.uipath-rules-cache/` — poluía o working
+    dir do projeto UiPath e podia vazar pra git (gitignore não cobre). Agora
+    fica isolado em `.uipath-rules/.tmp/` (gitignored, descartável entre
+    sessões), alinhado com a política de intermediários da CLAUDE.md.
+
+    `sig` = SHA1 (hex 16 chars) do absolute path do project_root → garante
+    isolamento per-project sem colisão entre projetos com mesmo basename.
+    """
+    engine_root = Path(__file__).resolve().parents[2]
+    sig = hashlib.sha1(str(project_root.resolve()).encode("utf-8")).hexdigest()[:16]
+    return engine_root / ".tmp" / "analyzer_cache" / sig
+
+
 def load_cached_baseline(
     project_root: Path,
     cache_dir: Path | None = None,
 ) -> set[AnalyzerIssue] | None:
     """Carrega baseline cacheado se signature ainda válida. None se miss
     ou cache invalido."""
-    cache_dir = cache_dir or (project_root / ".uipath-rules-cache")
+    cache_dir = cache_dir or _engine_cache_dir(project_root)
     if not cache_dir.is_dir():
         return None
     sig = _project_signature(project_root)
@@ -244,7 +260,7 @@ def save_cached_baseline(
     cache_dir: Path | None = None,
 ) -> None:
     """Persist baseline em cache. No-op em error."""
-    cache_dir = cache_dir or (project_root / ".uipath-rules-cache")
+    cache_dir = cache_dir or _engine_cache_dir(project_root)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
     except OSError:

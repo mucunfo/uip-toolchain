@@ -118,6 +118,117 @@ Default derivation (sem `apply_class`):
 
 **Importante:** Se rule usa heuristic-emitted `fix_mechanical` (detector retorna mechanical sem ter `mechanical:` em YAML), DEVE declarar `apply_class: deterministic` explicitamente, senão fica bloqueada.
 
+## Pin enforcement (D-1*, D-PINALERT)
+
+Activity Migrator GA do Studio v25.10 replica o botão Migrate-to-Windows headless mas **NÃO** respeita pin Sicoob — pega `latest stable` de cada pacote UiPath durante a migração, ignorando o range declarado em `project.json::dependencies`. Engine atua como guardrail em duas camadas.
+
+### Camada 1 — Strict pin (D-1a..D-1o, detector `nuget_version_check`)
+
+15 regras pinam pacotes core (System, UIAutomation, Excel, Database, WebAPI, Cryptography, DocumentUnderstanding, IntelligentOCR, Mail, MicrosoftOffice365, OCR, PDF, Testing, SharePoint, XML). Todas são severity **ERROR** category **breaking** com `apply_class: deterministic`.
+
+Detector `nuget_version_check` (em `scripts/rule_engine/detectors.py`) aceita dois params mutuamente exclusivos com precedência:
+
+- `exact: "X.Y.Z"` — exige versão idêntica; qualquer drift (maior OU menor) viola. **Usado pelos D-1*.** Caso real: UIA pinado 25.10.8, Migrator instalou 25.10.21 — sem `exact:`, version drift `> pin` passava silente porque `min:` só checa lower bound.
+- `min: "X.Y.Z"` — legado/backward compat; só flagueia `actual < min`.
+
+Fixer `set_dependency_pin` (já existente em `fixers.py`) escreve `[X.Y.Z]` no `project.json::dependencies`. `fix --apply` realinha drift automaticamente.
+
+### Camada 2 — API-version exclusive alert (D-PINALERT)
+
+Realinhar o pin (D-1*) é seguro só se o XAML também não usa APIs introduzidas depois do pin. Activity Migrator pode ter injetado, durante a migração pré-realinhamento, atributos/activities exclusivas de versão `> pin` (ex: `RetryScope.LogRetriedExceptions` introduzido em UIA 25.10.21; pin Sicoob 25.10.8 não conhece). Após D-1* realinhar, essas APIs ficam órfãs no XAML → `UIPATH:LOAD ERROR` no Studio analyzer.
+
+**D-PINALERT** cruza `project.json::dependencies` com `assets/version_exclusive_apis.yaml` (catálogo `package -> [{pattern, introduced_in, fix}]`). Para cada package onde `pinned < introduced_in` AND o XAML contém o `pattern`, emite finding ERROR `breaking` com fix prose.
+
+- Detector: heuristic em `scripts/rule_engine/heuristics/pin_alert.py::detect_pin_alert` (registrado via `type: python`).
+- `apply_class: contextual` — fix depende da API (remover atributo vs substituir activity); não há fixer mecânico genérico.
+
+### Pipeline pós-Activity-Migrator
+
+Ordem operacional recomendada (caller: agente migração ou humano):
+
+1. `review` baseline antes de qualquer fix — captura D-1* drift + D-PINALERT (se Migrator já injetou APIs).
+2. `fix --apply` — só `apply_class: deterministic` por default; realinha D-1*.
+3. `review` pós-fix — confirma D-1* zerados; D-PINALERT remanescentes apontam APIs órfãs introduzidas pelo Migrator.
+4. Cleanup XAML manual seguindo `fix_prose` de cada D-PINALERT.
+5. `review` final — esperado: 0 D-1* + 0 D-PINALERT.
+
+### Como adicionar/atualizar pin
+
+- **Bump pin de package existente** — editar `version:` no `mechanical:` da regra D-1*, `exact:` no `params:`, `title:` e `description:`. Tests/CI cobrem regressões.
+- **Novo package pinado** — adicionar nova regra `D-1X` no bloco D-1* em `rules.yaml`, copiando shape (severity ERROR, category breaking, `detect.type: nuget_version_check`, `params.exact:`, `fix.mechanical.type: set_dependency_pin`).
+- **Nova API exclusiva** — adicionar entry em `assets/version_exclusive_apis.yaml`. Nada mais — detector já consome.
+
+### Cobertura preventiva pós-Migrator — S-18 (ActivityFunc body vazio) + S-5b (PostMigration markers)
+
+Activity Migrator emite property elements `<uix:NApplicationCard.OCREngine>`
+(e equivalente `.CVEngine`) com `<ActivityFunc>` placeholder contendo APENAS
+`<ActivityFunc.Argument>` (DelegateInArgument). Body sem activity child →
+Studio compile falha com `OCR Engine must be set` / `CV Engine must be set`.
+
+**S-18** (detector `empty_activityfunc.py`, severity ERROR breaking, target
+windows) flagueia cada ocorrência. `apply_class: structural` — engine
+expõe alerta + prose; correção exige decidir qual engine plugar
+(`UiPathScreenOCR` é default Sicoob; `UiPathDocumentOCR` / `MicrosoftOCR`
+em casos específicos). Detector cobre `.OCREngine` e `.CVEngine` em
+qualquer parent prefix/owner XAML.
+
+**S-5b** (regex `sap2010:Annotation.AnnotationText="[PostMigration Action
+Required]`, severity ERROR breaking, target windows) flagueia annotations
+TODO injetadas pelo Activity Migrator em TryCatch (e outras activities) ao
+migrar Legacy→Windows. Diferente da S-5 (annotations gerais, exclui
+REFramework template), S-5b ataca SOMENTE markers do Migrator em QUALQUER
+arquivo — Migrator injeta em Main/Framework justamente. `apply_class:
+deterministic` — fixer reusa `strip_annotation_text` com `text_prefix:
+"[PostMigration Action Required]"`, removendo só os markers (preserva
+annotations legítimas no mesmo file).
+
+## Pre-publish gate (`review` = canonical)
+
+`review` é o **canonical pre-publish gate**: SEMPRE roda o pipeline completo
+sem opt-out. Se passa, projeto é publish-safe garantido.
+
+### Pipeline de gates
+
+| # | Gate | Função | Implementação |
+|---|------|--------|---------------|
+| 1 | Rules Sicoob | Regras locais YAML (A-*, S-*, N-*, W-*, D-*, etc.). | `runner.run` |
+| 2 | Lib-contract override | Downgrade findings que conflitam com contrato CCS_* exposto. | `_apply_sicoob_lib_overrides` |
+| 3 | Studio Analyzer | uipcli `analyze` — ST-* oficiais, contrato lib NuGet, Roslyn compile, SecureString flow. Findings `UIPATH:<code>`. | `_inject_analyzer_findings` |
+| 4 | NuGet restore | `nuget restore project.json` — peer dep resolution. Emite `NUGET:NU<NNNN>` por code. NU1101/1102/1107/1605/3026/5048 promoted ERROR (blocking publish). | `_run_nuget_restore_gate` |
+| 5 | uipcli pack (publish dry-run) | `uipcli publish -o Process -f <tmpdir>` — equivalent a pack dry-run sem upload. Captura BC* compile errors + validation que só aparecem no flow de publish. Emite `UIPATH:PACK`. | `_run_uipcli_pack_gate` |
+
+### Cobertura por gate
+
+| Concern | Gate primário |
+|---|---|
+| Sicoob conventions (naming, log patterns, prefixo) | 1 |
+| Activity contracts (args required, OverloadGroup) | 3 |
+| VB compile errors em XAML (BC30002/BC30451/etc.) | 5 (publish dry-run força full compile) |
+| Peer dep resolution (Sicoob feed visible) | 4 |
+| Package signing / metadata | 4 |
+| Final publish-safety | 5 (autoritativo) |
+
+### Opt-out
+
+Sem opt-out via CLI. `--no-analyzer-gate` flag mantida apenas como deprecation
+warning — emite `[WARNING] --no-analyzer-gate is deprecated and ignored; review always runs analyzer gate.` e ignora.
+
+**Env override (test harness apenas)**: `UIPATH_RULES_DISABLE_EXTERNAL_GATES=1`
+pula gates 3/4/5 (não invoca uipcli/nuget). Usado pelo pytest harness (em
+`tests/conftest.py`) para evitar dependência de binaries externos durante
+unit tests. NÃO usar em produção.
+
+### Graceful degradation
+
+Cada gate falha graceful se binary não disponível:
+- Analyzer (uipcli ausente): warn stderr `[analyzer-gate] uipcli not found — gate skipped`. Set `UIPATH_STUDIO_CLI`.
+- NuGet (nuget.exe ausente): warn `[NUGET-GATE] nuget binary not found; skipping`. Set `UIPATH_NUGET_CLI` ou install nuget.exe / dotnet SDK. Se só dotnet disponível, skipa silente (dotnet restore não suporta UiPath project.json).
+- Pack (uipcli ausente): warn `[PACK-GATE] uipcli not found — gate skipped`.
+
+### Tempo total
+
+Esperado ~30s–2min per project (varia com tamanho + cache analyzer baseline).
+
 ## Pipeline de defesa (`fix --apply`)
 
 ### Layer 1 — Engine internal (fast feedback ~1-2s)
@@ -143,7 +254,7 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 **Studio version mismatch**: uipcli respeita `project.json.targetFramework`. Local Studio v26.x analisando project Windows-5.x carrega rules compat. Diff gate elimina falsos positivos vindos de rules-novas em Studio local.
 
-**Cache** (F27): baseline cacheado em `.uipath-rules-cache/analyzer_baseline_<sig>.json`. Sig=SHA1(project.json mtime + xaml count + max xaml mtime). Re-runs consecutivos pulam baseline (~30-60s economizados).
+**Cache** (F27): baseline cacheado em `.uipath-rules/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA1(project.json mtime + xaml count + max xaml mtime) invalida quando projeto muda materialmente. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados).
 
 **Discovery**: ordem de busca uipcli:
 1. Env var `UIPATH_STUDIO_CLI`
@@ -234,9 +345,18 @@ instalados, gerado offline via Mono.Cecil reflection.
 
 ### Fonte de verdade
 
-`assets/activities/activities-compact.json` (~600 KB, commitado).
+`assets/activities/activities-compact.json` (~1.7 MB, commitado).
 Markdown human-readable por package em `assets/activities/uipath.<pkg>.md` +
-índice `INDEX.md`.
+índice `INDEX.md`. 20 packages indexados, ~1560 entries (Activities +
+DataObjects). Inclui `uipath.ocr.activities` (UiPathScreenOCR /
+UiPathDocumentOCR / ExtendedLanguagesOCR / CjkOCR; xmlns canônico
+`http://schemas.uipath.com/workflow/activities/ocr`).
+
+NOTA companion-dirs: extract-cecil precisa do Cecil resolver ver os pacotes
+`*.contracts` siblings (ex: `uipath.ocr.contracts` p/ resolver
+`OCRAsyncCodeActivity` base class). `batch-extract.ps1::Get-CompanionSearchDirs`
+adiciona automaticamente — sem isso, classes derivadas resolvem `BaseType=null`
+em Cecil e caem em `Kind=DataObject` por falsa-falha de `Test-IsActivity`.
 
 ### Como regenerar
 

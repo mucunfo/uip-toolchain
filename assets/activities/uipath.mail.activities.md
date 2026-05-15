@@ -1,6 +1,6 @@
 ﻿# uipath.mail.activities
-Assembly: UiPath.Mail.Activities v2.3.10.0
-PackageVersion: 2.3.10
+Assembly: UiPath.Mail.Activities v2.0.11.0
+PackageVersion: 2.0.11
 ActivityCount: 50
 
 ## UiPath.Mail.Activities.Business.ArchiveMailX
@@ -327,7 +327,7 @@ ActivityCount: 50
 ## UiPath.Mail.Activities.SaveMail
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - optional:
-  - MailMessage : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - MailMessage : Net.Mail.MailMessage [In]  // Mail message
   - FilePath : String [In]  // CaminhoDoArquivo
   - Email : UiPath.Platform.ResourceHandling.ILocalResource [Out]
   - DisplayName : String [Plain]
@@ -356,7 +356,7 @@ ActivityCount: 50
   - Bcc : String [In]  // CCO
   - Subject : String [In]  // Assunto
   - Body : String [In]  // Corpo
-  - MailMessage : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - MailMessage : Net.Mail.MailMessage [In]  // Mail message
   - IsBodyHtml : Boolean [Plain]  // ÉCorpoEmHTML
   - Files : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
   - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]
@@ -381,7 +381,7 @@ ActivityCount: 50
 ## UiPath.Mail.Exchange.Activities.DeleteMail
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
 - optional:
   - DeleteMode : Microsoft.Exchange.WebServices.Data.DeleteMode [Plain]  // ExcluirModo
   - Server : String [In]  @group=Server  // Servidor
@@ -422,16 +422,16 @@ ActivityCount: 50
 ## UiPath.Mail.Exchange.Activities.GetExchangeMailMessages
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - optional:
-  - MailFolder : Microsoft.Exchange.WebServices.Data.WellKnownFolderName [Plain] = 4  // Pasta de Email
-  - CustomFolder : String [In]  // Pasta de Email
+  - MailFolder : Microsoft.Exchange.WebServices.Data.WellKnownFolderName [Plain] = 4  // Mail folder
+  - CustomFolder : String [In]  // Mail folder
   - SharedMailbox : String [In]  // CaixaDeCorreioCompartilhada
-  - GetAttachements : Boolean [In]  // ObterAnexos
-  - IsBodyHtml : Boolean [In]  // ÉCorpoEmHTML
+  - GetAttachements : Boolean [Plain]  // ObterAnexos
+  - IsBodyHtml : Boolean [Plain]  // ÉCorpoEmHTML
   - Top : Int32 [In]  // Superior
-  - OnlyUnreadMessages : Boolean [In]  // Apenas Mensagens Não Lidas
-  - MarkAsRead : Boolean [In]  // Marcar como lido
-  - FilterExpression : String [In]  // A expressão de filtro a ser usada.
-  - FilterByMessageIds : String[] [In]  // FiltrarPorIdsDasMensagens
+  - OnlyUnreadMessages : Boolean [Plain]  // Only unread messages
+  - MarkAsRead : Boolean [Plain]  // Mark as read
+  - FilterExpression : String [In]  // The filter expression to be used.
+  - FilterByMessageIds : String[] [In]  // Filter by message ids
   - OrderByDate : UiPath.Mail.EOrderByDate [Plain]  // Order by date
   - Messages : Collections.Generic.List<Net.Mail.MailMessage> [Out]  // Mensagens
   - Server : String [In]  @group=Server  // Servidor
@@ -451,8 +451,8 @@ ActivityCount: 50
 ## UiPath.Mail.Exchange.Activities.MoveMessageToFolder
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
-  - **MailFolder** : String [In]  // Pasta de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
+  - **MailFolder** : String [In]  // Mail folder
 - optional:
   - SharedMailbox : String [In]  // CaixaDeCorreioCompartilhada
   - Server : String [In]  @group=Server  // Servidor
@@ -473,7 +473,7 @@ ActivityCount: 50
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - optional:
   - FolderPath : String [In]  // CaminhoDaPasta
-  - MailMessage : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - MailMessage : Net.Mail.MailMessage [In]  // Mail message
   - Files : Collections.Generic.IEnumerable<String> [Out]  // Arquivos
   - ResourceAttachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.ILocalResource> [Out]
   - Server : String [In]  @group=Server  // Servidor
@@ -500,18 +500,18 @@ ActivityCount: 50
   - Subject : String [In]  // Assunto
   - Body : String [In]  // Corpo
   - IsBodyHtml : Boolean [Plain]  // ÉCorpoEmHTML
-  - MailMessage : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - MailMessage : Net.Mail.MailMessage [In]  // Mail message
   - Name : String [In]  // Nome
   - From : String [In]  // De
-  - SaveCopy : Boolean [In]  // SalvarCópia
+  - SaveCopy : Boolean [Plain]  // SalvarCópia
   - Attachments : Collections.Generic.List<String> [Plain]
   - Files : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
-  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Attachments collection
   - ResourceAttachments : Collections.Generic.IEnumerable<UiPath.Platform.ResourceHandling.IResource> [In]
   - ResourceAttachmentList : Collections.Generic.IEnumerable<Activities.InArgument<UiPath.Platform.ResourceHandling.IResource>> [Plain]
   - AttachmentInputMode : UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode [Plain]
   - AttachmentsBackup : UiPath.Shared.Activities.Utils.BackupSlot<UiPath.MicrosoftOffice365.Activities.Mail.Enums.AttachmentInputMode> [Plain]
-  - IsDraft : Boolean [In]  // É Rascunho
+  - IsDraft : Boolean [Plain]  // Is draft
   - Server : String [In]  @group=Server  // Servidor
   - ExchangeVersion : Microsoft.Exchange.WebServices.Data.ExchangeVersion [Plain]  // VersãoDoExchange
   - EmailAutodiscover : String [In]  @group=AutoDiscover  // DescobertaAutomáticaDeEmail
@@ -558,13 +558,13 @@ ActivityCount: 50
   - Server : String [In]  // Servidor
   - Port : Int32 [In]  // Porta
   - EnableSSL : Boolean [Plain]  // HabilitarSSL
-  - MailFolder : String [In]  // Pasta de Email
+  - MailFolder : String [In]  // Mail folder
   - FilterExpression : String [In]  // FiltrarExpressão
   - FilterExpressionCharacterSet : String [In]  // FiltrarConjuntoDeCaracteresDaExpressão
   - OrderByDate : UiPath.Mail.EOrderByDate [Plain]  // OrdernarPorData
   - DeleteMessages : Boolean [In]  // ExcluirMensagens
-  - OnlyUnreadMessages : Boolean [In]  // Apenas Mensagens Não Lidas
-  - MarkAsRead : Boolean [In]  // Marcar como lido
+  - OnlyUnreadMessages : Boolean [In]  // Only unread messages
+  - MarkAsRead : Boolean [In]  // Mark as read
   - SecureConnection : UiPath.Mail.SecureSocketEncryption [Plain]  // ConexãoSegura
   - ClientName : String [In]  // Nome do cliente
   - ClientVersion : String [In]  // VersãoDoCliente
@@ -589,8 +589,8 @@ ActivityCount: 50
   - Server : String [In]  // Servidor
   - Port : Int32 [In]  // Porta
   - EnableSSL : Boolean [Plain]  // HabilitarSSL
-  - MailMessage : Net.Mail.MailMessage [In]  // Mensagem de Email
-  - MailFolder : String [In]  // Pasta de Email
+  - MailMessage : Net.Mail.MailMessage [In]  // Mail message
+  - MailFolder : String [In]  // Mail folder
   - FromFolder : String [In]  // DaPasta
   - SecureConnection : UiPath.Mail.SecureSocketEncryption [Plain]  // ConexãoSegura
   - ClientName : String [In]  // NomeDoCliente
@@ -606,7 +606,7 @@ ActivityCount: 50
 ## UiPath.Mail.LotusNotes.Activities.DeleteLotusNotesMailMessage
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
   - **FromFolder** : String [In]  // DaPasta
 - optional:
   - Password : String [In]  @group=Password  // Senha
@@ -617,7 +617,7 @@ ActivityCount: 50
 ## UiPath.Mail.LotusNotes.Activities.GetLotusNotesMailMessages
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailFolder** : String [In]  // Pasta de Email
+  - **MailFolder** : String [In]  // Mail folder
 - optional:
   - Password : String [In]  @group=Password  // Senha
   - SecurePassword : Security.SecureString [In]  @group=SecurePassword  // Senha Segura
@@ -635,8 +635,8 @@ ActivityCount: 50
 ## UiPath.Mail.LotusNotes.Activities.MoveLotusNotesMailMessage
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
-  - **MailFolder** : String [In]  // Pasta de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
+  - **MailFolder** : String [In]  // Mail folder
   - **FromFolder** : String [In]  // DaPasta
 - optional:
   - Password : String [In]  @group=Password  // Senha
@@ -657,11 +657,10 @@ ActivityCount: 50
   - Subject : String [In]  // Assunto
   - Body : String [In]  // Corpo
   - IsBodyHtml : Boolean [Plain]  // ÉCorpoEmHTML
-  - UseRichTextEditor : Nullable<Boolean> [Plain]
   - TimeoutMS : Int32 [In]  // TempoLimiteEmMs
   - Files : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
-  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
-  - MailMessage : Net.Mail.MailMessage [In]  @group=Forward  // Mensagem de Email
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Attachments collection
+  - MailMessage : Net.Mail.MailMessage [In]  @group=Forward  // Mail message
   - ConnectionId : String [Plain]  // Conexão
   - ConnectionMode : UiPath.Mail.Activities.Enums.ConnectionDetails [Plain]
   - UseISConnection : Boolean [Plain]
@@ -672,25 +671,25 @@ ActivityCount: 50
 ## UiPath.Mail.Outlook.Activities.DeleteOutlookMailMessage
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
 - optional:
-  - PermanentlyDelete : Boolean [Plain]  // Excluir permanentemente
+  - PermanentlyDelete : Boolean [Plain]  // Permanently delete
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
 ## UiPath.Mail.Outlook.Activities.GetOutlookMailMessages
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailFolder** : String [In]  // Pasta de Email
+  - **MailFolder** : String [In]  // Mail folder
 - optional:
   - KnownFolder : UiPath.Mail.KnownFolders [Plain] = 0  // PastaConhecida
   - Account : String [In]  // Conta
   - Filter : String [In]  // Filtro
-  - FilterByMessageIds : String[] [In]  // FiltrarPorIdsDasMensagens
+  - FilterByMessageIds : String[] [In]  // Filter by message ids
   - OrderByDate : UiPath.Mail.EOrderByDate [Plain]  // Order by date
   - GetAttachements : Boolean [Plain]  // ObterAnexos
-  - OnlyUnreadMessages : Boolean [Plain]  // Apenas Mensagens Não Lidas
-  - MarkAsRead : Boolean [Plain]  // Marcar como lido
+  - OnlyUnreadMessages : Boolean [Plain]  // Only unread messages
+  - MarkAsRead : Boolean [Plain]  // Mark as read
   - TimeoutMS : Int32 [In]  // TempoLimiteEmMs
   - Top : Int32 [In]  // Superior
   - Messages : Collections.Generic.List<Net.Mail.MailMessage> [Out]  // Mensagens
@@ -706,15 +705,15 @@ ActivityCount: 50
 - required:
   - **MailMessage** : Net.Mail.MailMessage [In]  // Email
 - optional:
-  - MarkAs : UiPath.Mail.Activities.Business.MarkMailAs [Plain]  // Marcar como
+  - MarkAs : UiPath.Mail.Activities.Business.MarkMailAs [Plain]  // Mark as
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
 ## UiPath.Mail.Outlook.Activities.MoveOutlookMessage
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
-  - **MailFolder** : String [In]  // Pasta de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
+  - **MailFolder** : String [In]  // Mail folder
 - optional:
   - Account : String [In]  // Conta
   - DisplayName : String [Plain]
@@ -723,19 +722,19 @@ ActivityCount: 50
 ## UiPath.Mail.Outlook.Activities.ReplyToOutlookMailMessage
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
 - optional:
   - TimeoutMS : Int32 [In]  // TempoLimiteEmMs
-  - ReplyAll : Boolean [Plain]  // ReplyAll
+  - ReplyAll : Boolean [Plain]  // Reply all
   - Body : String [In]  // Corpo
   - Files : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
-  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Attachments collection
   - Importance : UiPath.Mail.MailImportance [Plain]  // Importância
-  - ReplyFrom : String [In]  // RespostaDe
+  - ReplyFrom : String [In]  // Reply from
   - AddTo : String [In]  // Para
   - AddCc : String [In]  // CC
   - AddBcc : String [In]  // CCO
-  - NewSubject : String [In]  // Novo assunto
+  - NewSubject : String [In]  // New subject
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -744,19 +743,19 @@ ActivityCount: 50
 - optional:
   - FolderPath : String [In]  // CaminhoDaPasta
   - Account : String [In]  // Conta
-  - MailMessage : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - MailMessage : Net.Mail.MailMessage [In]  // Mail message
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
 ## UiPath.Mail.Outlook.Activities.SaveOutlookMailMessage
 - xmlns: `http://schemas.uipath.com/workflow/activities`
 - required:
-  - **MailMessage** : Net.Mail.MailMessage [In]  // Mensagem de Email
+  - **MailMessage** : Net.Mail.MailMessage [In]  // Mail message
   - **Folder** : String [In]  // Pasta
 - optional:
-  - FileName : String [In]  // Nome do arquivo
-  - ReplaceExisting : Boolean [Plain]  // Substituir existente
-  - SaveAsType : UiPath.Mail.Outlook.Enums.ESaveMessageAsType [Plain]  // Salvar como tipo
+  - FileName : String [In]  // File name
+  - ReplaceExisting : Boolean [Plain]  // Replace existing
+  - SaveAsType : UiPath.Mail.Outlook.Enums.ESaveMessageAsType [Plain]  // Save as type
   - DisplayName : String [Plain]
   - Id : String [Plain]
 
@@ -767,8 +766,8 @@ ActivityCount: 50
 - optional:
   - Attachments : Collections.Generic.List<String> [Plain]
   - Account : String [In]  // Conta
-  - SentOnBehalfOfName : String [In]  // Enviar em nome de
-  - IsDraft : Boolean [Plain]  // É Rascunho
+  - SentOnBehalfOfName : String [In]  // Send on behalf of
+  - IsDraft : Boolean [Plain]  // Is draft
   - ReplyTo : String [In]  // Reply to
   - Importance : UiPath.Mail.MailImportance [Plain]  // Importância
   - Sensitivity : UiPath.Mail.MailSensitivity [Plain]  // Confidencialidade
@@ -778,11 +777,10 @@ ActivityCount: 50
   - Subject : String [In]  // Assunto
   - Body : String [In]  // Corpo
   - IsBodyHtml : Boolean [Plain]  // ÉCorpoEmHTML
-  - UseRichTextEditor : Nullable<Boolean> [Plain]
   - TimeoutMS : Int32 [In]  // TempoLimiteEmMs
   - Files : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
-  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
-  - MailMessage : Net.Mail.MailMessage [In]  @group=Forward  // Mensagem de Email
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Attachments collection
+  - MailMessage : Net.Mail.MailMessage [In]  @group=Forward  // Mail message
   - ConnectionId : String [Plain]  // Conexão
   - ConnectionMode : UiPath.Mail.Activities.Enums.ConnectionDetails [Plain]
   - UseISConnection : Boolean [Plain]
@@ -851,11 +849,10 @@ ActivityCount: 50
   - Subject : String [In]  // Assunto
   - Body : String [In]  // Corpo
   - IsBodyHtml : Boolean [Plain]  // ÉCorpoEmHTML
-  - UseRichTextEditor : Nullable<Boolean> [Plain]
   - TimeoutMS : Int32 [In]  // TempoLimiteEmMs
   - Files : Collections.Generic.List<Activities.InArgument<String>> [Plain]  // Anexos
-  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Coleção de Anexos
-  - MailMessage : Net.Mail.MailMessage [In]  @group=Forward  // Mensagem de Email
+  - AttachmentsCollection : Collections.Generic.IEnumerable<String> [In]  // Attachments collection
+  - MailMessage : Net.Mail.MailMessage [In]  @group=Forward  // Mail message
   - ConnectionId : String [Plain]  // Conexão
   - ConnectionMode : UiPath.Mail.Activities.Enums.ConnectionDetails [Plain]
   - UseISConnection : Boolean [Plain]

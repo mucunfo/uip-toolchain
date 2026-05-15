@@ -578,17 +578,38 @@ def detect_u5_variable_aliases(rule, fc, pc):
         key = (typ, norm)
         by_type_default.setdefault(key, []).append((name, m.start()))
 
+    def _name_tokens(n: str) -> set[str]:
+        # Strip Hungarian prefix (v/in/io/out + type marker) then CamelCase split
+        stripped = re.sub(r'^(?:in|io|out|v)(?:St|Int|Bl|Dt|DTab|Arr|Dict|Lst)?', '', n)
+        return {t.lower() for t in re.findall(r'[A-Z][a-z0-9]*|[a-z0-9]+', stripped) if t}
+
     for (typ, default), entries in by_type_default.items():
-        if len(entries) >= 2:
-            names = [e[0] for e in entries]
-            first_offset = entries[0][1]
-            findings.append(Finding(
-                rule_id=rule.id, severity=rule.severity, category=rule.category,
-                file=str(fc.path), line=_line_for(content, first_offset),
-                message=f"{rule.title}: {len(entries)} <Variable> com mesmo Type+Default — vars={names}, type='{typ}', default='{default}' (consolidar em uma)",
-                fix_mechanical=None,
-                fix_prose=(rule.fix or {}).get("prose"),
-            ))
+        if len(entries) < 2:
+            continue
+        names = [e[0] for e in entries]
+        # Aliases share name tokens (e.g. vDTabUsuariosA / vDTabUsuariosB).
+        # Names with distinct semantic stems (vDTabOperadoresEAprovadores
+        # vs vDTabUsuariosRPA) NAO sao aliases — heurística agressiva.
+        # Skip se intersection de tokens semanticos < 1 entre TODOS pares.
+        token_sets = [_name_tokens(n) for n in names]
+        any_overlap = False
+        for i in range(len(token_sets)):
+            for j in range(i + 1, len(token_sets)):
+                if token_sets[i] & token_sets[j]:
+                    any_overlap = True
+                    break
+            if any_overlap:
+                break
+        if not any_overlap:
+            continue  # semantically distinct names — not alias
+        first_offset = entries[0][1]
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, first_offset),
+            message=f"{rule.title}: {len(entries)} <Variable> com mesmo Type+Default — vars={names}, type='{typ}', default='{default}' (consolidar em uma)",
+            fix_mechanical=None,
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
 
     # ---------- Caso 2: Assigns com mesma expressão ----------
     by_value: dict[str, list[tuple[str, int]]] = {}
@@ -612,6 +633,13 @@ def detect_u5_variable_aliases(rule, fc, pc):
         # Different target vars receiving same expr
         unique_targets = list({e[0] for e in entries})
         if len(unique_targets) >= min_dup:
+            # Skip if expression is a variable reference (`[vX]`) — likely
+            # legitimate fan-out (1 source var → multiple destinations for
+            # different downstream uses). True alias requires literal/computed
+            # expression value, not variable propagation.
+            expr_stripped = expr.strip()
+            if re.fullmatch(r'\[?\s*v[A-Za-z][A-Za-z0-9_]*\s*\]?', expr_stripped):
+                continue
             first_offset = entries[0][1]
             findings.append(Finding(
                 rule_id=rule.id, severity=rule.severity, category=rule.category,

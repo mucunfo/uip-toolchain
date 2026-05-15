@@ -664,7 +664,16 @@ def _n8_finding(rule, fc, content, name, kind, offset, threshold):
 
 
 def detect_n4_arg_count(rule, fc, pc):
-    """N-4: > threshold argumentos = sinal pra agrupar Dict/DataTable."""
+    """N-4: > threshold argumentos = sinal pra agrupar Dict/DataTable.
+
+    Heurística refinada: args ja-agrupados (Dictionary, DataTable, KeyValuePair,
+    Tuple, ICollection, Array, List) ja sao agrupamentos arquiteturais — contam
+    com peso 0.4. Tipos simples (String, Int, Bool, etc.) contam peso 1.0.
+
+    Total = sum_weights. Se total > threshold → finding.
+    Justificativa: workflow com 8 args sendo 3 deles Dictionary nao tem mesma
+    pressao arquitetural que workflow com 8 String/Int simples.
+    """
     content = fc.active_content
     members_match = re.search(
         r'<x:Members\s*>(.*?)</x:Members>', content, re.DOTALL
@@ -672,14 +681,46 @@ def detect_n4_arg_count(rule, fc, pc):
     if not members_match:
         return []
     block = members_match.group(1)
-    n = len(re.findall(r'<x:Property\b', block))
     threshold = _params(rule).get("threshold", 7)
-    if n <= threshold:
+
+    # Identify each x:Property + its Type
+    prop_re = re.compile(
+        r'<x:Property\b[^>]*\bType="((?:In|Out|InOut)Argument\(([^)]*(?:\([^)]*\)[^)]*)*)\))"',
+        re.DOTALL,
+    )
+    grouped_marker_re = re.compile(
+        r'(?:Dictionary|DataTable|KeyValuePair|Tuple|ICollection|IList|IEnumerable|List|HashSet|Stack|Queue|String\[\]|Int32\[\]|Object\[\]|Boolean\[\])',
+        re.IGNORECASE,
+    )
+
+    weighted_total = 0.0
+    n_simple = 0
+    n_grouped = 0
+    for m in prop_re.finditer(block):
+        inner_type = m.group(2)
+        if grouped_marker_re.search(inner_type):
+            n_grouped += 1
+            weighted_total += 0.4
+        else:
+            n_simple += 1
+            weighted_total += 1.0
+    # Also handle properties whose Type attr regex misses (complex nested):
+    # count raw <x:Property> matches as fallback weight 1 if not captured above.
+    total_raw = len(re.findall(r'<x:Property\b', block))
+    accounted = n_simple + n_grouped
+    weighted_total += max(0, total_raw - accounted) * 1.0
+    n_raw = total_raw
+
+    if weighted_total <= threshold:
         return []
     return [Finding(
         rule_id=rule.id, severity=rule.severity, category=rule.category,
         file=str(fc.path), line=_line_for(content, members_match.start()),
-        message=f"{rule.title}: {n} argumentos (threshold {threshold})",
+        message=(
+            f"{rule.title}: {n_raw} argumentos "
+            f"(simples={n_simple}, agrupados={n_grouped}, peso={weighted_total:.1f}, "
+            f"threshold {threshold})"
+        ),
         fix_mechanical=(rule.fix or {}).get("mechanical"),
         fix_prose=(rule.fix or {}).get("prose"),
     )]

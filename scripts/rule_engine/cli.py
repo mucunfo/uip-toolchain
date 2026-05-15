@@ -99,6 +99,19 @@ def build_parser() -> argparse.ArgumentParser:
     rev.add_argument("--verbose", action="store_true")
     rev.add_argument("--telemetry", action="store_true",
                      help="Append findings counts to .tmp/telemetry/<date>.jsonl")
+    # NOTE: --no-analyzer-gate flag mantido só p/ back-compat. Review é o
+    # canonical pre-publish gate: analyzer-gate SEMPRE roda. Flag emite
+    # warning e é ignorada (não desliga gate).
+    rev.add_argument("--no-analyzer-gate", action="store_true",
+                     help="DEPRECATED. review SEMPRE roda analyzer gate "
+                          "(pre-publish gate canonical, sem opt-out). Flag emite "
+                          "warning e é ignorada — mantida só por backwards-compat.")
+    rev.add_argument("--analyzer-gate-timeout", type=int, default=180,
+                     help="Timeout uipcli em segundos (default 180).")
+    rev.add_argument("--pack-gate-timeout", type=int, default=600,
+                     help="Timeout uipcli publish (pack dry-run) em segundos (default 600).")
+    rev.add_argument("--nuget-gate-timeout", type=int, default=300,
+                     help="Timeout NuGet restore em segundos (default 300).")
 
     st = sub.add_parser("stats", help="Aggregate telemetry: top rules + trends")
     st.add_argument("--since", default="30d",
@@ -194,9 +207,69 @@ def _load_rules_or_die(path: str) -> list:
 
 
 def _cmd_review(args) -> int:
+    """review = canonical pre-publish gate. Sempre executa pipeline completo.
+
+    Ordem de gates:
+      1. runner.run(args.path)              # rules Sicoob (engine local)
+      2. _apply_sicoob_lib_overrides(...)   # downgrade lib-contract findings
+      3. _inject_analyzer_findings(...)     # uipcli analyze (Studio Analyzer)
+      4. _run_nuget_restore_gate(...)       # NuGet restore (peer deps OK?)
+      5. _run_uipcli_pack_gate(...)         # uipcli publish dry-run (pack OK?)
+      6. relatório final + exit code
+
+    Sem opt-out CLI. Se review passa, projeto é publish-safe.
+
+    Env opt-out (tests apenas):
+      UIPATH_RULES_DISABLE_EXTERNAL_GATES=1 → pula gates 3/4/5 (não usa
+      subprocess externo). Não é meant for production — apenas test harness.
+    """
+    import os as _os
     rules = _load_rules_or_die(args.rules_file)
     runner = Runner(rules=rules, detectors=DETECTOR_REGISTRY, fixers=FIXER_REGISTRY)
     result = runner.run(args.path)
+
+    # Sicoob lib-contract overrides: downgrade findings que casam (rule, ident).
+    # Aplicado ANTES do analyzer gate p/ que count INFO consolidado fique correto.
+    _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
+
+    # Back-compat: --no-analyzer-gate deprecado. Warning + ignore.
+    if getattr(args, "no_analyzer_gate", False):
+        print("[WARNING] --no-analyzer-gate is deprecated and ignored; "
+              "review always runs analyzer gate.", file=sys.stderr)
+
+    external_gates_disabled = (
+        _os.environ.get("UIPATH_RULES_DISABLE_EXTERNAL_GATES", "").strip()
+        in ("1", "true", "yes")
+    )
+
+    if not external_gates_disabled:
+        # Gate 3: UiPath Studio Analyzer — sempre ON. Cobre lacunas estruturais
+        # da engine local (contrato lib NuGet, Roslyn compile, regras ST-* oficiais).
+        # Findings injetados em result.findings com rule_id "UIPATH:<code>".
+        _inject_analyzer_findings(
+            result, args.path,
+            timeout=getattr(args, "analyzer_gate_timeout", 180),
+            verbose=getattr(args, "verbose", False),
+        )
+
+        # Gate 4: NuGet restore — valida peer deps + feed resolution.
+        _run_nuget_restore_gate(
+            result, args.path,
+            timeout=getattr(args, "nuget_gate_timeout", 300),
+            verbose=getattr(args, "verbose", False),
+        )
+
+        # Gate 5: uipcli publish (pack dry-run) — confirma que projeto empacota
+        # publish-safe. Captura BC* compile errors + validation errors que só
+        # aparecem no fluxo de publish.
+        _run_uipcli_pack_gate(
+            result, args.path,
+            timeout=getattr(args, "pack_gate_timeout", 600),
+            verbose=getattr(args, "verbose", False),
+        )
+    elif getattr(args, "verbose", False):
+        print("[review] UIPATH_RULES_DISABLE_EXTERNAL_GATES set — "
+              "skipping analyzer/nuget/pack gates.", file=sys.stderr)
 
     rule_index = {r.id: r for r in rules}
     if args.format == "json":
@@ -220,6 +293,566 @@ def _cmd_review(args) -> int:
     if sev == Severity.ERROR:
         return EXIT_ERROR
     return EXIT_WARN
+
+
+_ANALYZER_SEVERITY_MAP = {
+    "Error": Severity.ERROR,
+    "Warning": Severity.WARN,
+    "Info": Severity.INFO,
+}
+
+# UiPath rule codes que sao politica aceita Sicoob (A-3 credential propagation
+# REFramework). Downgrade pra INFO + category "uipath_sicoob_policy" para nao
+# bloquear gate em padroes legitimos. NAO eh mass-suppress — eh policy override
+# explicita declarada na engine, alinhada com CLAUDE.md.
+_ANALYZER_SICOOB_POLICY = {
+    "ST-SEC-007": "A-3 credential propagation — SecureString arg legitimo no chain.",
+    "ST-SEC-008": "A-3 credential propagation — SecureString circula entre workflows REFramework.",
+    "ST-SEC-009": "A-3 credential propagation — SecureString->String necessario p/ header Bearer/Basic.",
+    "ST-NMG-009": "N-1/N-2 Sicoob — DataTable variavel usa prefixo 'vDTab', nao 'dt_'.",
+    "ST-NMG-011": "N-2 Sicoob — DataTable argumento usa prefixo 'in_DTab'/'io_DTab'/'out_DTab', nao 'dt_'.",
+    "ST-NMG-008": "Duplicata de Sicoob N-8 (mesma regra, >30 chars). N-8 governa.",
+    "ST-NMG-016": "Duplicata de N-8 (max length arg). N-8/lib-contract governam.",
+}
+
+# Whitelist por escopo de path. Testes Sicoob nao precisam seguir convencoes
+# de production: DisplayName padrao OK (mocks), variaveis curtas OK (vTI_A
+# = Test Item A), LogMessage nao obrigatoria (test runner separado).
+# Format: {rule_code: (path_substrings_tuple, reason)}.
+_ANALYZER_TEST_SCOPE_WHITELIST = {
+    "ST-MRD-002": (("\\Tests\\", "/Tests/"),
+                   "Tests/* — DisplayName padrao aceito em mocks/scenarios."),
+    "ST-NMG-004": (("\\Tests\\", "/Tests/"),
+                   "Tests/* — DisplayName duplicado aceito em test setups."),
+    "ST-USG-020": (("\\Tests\\", "/Tests/"),
+                   "Tests/* — Log nao usada OK em test runners (assert/mock)."),
+    "ST-NMG-001": (("\\Tests\\", "/Tests/"),
+                   "Tests/* — naming variado aceito em fixtures."),
+    "ST-NMG-008": (("\\Tests\\", "/Tests/"),
+                   "Tests/* — nomes longos OK em test setups descritivos."),
+    "ST-ANA-009": (("\\Tests\\", "/Tests/"),
+                   "Tests/* — containers colapsados OK (UI design-time)."),
+}
+
+# Framework/* + Main.xaml = REFramework template. CLAUDE.md A-4: nao modificar
+# SetTransactionStatus/InitAllApplications + protecao geral REFramework.
+# Whitelist rules que sao caracteristicas legitimas do template.
+_ANALYZER_FRAMEWORK_SCOPE_WHITELIST = {
+    "ST-NMG-004": (("\\Framework\\", "/Framework/"),
+                   "Framework/* — REFramework template; A-4 protected, DisplayName dups intencionais."),
+    "ST-MRD-002": (("\\Framework\\", "/Framework/"),
+                   "Framework/* — REFramework template; DisplayName default em activities de boilerplate."),
+    "ST-AMG-001": (("\\Framework\\", "/Framework/", "\\Main.xaml", "/Main.xaml"),
+                   "REFramework template — BusinessRuleException classica e padrao do framework Sicoob."),
+    "UI-PRR-004": (("\\Framework\\", "/Framework/"),
+                   "Framework/* — delays hardcoded de template REFramework (TakeScreenshot/SetTxStatus)."),
+    "ST-MRD-007": (("\\Framework\\", "/Framework/"),
+                   "Framework/* — REFramework state machine naturalmente aninha >3."),
+}
+
+# Engine Sicoob findings que sao overrides legitimos por contrato de lib externa.
+# Match por (rule_id, identifier_substring). Findings sao downgraded para INFO
+# com nota explicativa. Diferente de policy whitelist UiPath (ANALYZER_SICOOB_POLICY)
+# que e por rule_id inteiro — aqui eh por arg/var ESPECIFICO. Match exato no message.
+_SICOOB_LIB_CONTRACT_OVERRIDES = [
+    # CCS_Controle 1.1.0 obriga 'Atualiza' (presente 3sg) — engine N-13 quer infinitivo
+    ("N-13", "in_BlAtualizaProcessamentoFim", "CCS_Controle 1.1.0 contract: lib exige 'Atualiza' (nao 'Atualizar')."),
+    ("N-13", "in_BlAtualizaProcessamentoInicio", "CCS_Controle 1.1.0 contract: lib exige 'Atualiza' (nao 'Atualizar')."),
+    # Mesmo arg estoura 30 chars (32) — contrato nao permite encurtar
+    ("N-8", "in_BlAtualizaProcessamentoInicio", "CCS_Controle 1.1.0 contract: nome fixo da lib, 32 chars."),
+]
+
+
+def _apply_sicoob_lib_overrides(result, verbose: bool = False) -> int:
+    """Downgrade findings que casam (rule_id, identifier) em LIB_CONTRACT_OVERRIDES.
+
+    Override = INFO + category="sicoob_lib_contract" + nota anexada. Aplica-se
+    a findings Sicoob (rule_id sem prefixo UIPATH:). Returns count of overrides.
+    """
+    if not _SICOOB_LIB_CONTRACT_OVERRIDES:
+        return 0
+    count = 0
+    for f in result.findings:
+        if f.rule_id.startswith("UIPATH:"):
+            continue
+        for rid, identifier, note in _SICOOB_LIB_CONTRACT_OVERRIDES:
+            if f.rule_id != rid:
+                continue
+            if identifier not in f.message:
+                continue
+            f.severity = Severity.INFO
+            f.category = "sicoob_lib_contract"
+            f.message = f"{f.message} | OVERRIDE: {note}"
+            count += 1
+            break
+    if verbose and count:
+        print(f"[lib-contract-override] {count} findings downgraded.", file=sys.stderr)
+    return count
+
+
+def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
+                              verbose: bool = False) -> None:
+    """Run UiPath Studio Analyzer (uipcli) and inject findings into result.
+
+    Graceful degradation:
+      - uipcli not found -> warn on stderr, return (no findings added)
+      - timeout / OS error -> warn, return
+      - project.json absent -> warn, return
+
+    Each AnalyzerIssue becomes a Finding with rule_id `UIPATH:<ErrorCode>`
+    (or `UIPATH:LOAD` if no code), category `uipath`, line 0.
+    """
+    from .analyzer import discover_uipcli, _parse_json_block
+    from ._types import Finding
+    import os
+    import re
+    import subprocess
+
+    cli = discover_uipcli()
+    if cli is None or not cli.is_file():
+        print("[analyzer-gate] uipcli not found — gate skipped. "
+              "Set UIPATH_STUDIO_CLI or install UiPath Studio. "
+              "Engine local cobre apenas regras Sicoob.", file=sys.stderr)
+        return
+
+    project_root = Path(project_path).resolve()
+    project_json = project_root / "project.json"
+    if not project_json.is_file():
+        if verbose:
+            print(f"[analyzer-gate] no project.json at {project_root} — skipped.",
+                  file=sys.stderr)
+        return
+
+    if verbose:
+        print(f"[analyzer-gate] running uipcli analyze on {project_json}",
+              file=sys.stderr)
+    try:
+        proc = subprocess.run(
+            [str(cli), "analyze", "-p", str(project_json)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        print(f"[analyzer-gate] uipcli invocation failed: "
+              f"{type(e).__name__}: {e}. Gate skipped.", file=sys.stderr)
+        return
+
+    issues = _parse_json_block(proc.stdout or "")
+    # Also capture NU\d+ NuGet package errors (1 per line, not in #json)
+    nu_errors = []
+    for line in (proc.stdout or "").splitlines():
+        nu = re.match(r"^(NU\d+):\s*(.*)$", line.strip())
+        if nu:
+            nu_errors.append((nu.group(1), nu.group(2)))
+
+    injected = 0
+    policy_downgraded = 0
+    for raw in issues:
+        sev_str = raw.get("ErrorSeverity") or ""
+        sev = _ANALYZER_SEVERITY_MAP.get(sev_str)
+        if sev is None:
+            continue
+        code = raw.get("ErrorCode") or "LOAD"
+        fp = raw.get("FilePath") or ""
+        item = raw.get("Item") or ""
+        act = raw.get("ActivityDisplayName") or ""
+        desc = (raw.get("Description") or "").strip()
+        # Policy override Sicoob — declared whitelist (not mass-suppress).
+        category = "uipath"
+        policy_note = _ANALYZER_SICOOB_POLICY.get(code)
+        if policy_note is not None:
+            sev = Severity.INFO
+            category = "uipath_sicoob_policy"
+            desc = f"{desc} | POLICY-ACEITA: {policy_note}"
+            policy_downgraded += 1
+        else:
+            # Path-scoped whitelist (rule X is OK em paths Y).
+            scope = _ANALYZER_TEST_SCOPE_WHITELIST.get(code)
+            if scope is not None:
+                substrs, scope_note = scope
+                if any(s in fp for s in substrs):
+                    sev = Severity.INFO
+                    category = "uipath_test_scope"
+                    desc = f"{desc} | SCOPE-WHITELIST: {scope_note}"
+                    policy_downgraded += 1
+            # Framework/* scope whitelist (REFramework template — A-4 protegido).
+            fw_scope = _ANALYZER_FRAMEWORK_SCOPE_WHITELIST.get(code)
+            if fw_scope is not None and category == "uipath":
+                substrs, scope_note = fw_scope
+                if any(s in fp for s in substrs):
+                    sev = Severity.INFO
+                    category = "uipath_framework_scope"
+                    desc = f"{desc} | FRAMEWORK-WHITELIST: {scope_note}"
+                    policy_downgraded += 1
+        # Compose readable message
+        msg_parts = [desc]
+        if item:
+            msg_parts.append(f"[{item}]")
+        if act:
+            msg_parts.append(f"@{act}")
+        msg = " ".join(msg_parts)
+        result.add(Finding(
+            rule_id=f"UIPATH:{code}",
+            severity=sev,
+            category=category,
+            file=fp or "(project)",
+            line=0,
+            message=msg,
+        ))
+        injected += 1
+
+    for code, desc in nu_errors:
+        result.add(Finding(
+            rule_id=f"UIPATH:{code}",
+            severity=Severity.ERROR,
+            category="uipath",
+            file="(project)",
+            line=0,
+            message=desc.strip(),
+        ))
+        injected += 1
+
+    if verbose:
+        print(f"[analyzer-gate] {injected} findings injected "
+              f"({policy_downgraded} downgraded por policy Sicoob; exit code "
+              f"{proc.returncode}).", file=sys.stderr)
+
+
+# NuGet warning codes que tratamos como ERROR (blocking publish):
+#   NU1101 — package not found in source
+#   NU1102 — version not found
+#   NU1107 — version conflict
+#   NU1605 — package downgrade (warning, mas bloqueia publish)
+#   NU3026 — signature validation
+#   NU5048 — missing required metadata
+# Outros NU* WARN ficam WARN.
+_NUGET_PROMOTE_TO_ERROR = frozenset({
+    "NU1101", "NU1102", "NU1107", "NU1605", "NU3026", "NU5048",
+})
+
+_NUGET_LINE_RE = None  # lazy compile inside the gate
+
+
+def _discover_nuget_binary() -> str | None:
+    """Localize nuget.exe / dotnet executable. Priority:
+      1. env UIPATH_NUGET_CLI
+      2. nuget.exe via PATH
+      3. dotnet via PATH (fallback — `dotnet restore` paliativo).
+    Retorna o path do binary ou None se nada encontrado.
+    """
+    import os
+    import shutil as _sh
+    explicit = os.environ.get("UIPATH_NUGET_CLI")
+    if explicit and Path(explicit).is_file():
+        return explicit
+    via_path = _sh.which("nuget") or _sh.which("nuget.exe")
+    if via_path:
+        return via_path
+    dotnet = _sh.which("dotnet")
+    if dotnet:
+        return dotnet
+    return None
+
+
+def _run_nuget_restore_gate(result, project_path: str, timeout: int = 300,
+                             verbose: bool = False) -> None:
+    """Run NuGet restore and inject NU* errors/warnings as findings.
+
+    Graceful degradation: se nenhum binary NuGet disponível, warn + skip.
+    UiPath project.json não é .csproj — `dotnet restore` requer adaptador.
+    Esse gate é primarily útil quando nuget.exe é provided no env Sicoob CI.
+    """
+    import re
+    import subprocess
+    from ._types import Finding
+
+    binary = _discover_nuget_binary()
+    if binary is None:
+        print("[NUGET-GATE] nuget binary not found; skipping. "
+              "Set UIPATH_NUGET_CLI or install nuget.exe / dotnet SDK.",
+              file=sys.stderr)
+        return
+
+    project_root = Path(project_path).resolve()
+    project_json = project_root / "project.json"
+    if not project_json.is_file():
+        if verbose:
+            print(f"[NUGET-GATE] no project.json at {project_root} — skipped.",
+                  file=sys.stderr)
+        return
+
+    # nuget.exe: `nuget restore <project.json>` direto OK.
+    # dotnet: NÃO suporta project.json UiPath. Skipa com warning, evita
+    # falsos positivos de "project file not supported".
+    binary_name = Path(binary).name.lower()
+    if binary_name.startswith("dotnet"):
+        if verbose:
+            print(f"[NUGET-GATE] only dotnet available — project.json UiPath "
+                  "não é suportado por `dotnet restore`. Skipping.",
+                  file=sys.stderr)
+        return
+
+    if verbose:
+        print(f"[NUGET-GATE] running {binary} restore on {project_json}",
+              file=sys.stderr)
+    try:
+        proc = subprocess.run(
+            [binary, "restore", str(project_json)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, check=False, cwd=str(project_root),
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        print(f"[NUGET-GATE] nuget invocation failed: "
+              f"{type(e).__name__}: {e}. Gate skipped.", file=sys.stderr)
+        return
+
+    output = (proc.stdout or "") + "\n" + (proc.stderr or "")
+
+    # Capture lines with NU<NNNN>: code (error or warning prefix optional).
+    # Examples:
+    #   "[Error] NU1101: Unable to find package ..."
+    #   "warning : NU1605: Detected package downgrade ..."
+    #   "NU1102: Unable to find package version ..."
+    nu_re = re.compile(
+        r"(?P<prefix>\[?(?:Error|Warning|error|warning)\]?\s*[: ]\s*)?"
+        r"(?P<code>NU\d{4,5})\s*:\s*(?P<msg>.+?)\s*$",
+        re.MULTILINE,
+    )
+
+    injected = 0
+    seen_keys: set[tuple[str, str]] = set()
+    for m in nu_re.finditer(output):
+        code = m.group("code")
+        msg = m.group("msg").strip()
+        prefix = (m.group("prefix") or "").lower()
+        key = (code, msg[:120])
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        # Severity: promote known-blocking codes to ERROR; else use prefix hint.
+        if code in _NUGET_PROMOTE_TO_ERROR:
+            sev = Severity.ERROR
+        elif "error" in prefix:
+            sev = Severity.ERROR
+        elif "warning" in prefix:
+            sev = Severity.WARN
+        else:
+            sev = Severity.WARN
+        result.add(Finding(
+            rule_id=f"NUGET:{code}",
+            severity=sev,
+            category="breaking",
+            file="project.json",
+            line=1,
+            message=f"{code}: {msg}",
+        ))
+        injected += 1
+
+    if verbose:
+        print(f"[NUGET-GATE] {injected} findings injected (exit {proc.returncode}).",
+              file=sys.stderr)
+
+
+# Pattern p/ extrair file path + line de erros uipcli publish.
+# uipcli emite "Path/To/File.xaml: BC30002: msg" e variantes
+# "Path/To/File.xaml(123,45): BC30002: msg".
+_PACK_FILE_LINE_RE = None  # lazy
+
+# Frases-âncora que indicam erro em pack/publish (PT-BR + EN, since uipcli
+# pode emitir em ambas linguagens dependendo do locale Windows).
+_PACK_ERROR_ANCHORS = (
+    "O projeto tem erros de validação",
+    "Project has validation errors",
+    "ERROR(S)",
+    "Errors:",
+    "[Error]",
+    "Erro:",
+    "Não foi possível publicar",
+    "Failed to publish",
+    "Failed to package",
+)
+
+
+def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
+                          verbose: bool = False) -> None:
+    """Run `uipcli publish` to a local tmpdir as a pack dry-run.
+
+    uipcli não tem subcmd `pack` direto. `publish -p ... -o Process -f <tmpdir>`
+    com feed local equivale a pack dry-run: faz restore + validation +
+    compile + .nupkg writing, sem upload. Erros (BC*, validation) capturados.
+
+    Graceful degradation: skip se uipcli não disponível.
+    """
+    import re
+    import shutil
+    import subprocess
+    import tempfile
+    from .analyzer import discover_uipcli
+    from ._types import Finding
+
+    cli = discover_uipcli()
+    if cli is None or not cli.is_file():
+        print("[PACK-GATE] uipcli not found — gate skipped. "
+              "Set UIPATH_STUDIO_CLI or install UiPath Studio.",
+              file=sys.stderr)
+        return
+
+    project_root = Path(project_path).resolve()
+    project_json = project_root / "project.json"
+    if not project_json.is_file():
+        if verbose:
+            print(f"[PACK-GATE] no project.json at {project_root} — skipped.",
+                  file=sys.stderr)
+        return
+
+    # tmpdir em .uipath-rules/.tmp/pack_dryrun/<pid>/ (gitignored). NÃO usar
+    # tempfile.gettempdir() — fica fora do controle, e Windows AV pode
+    # gerar permission errors. tempfile.mkdtemp() em diretório nosso.
+    engine_root = Path(__file__).resolve().parents[2]
+    base_tmp = engine_root / ".tmp" / "pack_dryrun"
+    try:
+        base_tmp.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        if verbose:
+            print(f"[PACK-GATE] cannot create tmp dir: {e}. Skipping.",
+                  file=sys.stderr)
+        return
+
+    tmpdir = tempfile.mkdtemp(dir=str(base_tmp), prefix="pack_")
+    try:
+        if verbose:
+            print(f"[PACK-GATE] running uipcli publish (dry-run) "
+                  f"on {project_json} -> {tmpdir}", file=sys.stderr)
+        try:
+            proc = subprocess.run(
+                [str(cli), "publish",
+                 "-p", str(project_json),
+                 "-o", "Process",
+                 "-f", str(tmpdir)],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=timeout, check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError) as e:
+            print(f"[PACK-GATE] uipcli invocation failed: "
+                  f"{type(e).__name__}: {e}. Gate skipped.", file=sys.stderr)
+            return
+
+        output = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        injected = _parse_pack_output_and_inject(result, output, project_root)
+
+        # Se uipcli retornou erro mas nada foi capturado pelos regex acima,
+        # emit single Finding indicando publish falhou (so user sees something).
+        if proc.returncode != 0 and injected == 0:
+            # Try to capture last non-empty line as fallback msg.
+            fallback_msg = ""
+            for line in reversed(output.splitlines()):
+                s = line.strip()
+                if s and not s.startswith("UiPath.Studio.CommandLine"):
+                    fallback_msg = s
+                    break
+            result.add(Finding(
+                rule_id="UIPATH:PACK",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"uipcli publish returned exit {proc.returncode} "
+                        f"(no parseable errors). Last line: {fallback_msg[:300]}",
+            ))
+            injected += 1
+
+        if verbose:
+            print(f"[PACK-GATE] {injected} findings injected "
+                  f"(exit {proc.returncode}).", file=sys.stderr)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _parse_pack_output_and_inject(result, output: str, project_root: Path) -> int:
+    """Parse uipcli publish stdout/stderr, emit UIPATH:PACK findings.
+
+    Captura:
+      - Linhas `<relpath>.xaml: BC<NNNN>: <msg>` (VB compile errors).
+      - Linhas `<relpath>.xaml(<line>,<col>): BC<NNNN>: <msg>` (com posição).
+      - Linhas após anchors `Errors:` / `[Error]` / "O projeto tem erros".
+      - Errors gerais (sem file context) viram findings em `project.json`.
+
+    Dedup por (file, error_code, msg[:100]).
+
+    Retorna count de findings injetados.
+    """
+    import re
+    from ._types import Finding
+
+    # Pattern 1: "<path>.xaml: BC<NNNN>: <msg>" or "<path>.xaml(line,col): BC<NNNN>: <msg>"
+    file_err_re = re.compile(
+        r"^(?P<file>[^\s:][^:]*\.xaml)"
+        r"(?:\((?P<line>\d+),(?P<col>\d+)\))?"
+        r":\s*(?P<code>BC\d{4,5}|[A-Z]{2,5}\d{2,5})"
+        r":\s*(?P<msg>.+?)\s*$",
+        re.MULTILINE,
+    )
+
+    # Pattern 2: linhas após [Error] / Errors: anchors (no file context).
+    generic_err_re = re.compile(
+        r"^\s*\[Error\]\s*(?P<msg>.+?)\s*$|"
+        r"^\s*ERROR\s*:\s*(?P<msg2>.+?)\s*$",
+        re.MULTILINE,
+    )
+
+    injected = 0
+    seen: set[tuple[str, str, str]] = set()
+
+    for m in file_err_re.finditer(output):
+        rel_file = m.group("file").strip()
+        line = int(m.group("line") or 0)
+        code = m.group("code")
+        msg = m.group("msg").strip()
+        key = (rel_file, code, msg[:100])
+        if key in seen:
+            continue
+        seen.add(key)
+        # Resolve to absolute path if possible.
+        abs_file = project_root / rel_file
+        file_for_finding = str(abs_file) if abs_file.is_file() else rel_file
+        result.add(Finding(
+            rule_id="UIPATH:PACK",
+            severity=Severity.ERROR,
+            category="breaking",
+            file=file_for_finding,
+            line=line,
+            message=f"{code}: {msg}",
+        ))
+        injected += 1
+
+    # Linha-âncora final "O projeto tem erros de validação..." vira finding
+    # geral se nada mais foi capturado — confirma que houve falha overall.
+    has_anchor = any(a in output for a in _PACK_ERROR_ANCHORS)
+    if has_anchor and injected == 0:
+        # Look for the actual anchor msg.
+        for anchor in _PACK_ERROR_ANCHORS:
+            if anchor in output:
+                # Capture line containing the anchor.
+                for line in output.splitlines():
+                    if anchor in line:
+                        msg = line.strip()
+                        key = ("project.json", "PACK", msg[:100])
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        result.add(Finding(
+                            rule_id="UIPATH:PACK",
+                            severity=Severity.ERROR,
+                            category="breaking",
+                            file="project.json",
+                            line=0,
+                            message=msg[:400],
+                        ))
+                        injected += 1
+                        break
+                break
+
+    return injected
 
 
 _TELEMETRY_DIR = Path(__file__).resolve().parents[2] / ".tmp" / "telemetry"
@@ -554,6 +1187,9 @@ def _cmd_fix(args) -> int:
             break
 
         result = runner.run(args.path)
+
+        _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
+
         seen_keys: set[tuple[str, str]] = set()
         iter_applied = 0
         iter_would_fix = 0

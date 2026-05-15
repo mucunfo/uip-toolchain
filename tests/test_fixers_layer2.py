@@ -137,11 +137,17 @@ def test_insert_trace_log_uses_prefixo_when_declared(tmp_path):
 
 
 def test_insert_trace_log_unique_displayname(tmp_path):
-    """Suffix #2 quando DisplayName base já usado no arquivo."""
+    """Suffix #2 quando DisplayName base já usado no arquivo.
+
+    Naming convention atual (N-17): `Log Message - <ctx> concluido`.
+    Para disparar disambiguation, arquivo precisa já conter o DN base
+    que será gerado pelo fixer.
+    """
     f = tmp_path / "wf.xaml"
     body = (
         '  <Sequence>\n'
-        '    <Assign DisplayName="Trace: X" sap2010:WorkflowViewState.IdRef="Assign_pre"/>\n'
+        '    <ui:LogMessage DisplayName="Log Message - X concluido" '
+        'sap2010:WorkflowViewState.IdRef="Log_pre" Level="Info" Message="[&quot;old&quot;]" />\n'
         '    <Assign DisplayName="X" sap2010:WorkflowViewState.IdRef="Assign_1">\n'
         '      <Assign.To><OutArgument x:TypeArguments="x:Int32">[v]</OutArgument></Assign.To>\n'
         '      <Assign.Value><InArgument x:TypeArguments="x:Int32">[1]</InArgument></Assign.Value>\n'
@@ -149,7 +155,7 @@ def test_insert_trace_log_unique_displayname(tmp_path):
         '  </Sequence>\n'
     )
     f.write_text(XAML_HEAD + body + XAML_TAIL, encoding="utf-8")
-    # head=2 + Sequence=1 + Assign_pre=1 → second Assign at line 5.
+    # head=2 + Sequence=1 + LogMessage=1 → second activity (Assign) at line 5.
     spec = {
         "activity_name": "Assign", "activity_line": 5,
         "trace_level": "Trace", "has_prefixo": False, "proximity_window": 600,
@@ -157,8 +163,8 @@ def test_insert_trace_log_unique_displayname(tmp_path):
     changed = apply_insert_trace_log(f, spec, dry_run=False)
     assert changed is True
     out = f.read_text(encoding="utf-8")
-    # Original "Trace: X" + new should disambiguate (#2).
-    assert 'DisplayName="Trace: X #2"' in out
+    # Base "Log Message - X concluido" já presente → novo deve disambiguar #2.
+    assert 'DisplayName="Log Message - X concluido #2"' in out
 
 
 # ---- F24: insert_trace_log wrap em parents wrap-able ----

@@ -185,17 +185,21 @@ def _u5_rule():
 
 
 def test_u5_same_default_flagged(tmp_path):
+    # Token-overlap heuristic (unused.py:594-604) requires shared semantic
+    # tokens entre nomes pra evitar FP em vars com Defaults coincidentemente
+    # iguais (ex: vDTabUsuariosA vs vDTabOperadores). Vars com semântica
+    # compartilhada (Url/Base) overlapeiam → flagged.
     body = '''
     <Sequence>
       <Sequence.Variables>
-        <Variable x:TypeArguments="x:String" Name="vStA" Default="https://api.example.com/v1" />
-        <Variable x:TypeArguments="x:String" Name="vStB" Default="https://api.example.com/v1" />
+        <Variable x:TypeArguments="x:String" Name="vStUrlBaseA" Default="https://api.example.com/v1" />
+        <Variable x:TypeArguments="x:String" Name="vStUrlBaseB" Default="https://api.example.com/v1" />
       </Sequence.Variables>
     </Sequence>
     '''
     fc = _write_xaml(tmp_path, body)
     findings = detect_u5_variable_aliases(_u5_rule(), fc, _project(tmp_path))
-    assert any("vStA" in f.message and "vStB" in f.message for f in findings)
+    assert any("vStUrlBaseA" in f.message and "vStUrlBaseB" in f.message for f in findings)
 
 
 def test_u5_trivial_default_skipped(tmp_path):
