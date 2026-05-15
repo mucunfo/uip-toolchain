@@ -2312,6 +2312,9 @@ def apply_gitignore_append_lines(file: Path, spec: dict, dry_run: bool = True) -
     """HY-4 fixer: garante entries obrigatórios em .gitignore.
 
     Spec:
+      target: path do .gitignore (injetado pelo detector). Permite que
+              `file` permaneça anchor em project.json (sempre existe →
+              safety snapshot funciona) e fixer escreve no path correto.
       missing: list[str] de linhas faltando (injetadas pela heuristic).
       defaults: list[str] de entries obrigatórios (fallback se missing ausente).
     Idempotente; cria .gitignore se ausente. Preserva CRLF se já existente,
@@ -2320,6 +2323,9 @@ def apply_gitignore_append_lines(file: Path, spec: dict, dry_run: bool = True) -
     missing = spec.get("missing") or spec.get("defaults") or []
     if not missing:
         return False
+    target_raw = spec.get("target")
+    if target_raw:
+        file = Path(target_raw)
     if file.exists():
         try:
             existing_bytes = file.read_bytes()

@@ -182,7 +182,37 @@ deterministic` — fixer reusa `strip_annotation_text` com `text_prefix:
 "[PostMigration Action Required]"`, removendo só os markers (preserva
 annotations legítimas no mesmo file).
 
-## Pre-publish gate (`review` = canonical)
+## God command (`uip` = canonical entrypoint)
+
+**Único comando para tudo** — `uip <project>` orquestra todas as fases:
+
+```
+PHASE 0  migration probe   (Activity Migrator se targetFramework != Windows)
+PHASE 1  deterministic fix (auto-apply, fixpoint loop, cascade rollback)
+PHASE 2  gates             (Layer 2 uipcli + Layer 3 nuget + Layer 5 pack)
+PHASE 3  contextual        (dry-run default; --apply-contextual aplica)
+PHASE 4  decisão           PASS / PENDING_REVIEW / FAIL
+```
+
+Em **FAIL**, loop com watch.wait_for_change aguardando edição manual.
+Em **PASS**, exit 0. Em **PENDING_REVIEW** (contextual residual), exit 1.
+
+Comandos visíveis ao dev:
+
+| Cenário | Comando |
+|---|---|
+| Dia-a-dia / aprovação publish | `uip <project>` |
+| Aprovar contextual da 1ª run | `uip <project> --apply-contextual` |
+| CI gate (sem loop, fail-fast) | `uip <project> --no-watch` |
+
+Underlying: `python -m scripts.rule_engine.cli all <project> [flags]`. PS
+alias `uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona
+`cd .uipath-rules` automático.
+
+Subcomandos atomicos (`review`, `fix`, `migrate-windows`, etc.) seguem
+existindo para debug e para o pipeline interno do `cli all`.
+
+## Pre-publish gate (`review` = canonical do gate, chamado dentro do `uip`)
 
 `review` é o **canonical pre-publish gate**: SEMPRE roda o pipeline completo
 sem opt-out. Se passa, projeto é publish-safe garantido.

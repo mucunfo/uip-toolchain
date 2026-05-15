@@ -2,6 +2,28 @@
 
 Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML-driven (`scripts/rule_engine`)**. Fonte única = **`rules.yaml`**.
 
+## Quick start — comando único `uip`
+
+**Pipeline completo (god command)**:
+
+```powershell
+# Default: migration + deterministic fix + gates + contextual dry-run
+uip <project_path>
+
+# 2ª run — aprova contextual remanescente da 1ª
+uip <project_path> --apply-contextual
+
+# CI gate (sem loop em FAIL)
+uip <project_path> --no-watch
+```
+
+Em FAIL, loop espera edição manual (mtime watch). PASS = projeto done.
+PENDING_REVIEW = contextual aguarda decisão humana.
+
+Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
+`python -m scripts.rule_engine.cli all <project>`. Subcomandos atômicos
+(`review`, `fix`, `migrate-windows`) seguem existindo para debug.
+
 ## Arquivos ativos
 
 | Arquivo | Papel |

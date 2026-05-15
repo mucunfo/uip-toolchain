@@ -82,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_migrate_windows(args)
     if args.command == "stats":
         return _cmd_stats(args)
+    if args.command == "all":
+        return _cmd_all(args)
 
     parser.print_help()
     return EXIT_OK
@@ -187,6 +189,26 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Sobrescreve --out se já existir")
     mw.add_argument("--dry-run", action="store_true",
                     help="Mostra plano, não executa Migrator")
+
+    al = sub.add_parser(
+        "all",
+        help="GOD COMMAND — pipeline completo: migration probe + "
+             "deterministic auto-fix + gates Layer2/3/5 + contextual "
+             "(dry-run default). Loop em FAIL aguardando edição.",
+    )
+    al.add_argument("path", help="Project root path")
+    al.add_argument("--rules-file", default=str(DEFAULT_RULES_FILE))
+    al.add_argument("--apply-contextual", action="store_true",
+                    help="Aplica também fixes contextual (default: só "
+                         "lista pra decisão humana, sem aplicar). Use após "
+                         "review da lista PENDING da 1ª run.")
+    al.add_argument("--no-watch", action="store_true",
+                    help="Não loop em FAIL — exit 2 imediato. Para CI gate.")
+    al.add_argument("--watch-interval", type=float, default=2.0,
+                    help="Poll cadence do mtime watcher em segundos (default 2.0).")
+    al.add_argument("--max-iters", type=int, default=0,
+                    help="Limite de iters do loop (0 = ilimitado). "
+                         "Útil pra testes; 0 = espera Ctrl-C ou PASS.")
 
     return p
 
@@ -1483,6 +1505,281 @@ def _emit_json(result: ValidationResult, path: str, rule_index: dict | None = No
         ],
     }
     print(json.dumps(out, indent=2, ensure_ascii=False))
+
+
+def _ns(**kwargs) -> argparse.Namespace:
+    """Build argparse.Namespace pra passar ao sub-handler."""
+    return argparse.Namespace(**kwargs)
+
+
+def _read_target_framework(project_root: Path) -> str | None:
+    pj = project_root / "project.json"
+    if not pj.is_file():
+        return None
+    try:
+        data = json.loads(pj.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError:
+        return None
+    return data.get("targetFramework")
+
+
+def _run_review_quiet(project: Path, rules_file: str) -> tuple[int, "ValidationResult"]:
+    """Roda _cmd_review captura stdout; retorna (exit_code, ValidationResult)."""
+    from .runner import Runner as _Runner
+    rules = _load_rules_or_die(rules_file)
+    runner = _Runner(rules=rules, detectors=DETECTOR_REGISTRY, fixers=FIXER_REGISTRY)
+    result = runner.run(str(project))
+    _apply_sicoob_lib_overrides(result, verbose=False)
+
+    import os as _os
+    external_gates_disabled = (
+        _os.environ.get("UIPATH_RULES_DISABLE_EXTERNAL_GATES", "").strip()
+        in ("1", "true", "yes")
+    )
+    if not external_gates_disabled:
+        _inject_analyzer_findings(result, str(project), timeout=180, verbose=False)
+        _run_nuget_restore_gate(result, str(project), timeout=300, verbose=False)
+        _run_uipcli_pack_gate(result, str(project), timeout=600, verbose=False)
+
+    if result.internal_errors:
+        return EXIT_INTERNAL, result
+    sev = result.max_severity()
+    if sev is None:
+        return EXIT_OK, result
+    if sev == Severity.HALT:
+        return EXIT_HALT, result
+    if sev == Severity.ERROR:
+        return EXIT_ERROR, result
+    return EXIT_WARN, result
+
+
+def _phase0_migration(project: Path, rules_file: str) -> dict:
+    """Phase 0 — migration probe.
+
+    Returns dict: {ran: bool, target_framework: str, status: str}.
+    Se targetFramework != Windows, invoca cmd_migrate_windows in-place
+    (output = project, preserva original via .Migrated sibling).
+    """
+    tf = _read_target_framework(project)
+    if tf == "Windows":
+        return {"ran": False, "target_framework": tf, "status": "skip"}
+    if tf is None:
+        return {"ran": False, "target_framework": None, "status": "skip (no project.json)"}
+    if tf not in ("Legacy", "Windows-Legacy"):
+        return {"ran": False, "target_framework": tf, "status": f"skip (unknown tf={tf!r})"}
+
+    from .migrate import cmd_migrate_windows
+    mw_args = _ns(
+        path=str(project),
+        out=None,
+        migrator_path=None,
+        migrator_args="",
+        ignore_missing_dependencies=False,
+        analyze_only=False,
+        rules_file=rules_file,
+        skip_migrator=False,
+        skip_post=False,
+        force=True,
+        dry_run=False,
+    )
+    rc = cmd_migrate_windows(mw_args)
+    return {"ran": True, "target_framework": tf, "status": f"migrated (exit={rc})"}
+
+
+def _phase1_deterministic(project: Path, rules_file: str) -> dict:
+    """Phase 1 — auto-apply deterministic fixes. Reusa _cmd_fix com --apply."""
+    fx_args = _ns(
+        path=str(project),
+        rules_file=rules_file,
+        apply=True,
+        rules="",
+        include_class="deterministic",
+        no_analyzer_gate=False,
+        verbose=False,
+    )
+    rc = _cmd_fix(fx_args)
+    return {"exit": rc}
+
+
+def _phase3_contextual_apply(project: Path, rules_file: str) -> dict:
+    """Phase 3 (opt-in) — aplica contextual fixes quando --apply-contextual."""
+    fx_args = _ns(
+        path=str(project),
+        rules_file=rules_file,
+        apply=True,
+        rules="",
+        include_class="contextual",
+        no_analyzer_gate=False,
+        verbose=False,
+    )
+    rc = _cmd_fix(fx_args)
+    return {"exit": rc}
+
+
+def _classify_contextual_pending(result, rule_index) -> list:
+    """Filtra findings que: severity ≤ WARN, são apply_class=contextual,
+    e ainda têm fix prose disponível. Retorna lista pra display."""
+    pending = []
+    for f in result.findings:
+        if f.suppressed:
+            continue
+        if f.severity not in (Severity.WARN, Severity.INFO):
+            continue
+        rule = rule_index.get(f.rule_id)
+        if rule is None:
+            continue
+        cls = get_apply_class(rule)
+        if cls != "contextual":
+            continue
+        pending.append(f)
+    return pending
+
+
+def _print_uip_header(project: Path, iter_no: int) -> None:
+    print(f"\n[uip] {project.name} — iter {iter_no}")
+    print("=" * (8 + len(project.name) + 12))
+
+
+def _print_phase(name: str, summary: str) -> None:
+    print(f"PHASE {name:30s} {summary}")
+
+
+def _print_status(status: str, *, project: Path, apply_contextual: bool) -> None:
+    print()
+    if status == "PASS":
+        print("[PASS] projeto done.")
+    elif status == "PENDING_REVIEW":
+        if apply_contextual:
+            print("[PARTIAL] contextual aplicado, mas findings remanescentes.")
+        else:
+            print(f"[PENDING REVIEW] aplica: uip {project} --apply-contextual")
+    elif status == "FAIL":
+        print(f"[FAIL] errors/halts residuais.")
+
+
+def _print_findings_table(findings: list, *, max_rows: int = 10, header: str) -> None:
+    if not findings:
+        return
+    print(f"\n{header} (top {min(max_rows, len(findings))} de {len(findings)}):")
+    for f in findings[:max_rows]:
+        file_short = Path(f.file).name
+        msg = f.message[:120]
+        print(f"  [{f.rule_id:10s}] {file_short}:{f.line} — {msg}")
+        if f.fix_prose:
+            prose_line = f.fix_prose.strip().splitlines()[0][:120]
+            print(f"               → {prose_line}")
+
+
+def _cmd_all(args) -> int:
+    """GOD COMMAND — pipeline 0→4 loop até PASS.
+
+    Flow:
+      iter 1+:
+        PHASE 0 migration probe (Activity Migrator se tf != Windows)
+        PHASE 1 deterministic fix auto-apply
+        PHASE 2 gates Layer 2/3/5 via _run_review_quiet (review canonical)
+        PHASE 3 contextual handling (dry-run | apply se --apply-contextual)
+        PHASE 4 decide PASS / PENDING_REVIEW / FAIL
+
+      PASS  → exit 0
+      PENDING_REVIEW → exit 1 (decisão humana via --apply-contextual)
+      FAIL  → loop com watch.wait_for_change OU exit 2 se --no-watch
+    """
+    from .watch import wait_for_change
+
+    project = Path(args.path).expanduser().resolve()
+    if not project.is_dir():
+        # Aceita também project.json direto
+        if project.is_file() and project.name == "project.json":
+            project = project.parent
+        else:
+            print(f"[INTERNAL] projeto não encontrado: {project}", file=sys.stderr)
+            return EXIT_INTERNAL
+
+    rules = _load_rules_or_die(args.rules_file)
+    rule_index = {r.id: r for r in rules}
+    apply_ctx = bool(args.apply_contextual)
+    no_watch = bool(args.no_watch)
+    interval = float(args.watch_interval)
+    max_iters = int(args.max_iters) if args.max_iters else 0
+
+    iter_no = 0
+    while True:
+        iter_no += 1
+        if max_iters and iter_no > max_iters:
+            print(f"\n[ABORT] max-iters={max_iters} atingido sem PASS.")
+            return EXIT_ERROR
+
+        _print_uip_header(project, iter_no)
+
+        # ---- PHASE 0: migration probe ----
+        p0 = _phase0_migration(project, args.rules_file)
+        _print_phase("0  migration", p0["status"])
+
+        # ---- PHASE 1: deterministic auto-fix ----
+        p1 = _phase1_deterministic(project, args.rules_file)
+        _print_phase("1  deterministic", f"fix exit={p1['exit']}")
+
+        # ---- PHASE 3 (apply mode): contextual auto-apply ANTES do review final ----
+        if apply_ctx:
+            p3a = _phase3_contextual_apply(project, args.rules_file)
+            _print_phase("3a contextual-apply", f"fix exit={p3a['exit']}")
+
+        # ---- PHASE 2+4: review final com Layer 2/3/5 + classify ----
+        rc, result = _run_review_quiet(project, args.rules_file)
+
+        errors = sum(1 for f in result.findings
+                     if f.severity == Severity.ERROR and not f.suppressed)
+        warns = sum(1 for f in result.findings
+                    if f.severity == Severity.WARN and not f.suppressed)
+        infos = sum(1 for f in result.findings
+                    if f.severity == Severity.INFO and not f.suppressed)
+        halts = sum(1 for f in result.findings
+                    if f.severity == Severity.HALT and not f.suppressed)
+        _print_phase("2  gates+review", f"errors={errors} warns={warns} info={infos} halts={halts}")
+
+        contextual_pending = _classify_contextual_pending(result, rule_index)
+        if apply_ctx:
+            _print_phase("3b contextual-residual", f"{len(contextual_pending)} findings")
+        else:
+            _print_phase("3  contextual (dry-run)", f"{len(contextual_pending)} findings PENDING")
+
+        # ---- PHASE 4: decisão ----
+        if errors > 0 or halts > 0:
+            status = "FAIL"
+        elif contextual_pending and not apply_ctx:
+            status = "PENDING_REVIEW"
+        else:
+            status = "PASS"
+
+        # ---- Display findings relevantes ----
+        if status == "FAIL":
+            blocking = [f for f in result.findings
+                        if f.severity in (Severity.ERROR, Severity.HALT) and not f.suppressed]
+            _print_findings_table(blocking, max_rows=10, header="TOP blocking findings")
+        elif status == "PENDING_REVIEW":
+            _print_findings_table(contextual_pending, max_rows=20,
+                                  header="Contextual findings (precisa decisão)")
+
+        _print_status(status, project=project, apply_contextual=apply_ctx)
+
+        if status == "PASS":
+            return EXIT_OK
+        if status == "PENDING_REVIEW":
+            return EXIT_WARN
+
+        # FAIL → loop com watch ou abort
+        if no_watch:
+            return EXIT_ERROR
+
+        print(f"\n[WAITING] aguarda edições em {project.name} (Ctrl-C aborta)...")
+        try:
+            changed = wait_for_change(project, interval_s=interval)
+        except KeyboardInterrupt:
+            print("\n[ABORT] interrupted by user.")
+            return EXIT_ERROR
+        names = sorted({Path(p).name for p in changed})[:5]
+        print(f"[CHANGE] {len(changed)} file(s) modified ({', '.join(names)}{'...' if len(changed) > 5 else ''}) — retrying...\n")
 
 
 if __name__ == "__main__":

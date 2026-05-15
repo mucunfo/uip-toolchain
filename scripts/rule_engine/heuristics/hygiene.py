@@ -122,9 +122,12 @@ def detect_hy4_gitignore(rule, fc: FileContext, pc: ProjectContext | None) -> li
         if isinstance(fix_mech, dict):
             fix_mech = dict(fix_mech)
             fix_mech["missing"] = missing
+            fix_mech["target"] = str(gitignore)  # destino real do fixer
+        # Finding anchor = project.json (sempre existe) p/ safety snapshot.
+        # Fixer escreve no `target` injetado em spec.
         return [Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
-            file=str(gitignore), line=1,
+            file=str(fc.path), line=1,
             message=f"{rule.title}: .gitignore ausente",
             fix_mechanical=fix_mech,
             fix_prose=(rule.fix or {}).get("prose"),
@@ -141,9 +144,11 @@ def detect_hy4_gitignore(rule, fc: FileContext, pc: ProjectContext | None) -> li
     if isinstance(fix_mech, dict):
         fix_mech = dict(fix_mech)
         fix_mech["missing"] = missing
+        fix_mech["target"] = str(gitignore)
+    # Mesma estratégia: anchor = project.json p/ safety pipeline.
     return [Finding(
         rule_id=rule.id, severity=rule.severity, category=rule.category,
-        file=str(gitignore), line=1,
+        file=str(fc.path), line=1,
         message=f"{rule.title}: faltam {missing}",
         fix_mechanical=fix_mech,
         fix_prose=(rule.fix or {}).get("prose"),
