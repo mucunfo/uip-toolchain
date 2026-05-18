@@ -5,6 +5,18 @@ _findings.json
 *_baseline.json
 *_after_*.json
 *_before_*.json
+# Typo path artifacts: deveriam estar em .tmp/review_* mas saíram com prefixo
+# .tmpreview_ na raiz. Mesma semântica — descartável entre sessões.
+.tmpreview_*
+
+# Ad-hoc LLM evaluation outputs (log message quality benchmarks etc).
+# Descartáveis entre sessões; não são fonte nem regras.
+eval.json
+eval_result.json
+evaluation.json
+log_eval.json
+log_traceability_eval.json
+*_eval.json
 
 # Python caches
 __pycache__/
