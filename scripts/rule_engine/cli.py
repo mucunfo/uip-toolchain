@@ -529,17 +529,23 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
                   file=sys.stderr)
         return
 
-    # Pre-flight: uipcli responsive + cloud reachable. Falha aqui emite
-    # finding visível (não silent skip). Severity = WARNING — preflight FAIL
-    # indica ferramenta indisponível (Studio service travado / VPN off), não
-    # bug do projeto. Gate self-skip; engine PASS continua viável se demais
-    # gates ok. Anteriormente ERROR fazia engine FAIL falsamente quando
-    # apenas o ambiente CI estava degradado.
+    # Pre-flight: uipcli responsive + cloud reachable. Severity = ERROR —
+    # sem uipcli engine NÃO valida Studio analyzer nem pack/build. Skip
+    # silencioso (WARN) escondia regressões. Sicoob dev sempre tem uipcli
+    # local (Studio install); CI Windows tem; se preflight falha = ambiente
+    # quebrado, engine NÃO pode declarar PASS.
+    #
+    # Override opt-in: RULE_ENGINE_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN
+    # (usar só em CI degradado conhecido; documentar reason).
     pre = preflight(cli)
     if not pre.ok:
+        allow_skip = os.environ.get(
+            "RULE_ENGINE_ALLOW_PREFLIGHT_SKIP", ""
+        ).strip() in ("1", "true", "yes")
+        sev = Severity.WARN if allow_skip else Severity.ERROR
         result.add(Finding(
             rule_id="UIPATH:PREFLIGHT",
-            severity=Severity.WARN,
+            severity=sev,
             category="breaking",
             file="project.json",
             line=0,
@@ -866,15 +872,18 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
             return
 
     # Pre-flight: cloud + uipcli responsive ANTES de pagar custo do spawn.
-    # Falha aqui emite finding visível (não silent skip). Severity = WARNING
-    # (mesma justificativa que analyzer-gate): preflight FAIL é problema de
-    # ambiente, não bug do projeto. Anteriormente ERROR causava engine FAIL
-    # falsamente em hosts com Studio service degradado.
+    # Severity = ERROR (mesma justificativa que analyzer-gate): sem uipcli
+    # engine NÃO valida pack/build. Skip silencioso escondia regressões.
+    # Override opt-in via RULE_ENGINE_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN.
     pre = preflight(cli)
     if not pre.ok:
+        allow_skip = _os.environ.get(
+            "RULE_ENGINE_ALLOW_PREFLIGHT_SKIP", ""
+        ).strip() in ("1", "true", "yes")
+        sev = Severity.WARN if allow_skip else Severity.ERROR
         result.add(Finding(
             rule_id="UIPATH:PREFLIGHT",
-            severity=Severity.WARN,
+            severity=sev,
             category="breaking",
             file="project.json",
             line=0,

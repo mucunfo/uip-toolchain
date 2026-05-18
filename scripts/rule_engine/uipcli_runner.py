@@ -142,15 +142,53 @@ def preflight(
     # MUITO além do timeout aguardando reader thread join. Observado em
     # produção: subprocess.run(timeout=30) pendurando 5+min.
     # Workaround: Popen + watchdog manual + kill-tree via psutil.
+    #
+    # CRITICAL: pipe MUST drain durante poll loop. uipcli --version em
+    # Studio v26 cospe ~10 linhas help/commands list (~2-4KB). Pipe
+    # buffer Windows = 4-64KB; child block em write quando cheio sem
+    # reader. Poll loop nunca vê exit → timeout 90s false-positive.
+    # Background threads drenam stdout/stderr continuamente.
+    import threading
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def _drain(pipe, chunks):
+        try:
+            for line in iter(pipe.readline, ""):
+                chunks.append(line)
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                pipe.close()
+            except OSError:
+                pass
+
+    # Windows-only: Studio v26 cloud uipcli requer console handle alocado
+    # para iniciar. Python Popen default cria child sem console quando
+    # stdout=PIPE (CREATE_NO_WINDOW implícito) → uipcli trava em init aguardando
+    # AllocConsole. CREATE_NEW_CONSOLE força Windows a alocar console
+    # invisível pro child; uipcli completa cold start em ~9s vs 90s+ hang.
+    # No-op em não-Windows (atributo não existe; fallback 0).
+    _creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
     try:
         popen = subprocess.Popen(
             [str(uipcli_path), "--version"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             text=True, encoding="utf-8", errors="replace",
+            creationflags=_creationflags,
         )
     except OSError as e:
         res.diagnose = f"uipcli spawn fail: {e}"
         return res
+
+    t_out = threading.Thread(target=_drain, args=(popen.stdout, stdout_chunks),
+                             daemon=True)
+    t_err = threading.Thread(target=_drain, args=(popen.stderr, stderr_chunks),
+                             daemon=True)
+    t_out.start()
+    t_err.start()
 
     started = time.monotonic()
     while True:
@@ -169,20 +207,19 @@ def preflight(
             return res
         time.sleep(0.5)
 
-    # Drain output (process já terminou). communicate() seguro pós-poll.
-    try:
-        stdout, stderr = popen.communicate(timeout=5)
-    except subprocess.TimeoutExpired:
-        _kill_tree(popen.pid)
-        stdout, stderr = popen.communicate()
+    # Reader threads convergem pós-exit (pipes EOF). Join curto.
+    t_out.join(timeout=2)
+    t_err.join(timeout=2)
+    stdout = "".join(stdout_chunks)
+    stderr = "".join(stderr_chunks)
 
-    if popen.returncode == 0:
-        res.uipcli_responsive = True
-        res.uipcli_version = (stdout or "").strip().splitlines()[0] if stdout else "?"
-    else:
-        res.diagnose = (f"uipcli --version exit {popen.returncode}: "
-                        f"{(stderr or '').strip()[:200]}")
-        return res
+    # Responsive = binary spawnou + completou dentro timeout. Exit code
+    # irrelevante: uipcli sem subcomando legítimo retorna 127 ("command not
+    # found" interno) mas isso prova que binário RODA (cospe help). Para
+    # preflight não estamos validando comportamento — só liveness.
+    res.uipcli_responsive = True
+    first_line = (stdout or stderr or "").strip().splitlines()
+    res.uipcli_version = first_line[0] if first_line else f"(rc={popen.returncode})"
 
     # Check 2: cloud reachable (uipcli faz heartbeat síncrono em analyze/publish)
     try:
@@ -281,21 +318,56 @@ def run_uipcli_guarded(
     result = UipcliResult(completed=False, returncode=-1, preflight=preflight_result)
     started = time.monotonic()
 
-    # Spawn process
+    # Spawn process — CREATE_NEW_CONSOLE em Windows: Studio v26 cloud
+    # uipcli precisa console handle alocado pra start. Sem ele trava em
+    # init aguardando AllocConsole. Mesma justificativa que preflight().
+    _creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
     try:
         popen = subprocess.Popen(
             args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
+            creationflags=_creationflags,
         )
     except OSError as e:
         result.halt_reason = "spawn_fail"
         result.halt_detail = str(e)
         result.duration_sec = time.monotonic() - started
         return result
+
+    # CRITICAL: drain pipes em background threads. uipcli analyze/publish
+    # cospe 10KB+ JSON output. Pipe buffer Windows ~4-64KB; sem reader, child
+    # bloqueia em write quando enche → poll loop nunca vê exit → timeout
+    # 180s false-positive mesmo em workload de 14s. PowerShell `& $cli`
+    # natively drains via console handle; subprocess.Popen NÃO.
+    import threading
+    _stdout_chunks: list[str] = []
+    _stderr_chunks: list[str] = []
+
+    def _drain_pipe(pipe, chunks):
+        try:
+            for line in iter(pipe.readline, ""):
+                chunks.append(line)
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                pipe.close()
+            except OSError:
+                pass
+
+    _t_out = threading.Thread(target=_drain_pipe,
+                              args=(popen.stdout, _stdout_chunks),
+                              daemon=True)
+    _t_err = threading.Thread(target=_drain_pipe,
+                              args=(popen.stderr, _stderr_chunks),
+                              daemon=True)
+    _t_out.start()
+    _t_err.start()
 
     # CPU-delta tracking history: list[(monotonic_sec, total_cpu_sec)]
     cpu_history: list[tuple[float, float]] = []
@@ -365,25 +437,18 @@ def run_uipcli_guarded(
 
         time.sleep(poll_interval_sec)
 
-    # Captura stdout/stderr (não-bloqueante se já terminou; com timeout se mato)
+    # Captura stdout/stderr dos drain threads (chunks acumulados continuamente).
+    # Pós-exit (natural ou kill), threads convergem em EOF — join curto.
     if halt_reason in ("timeout", "halt_no_cpu"):
         _kill_tree(popen.pid)
         result.halt_reason = halt_reason
         result.halt_detail = halt_detail
         result.completed = False
         result.returncode = -1
-        try:
-            stdout, stderr = popen.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            popen.kill()
-            stdout, stderr = popen.communicate()
-        result.stdout = stdout or ""
-        result.stderr = stderr or ""
-    else:
-        # completed natural — drain buffers
-        stdout, stderr = popen.communicate()
-        result.stdout = stdout or ""
-        result.stderr = stderr or ""
+    _t_out.join(timeout=5)
+    _t_err.join(timeout=5)
+    result.stdout = "".join(_stdout_chunks)
+    result.stderr = "".join(_stderr_chunks)
 
     result.duration_sec = time.monotonic() - started
     return result
