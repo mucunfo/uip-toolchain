@@ -100,7 +100,12 @@ def _load_d1_pinned_versions() -> dict[str, str]:
 
 def detect_s11_xmlns_assembly_missing(rule, fc, pc):
     p = rule.detect.get("params", {}) or {}
-    whitelist = set(p.get("whitelist_assemblies") or ())
+    # Normalize case — XAML pode usar `UiPath.UiAutomation.Activities` (Ui mixed)
+    # enquanto whitelist usa `UiPath.UIAutomation.Activities` (UI capital). Match
+    # case-insensitive prevent false-positive engine ERROR. NuGet IDs são
+    # case-insensitive por spec; engine deve seguir o mesmo princípio.
+    whitelist_raw = set(p.get("whitelist_assemblies") or ())
+    whitelist = {w.lower() for w in whitelist_raw}
     skip_prefixes = set(p.get("skip_prefixes") or ())
     accept_subset = bool(p.get("accept_subset_of_declared", False))
     if pc is not None:
@@ -111,9 +116,11 @@ def detect_s11_xmlns_assembly_missing(rule, fc, pc):
         proj_json = _find_project_json(fc.path.parent)
     if not proj_json or not proj_json.exists():
         return []
-    deps = _project_dependencies(proj_json)
-    available = deps | whitelist
+    deps_raw = _project_dependencies(proj_json)
+    deps_lc = {d.lower() for d in deps_raw}
+    available = deps_lc | whitelist  # both already lowercase
     pinned = _load_d1_pinned_versions()
+    pinned_lc = {k.lower(): v for k, v in pinned.items()}
 
     content = fc.active_content
     if 'assembly=' not in content:
@@ -123,14 +130,19 @@ def detect_s11_xmlns_assembly_missing(rule, fc, pc):
     for m in _RE_XMLNS_WITH_ASSEMBLY.finditer(content):
         prefix = m.group("prefix")
         ns = m.group("ns")
-        asm = m.group("asm").strip()
+        # `asm` no XAML pode vir fully-qualified:
+        #   `System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=...`
+        # Whitelist + deps usam simple names. Extrair só a parte antes da `,`.
+        asm_raw = m.group("asm").strip()
+        asm = asm_raw.split(",", 1)[0].strip()
+        asm_lc = asm.lower()
         if prefix in skip_prefixes:
             continue
-        if asm in available:
+        if asm_lc in available:
             continue
-        if any(asm.startswith(w + ".") for w in whitelist):
+        if any(asm_lc.startswith(w + ".") for w in whitelist):
             continue
-        if accept_subset and any(d.startswith(asm + ".") for d in deps):
+        if accept_subset and any(d.startswith(asm_lc + ".") for d in deps_lc):
             continue
         key = (asm, prefix)
         if key in seen_keys:
@@ -139,7 +151,7 @@ def detect_s11_xmlns_assembly_missing(rule, fc, pc):
         # Resolver mechanical: se assembly tem pin em D-1*, ADD_PACKAGE.
         # Senão, mechanical=None (contextual — alerta only).
         mech = None
-        version = pinned.get(asm)
+        version = pinned_lc.get(asm_lc)
         if version:
             mech = {
                 "type": "xmlns_assembly_resolve",

@@ -9,11 +9,26 @@ on LLM unavailability — never blocks pipeline.
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
 from .._types import Finding
 from ..llm_validator import validate_messages
+
+
+def _llm_disabled() -> bool:
+    """N-16 opt-out: skip LLM validator se ambiente sem claude CLI ou usuario
+    optou por bypass. Default OFF (fica ON quando claude CLI presente).
+
+    Triggers:
+      - env `UIPATH_RULES_NO_LLM=1` (explicit opt-out)
+      - env `RULE_ENGINE_NO_LLM=1` (alias)
+    """
+    for var in ("UIPATH_RULES_NO_LLM", "RULE_ENGINE_NO_LLM"):
+        if os.environ.get(var, "").strip() in ("1", "true", "yes"):
+            return True
+    return False
 
 _RE_LOGMSG_MESSAGE = re.compile(
     r'<ui:LogMessage\b[^>]*\bMessage="([^"]*)"',
@@ -31,6 +46,9 @@ def detect_n16_log_semantic_traceability(rule, fc, pc):
     Batches all messages in file → single LLM call per file (cached).
     Findings emitted only for messages judged 'fail' by LLM.
     """
+    if _llm_disabled():
+        return []
+
     content = fc.active_content
     if "<ui:LogMessage" not in content:
         return []

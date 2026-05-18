@@ -24,23 +24,40 @@
 
 UiPath.UIAutomation.Activities:
   apis:
-    - pattern: 'RetryScope\.LogRetriedExceptions'
+    # Patterns precisam matchar XAML actual form. Studio analyzer reporta como
+    # `RetryScope.LogRetriedExceptions` (dotted), mas no XAML aparece como
+    # `<ui:RetryScope ... LogRetriedExceptions="..."`. Pattern detecta XAML form.
+    - pattern: '<ui:RetryScope\b[^>]*\bLogRetriedExceptions\s*='
       introduced_in: '25.10.21'
       where: xaml_attribute
       fix: 'Remover atributo LogRetriedExceptions (não existe em UIA pin Sicoob 25.10.8).'
-    - pattern: 'RetryScope\.RetriedExceptionsLogLevel'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: LogRetriedExceptions
+    - pattern: '<ui:RetryScope\b[^>]*\bRetriedExceptionsLogLevel\s*='
       introduced_in: '25.10.21'
       where: xaml_attribute
       fix: 'Remover atributo RetriedExceptionsLogLevel (não existe em UIA pin Sicoob 25.10.8).'
-    - pattern: 'CopyFile\.DestinationResource'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: RetriedExceptionsLogLevel
+    - pattern: '<ui:CopyFile\b[^>]*\bDestinationResource\s*='
       introduced_in: '25.10.21'
       where: xaml_attribute
       fix: 'Remover atributo DestinationResource. Usar Destination (path local).'
-    - pattern: 'CopyFile\.PathResource'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: DestinationResource
+    - pattern: '<ui:CopyFile\b[^>]*\bPathResource\s*='
       introduced_in: '25.10.21'
       where: xaml_attribute
       fix: 'Remover atributo PathResource. Usar Path (path local).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: PathResource
     - pattern: '<uix:NWindowOperation\b'
       introduced_in: '25.10.21'
       where: xaml_element
-      fix: 'Activity NWindowOperation não disponível no pin 25.10.8. Substituir por NApplicationCard CloseMode="Always" no scope envolvente.'
+      fix: 'Activity NWindowOperation não disponível no pin 25.10.8. Engine strip element + força CloseMode="Always" no NApplicationCard pai (cobre close lifecycle equivalente).'
+      mechanical:
+        type: strip_nwindow_operation

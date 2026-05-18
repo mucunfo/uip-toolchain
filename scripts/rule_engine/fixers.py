@@ -2387,3 +2387,602 @@ def apply_strip_bom(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if not dry_run:
         file.write_bytes(raw[3:])
     return True
+
+
+@register("wrap_arrayrow_object")
+def apply_wrap_arrayrow_object(file: Path, spec: dict, dry_run: bool = True,
+                                project_root: Path | None = None) -> bool:
+    """W-12 fixer: `ArrayRow="[{a, b}]"` → `ArrayRow="[New Object() {a, b}]"`.
+
+    AddDataRow.ArrayRow target Object(). Sem type explícito, compiler infere
+    do conteúdo (Integer/String/etc); quando heterogêneo OU value type, falha
+    BC30333. Wrap Object() é safe — todos types convertem upward.
+
+    Idempotente: skip se já `New ` prefixed.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    pat = re.compile(r'ArrayRow="\[\{(?!New\s)([^"]*)\}\]"')
+    def _wrap(m):
+        return f'ArrayRow="[New Object() {{{m.group(1)}}}]"'
+    new_content, n = pat.subn(_wrap, content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("strip_empty_ocrengine_block")
+def apply_strip_empty_ocrengine_block(file: Path, spec: dict, dry_run: bool = True,
+                                       project_root: Path | None = None) -> bool:
+    """OCR-1 fixer: remove `<uix:NApplicationCard.OCREngine>...</...>` quando
+    ActivityFunc body é vazio (só Argument declarations).
+
+    Regex precisão garante engines concretos (com ui:UiPathScreenOcr etc dentro)
+    NÃO matcham — fixer preserva workflows OCR legítimos.
+
+    Idempotente: skip se nenhum bloco vazio.
+
+    Trailing whitespace incluído pra cleanup limpo (não deixa linha vazia).
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    pat = re.compile(
+        r'\s*<uix:NApplicationCard\.OCREngine>\s*'
+        r'<ActivityFunc\b[^>]*>\s*'
+        r'(?:<ActivityFunc\.Argument>\s*<DelegateInArgument\b[^>]*/?>\s*</ActivityFunc\.Argument>\s*)*'
+        r'</ActivityFunc>\s*'
+        r'</uix:NApplicationCard\.OCREngine>',
+        re.DOTALL,
+    )
+    new_content, n = pat.subn("", content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("retarget_project_argument_types")
+def apply_retarget_project_argument_types(file: Path, spec: dict, dry_run: bool = True,
+                                            project_root: Path | None = None) -> bool:
+    """J-12 fixer: project.json arguments[input/output][*].type rewrite.
+
+    Activity Migrator switches targetFramework Legacy→Windows mas deixa
+    `project.json::arguments.input[*].type` apontando pra .NET Framework
+    assemblies (`mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089`).
+
+    Studio analyzer compila project com .NET 6 mas vê argument types declarados
+    com mscorlib v4 (incompatível) — gera cascade BC31424/BC30652 quando workflow
+    usa esses arguments.
+
+    Fix: rewrite assembly-qualified type string pra short type name (sem
+    assembly clause). Studio resolve via project deps + AssemblyReferences.
+
+      "System.String, mscorlib, Version=4.0.0.0, ..." → "System.String"
+
+    Cobre input + output args. Idempotente: skip se já short form.
+    """
+    if file.name != "project.json":
+        return False
+    import json
+    content = file.read_text(encoding="utf-8-sig")
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return False
+
+    changed = False
+    legacy_pat = re.compile(
+        r'^(\S+),\s*(mscorlib|System|System\.Core|System\.Drawing|System\.Xml|System\.Data),\s*Version=4\.\d+\.\d+\.\d+,'
+    )
+
+    def _rewrite_items(items):
+        nonlocal changed
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            tp = item.get("type")
+            if not isinstance(tp, str):
+                continue
+            m = legacy_pat.match(tp)
+            if m:
+                item["type"] = m.group(1)
+                changed = True
+
+    # Top-level `arguments.input/output`
+    args = data.get("arguments")
+    if isinstance(args, dict):
+        _rewrite_items(args.get("input"))
+        _rewrite_items(args.get("output"))
+
+    # Per-entry-point `entryPoints[].input/output` (Migrator deixa stale)
+    entry_points = data.get("entryPoints")
+    if isinstance(entry_points, list):
+        for ep in entry_points:
+            if isinstance(ep, dict):
+                _rewrite_items(ep.get("input"))
+                _rewrite_items(ep.get("output"))
+
+    if not changed:
+        return False
+    if not dry_run:
+        new_text = json.dumps(data, indent=2, ensure_ascii=False)
+        # Preserve trailing newline if original had it
+        if content.endswith("\n") and not new_text.endswith("\n"):
+            new_text += "\n"
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_text.encode("utf-8"))
+    return True
+
+
+@register("queue_item_indexer_to_item")
+def apply_queue_item_indexer_to_item(file: Path, spec: dict, dry_run: bool = True,
+                                       project_root: Path | None = None) -> bool:
+    """W-14 fixer: disambiguate `.SpecificContent("key")` / `.Output("key")` calls.
+
+    VB compiler em alguns contextos (UIA 25.x QueueItem ABI shift) interpreta
+    `qi.SpecificContent("X")` como property call com arg, gerando
+    `BC30057: Too many arguments to 'Public Overloads Property SpecificContent'`.
+
+    Fix: rewrite usando `.Item("X")` explícito — força resolução como
+    Dictionary indexer method call vs property invocation:
+
+      `.SpecificContent("X")` → `.SpecificContent.Item("X")`
+      `.Output("X")`          → `.Output.Item("X")`
+
+    Cobre forma XAML-escaped (`&quot;`) e raw quote (`"`). Single key arg
+    apenas — multi-arg seria semântica diferente.
+
+    Idempotente: regex match exige args dentro de parens, `.Item(` post-fix
+    não re-matcha porque `.Item` não está na lista.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    # XAML-escaped quote form (mais comum dentro Default="...")
+    pat_xaml = re.compile(
+        r'\.(SpecificContent|Output)\s*\(\s*(&quot;[^&]+&quot;)\s*\)'
+    )
+    pat_raw = re.compile(
+        r'\.(SpecificContent|Output)\s*\(\s*("[^"]+")\s*\)'
+    )
+
+    new_content = pat_xaml.sub(r'.\1.Item(\2)', content)
+    new_content = pat_raw.sub(r'.\1.Item(\2)', new_content)
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("revert_xmlns_assembly_to_private_corelib")
+def apply_revert_xmlns_assembly_to_private_corelib(file: Path, spec: dict,
+                                                     dry_run: bool = True,
+                                                     project_root: Path | None = None) -> bool:
+    """ROLLBACK fixer pra desfazer W-21 mal-feito.
+
+    Reverse mapping: assembly=<X> → assembly=System.Private.CoreLib
+    para namespaces que tinham `Private.CoreLib` originalmente.
+
+    Run-once. Após apply, W-21 deve estar no-op pra evitar re-aplicar.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Reverse mapping: NS → bad_asm que W-21 introduziu → revert pra Private.CoreLib
+    # Apenas pra NS que originalmente vinham de Private.CoreLib (não tocar legítimos).
+    ns_revert_targets = {
+        "System": "System.Runtime",
+        "System.Collections": "System.Collections",
+        "System.Collections.Generic": "System.Collections",
+        "System.Collections.ObjectModel": "System.ObjectModel",
+        "System.Security": "System.Runtime.InteropServices",
+        "System.Reflection": "System.Runtime",
+        "System.Threading": "System.Threading.Thread",
+    }
+
+    pat = re.compile(
+        r'(xmlns:[A-Za-z_][\w]*="clr-namespace:([A-Za-z_][\w.]*?));\s*assembly=([^"]+)"'
+    )
+
+    def _replacement(m):
+        full_prefix = m.group(1)
+        ns = m.group(2)
+        current_asm = m.group(3).strip()
+        expected = ns_revert_targets.get(ns)
+        if expected and current_asm == expected:
+            return f'{full_prefix};assembly=System.Private.CoreLib"'
+        return m.group(0)
+
+    new_content = pat.sub(_replacement, content)
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("retarget_xmlns_assembly")
+def apply_retarget_xmlns_assembly(file: Path, spec: dict, dry_run: bool = True,
+                                    project_root: Path | None = None) -> bool:
+    """W-21 fixer — DESATIVADO temporariamente.
+
+    Tentativa anterior: retarget xmlns:X="clr-namespace:NS;assembly=Private.CoreLib"
+    → .NET 6 reference assembly correto per namespace. Resultou em REGRESSÃO:
+    Studio 23.10 falha ao resolver Collection<T>, IEnumerable<Match> com novos
+    mappings (System.ObjectModel, System.Text.RegularExpressions etc não
+    aceitos como xmlns assembly target nessa versão Studio).
+
+    Decisão: no-op. Manter xmlns:X="...assembly=System.Private.CoreLib" como
+    Migrator deixou. AssemblyReferences declaradas pelo W-11* cobrem resolução
+    via path padrão Studio.
+
+    TODO: ground-truth catalog via scan refs/* do Studio install pra mapping
+    correto. Por enquanto manter pre-W-21 state.
+    """
+    return False  # no-op
+
+
+@register("strip_orphan_xmlns")
+def apply_strip_orphan_xmlns(file: Path, spec: dict, dry_run: bool = True,
+                              project_root: Path | None = None) -> bool:
+    """W-15 fixer: strip `xmlns:PREFIX="..."` declarações cujo prefix NÃO é
+    usado no resto do XAML.
+
+    Activity Migrator deixa muitas xmlns aliases cruft após migração
+    Legacy→Windows. Alguns referenciam `.NET Framework 4` assemblies
+    (`mscorlib, Version=4.0.0.0`) que conflitam com `.NET 6` resolution
+    — Studio analyzer pode gerar BC31424/BC30652 confusos por ambiguidade
+    de type forwarder paths.
+
+    Strip:
+      - Find todos `xmlns:PREFIX="..."` no Activity root
+      - Pra cada PREFIX, conta usages `PREFIX:` no resto do document
+        (exclui própria xmlns declaration)
+      - Se 0 usages → strip declaration
+
+    Safety:
+      - NÃO strip prefixes XAML core: `x`, `mc`, `xmlns` (default)
+      - Considera `mc:Ignorable="sap sap2010"` style atribute-value usage
+      - Idempotente: skip se nada removido
+
+    Risk: se algum tool externo (test runner, custom analyzer) depender
+    de xmlns alias específica sem usar prefix:, esse cleanup pode quebrar.
+    Empiricamente baixo risco — XAML standard só USA prefixes via
+    `prefix:Element` ou `prefix:Attribute=`.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Find all xmlns:PREFIX="VALUE" declarations
+    xmlns_pat = re.compile(r'\s+xmlns:([A-Za-z_][\w]*)="[^"]*"')
+    declarations = list(xmlns_pat.finditer(content))
+    if not declarations:
+        return False
+
+    # Core prefixes NEVER strip (mesmo se não tiver usage textual — Studio
+    # gera implicitamente)
+    _CORE_PREFIXES = frozenset({"x", "mc", "xml"})
+
+    orphan_decls: list[re.Match] = []
+    for decl in declarations:
+        prefix = decl.group(1)
+        if prefix in _CORE_PREFIXES:
+            continue
+        # Count usage of `prefix:` outside its own xmlns declaration
+        # Pattern: `\bPREFIX:` mas NÃO `xmlns:PREFIX=`
+        usage_pat = re.compile(rf'(?<!xmlns:)\b{re.escape(prefix)}:')
+        usage_count = len(usage_pat.findall(content))
+        # Subtract count of own xmlns declaration matches (where xmlns: prefix
+        # is preceded by xmlns: — the lookbehind already excludes those, but
+        # double-check)
+        if usage_count == 0:
+            orphan_decls.append(decl)
+
+    if not orphan_decls:
+        return False
+
+    # Strip orphan declarations from END to START (preserve positions)
+    new_content = content
+    for decl in reversed(orphan_decls):
+        new_content = new_content[: decl.start()] + new_content[decl.end():]
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("strip_nwindow_operation")
+def apply_strip_nwindow_operation(file: Path, spec: dict, dry_run: bool = True,
+                                    project_root: Path | None = None) -> bool:
+    """D-PINALERT NWindowOperation fixer: strip activity + força CloseMode="Always"
+    nos NApplicationCard que continham NWindowOperation.
+
+    NWindowOperation foi introduzida em UIA 25.10.21. Pin Sicoob = 25.10.8 — não
+    existe. Activity geralmente vive aninhada dentro de `<uix:NApplicationCard>`
+    pra controlar close lifecycle quando default `CloseMode="IfOpenedByThisCard"`
+    ou explícito `CloseMode="Never"` foi escolhido.
+
+    Strategy:
+      1. Pra cada NWindowOperation, identifica NApplicationCard pai mais próximo
+         (text search backward).
+      2. Strip TODOS NWindowOperation blocks (open+close, self-closed).
+      3. Pra cada NApplicationCard pai tracked, força `CloseMode="Always"`:
+         - Se CloseMode= ausente → injeta
+         - Se CloseMode="<qualquer>" → replace pra "Always"
+      4. NApplicationCards NÃO tracked (sem NWindow dentro) → leave intact.
+
+    Safety:
+      - Negative lookahead `(?!\.)` evita matchar property elements
+        (`<uix:NApplicationCard.Body>` etc).
+      - Idempotente: se já não tem NWindow, return False.
+      - Se NApplicationCard pai não encontrado pra algum NWindow → strip
+        mesmo assim (CloseMode default ou orphan, raro).
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Patterns NWindowOperation block (pair + self-closed)
+    nwo_pair_pat = re.compile(
+        r'<uix:NWindowOperation\b[^>]*>.*?</uix:NWindowOperation>',
+        re.DOTALL,
+    )
+    nwo_self_pat = re.compile(
+        r'<uix:NWindowOperation\b[^>]*/>',
+    )
+
+    # Coleta posições start de cada NWindow
+    nwo_positions = [m.start() for m in nwo_pair_pat.finditer(content)]
+    nwo_positions += [m.start() for m in nwo_self_pat.finditer(content)]
+    if not nwo_positions:
+        return False
+
+    # Pra cada NWindow, encontra NApplicationCard ancestor mais próximo backward.
+    # Pattern: `<uix:NApplicationCard\b(?!\.)` — activity instance, não property.
+    nac_open_pat = re.compile(r'<uix:NApplicationCard\b(?!\.)')
+    # Tracked NApplicationCard open tag start positions (deduped)
+    tracked_nac_starts: set[int] = set()
+    for nwo_pos in nwo_positions:
+        # All NApplicationCard opens before this NWindow position
+        nac_starts = [m.start() for m in nac_open_pat.finditer(content[:nwo_pos])]
+        if nac_starts:
+            tracked_nac_starts.add(nac_starts[-1])  # closest ancestor
+
+    # Strip todos NWindowOperation blocks (com whitespace prefix pra cleanup)
+    pat_pair_ws = re.compile(
+        r'\s*<uix:NWindowOperation\b[^>]*>.*?</uix:NWindowOperation>\s*',
+        re.DOTALL,
+    )
+    pat_self_ws = re.compile(
+        r'\s*<uix:NWindowOperation\b[^>]*/>\s*',
+    )
+    new_content, n_pair = pat_pair_ws.subn('\n', content)
+    new_content, n_self = pat_self_ws.subn('\n', new_content)
+    n_total = n_pair + n_self
+    if n_total == 0:
+        return False
+
+    # Pra cada tracked NApplicationCard, force CloseMode="Always".
+    # Note: posições mudaram pós-strip — precisamos re-localizar via regex.
+    # Cada NApplicationCard pode ser identificada por algum attr único; vou
+    # usar approach mais simples: substitui TODOS NApplicationCards (não-property
+    # element) que estão na lista de "originalmente continha NWindow" via
+    # identificador único.
+    #
+    # Heurística simples: identifica NACs por seu sap2010:WorkflowViewState.IdRef
+    # ou ScopeGuid (presentes na maioria) — atributos únicos. Captura essas IDs
+    # ANTES do strip, depois aplica force_closemode nas NACs com matching ID.
+
+    # Extract ID per tracked NAC (pre-strip content)
+    nac_full_open_pat = re.compile(r'<uix:NApplicationCard\b(?!\.)[^>]*?/?>')
+    tracked_ids: set[str] = set()
+    for nac_start in tracked_nac_starts:
+        m = nac_full_open_pat.search(content, nac_start)
+        if not m:
+            continue
+        open_tag = m.group(0)
+        # Try ScopeGuid first (unique per scope), then IdRef
+        id_m = re.search(r'ScopeGuid="([^"]+)"', open_tag)
+        if not id_m:
+            id_m = re.search(r'sap2010:WorkflowViewState\.IdRef="([^"]+)"', open_tag)
+        if id_m:
+            tracked_ids.add(id_m.group(1))
+
+    if not tracked_ids:
+        # Sem IDs trackable — apply force_closemode em TODOS NACs (fallback comportamento agressivo)
+        # Conservador: skip CloseMode injection nesse caso, só strip
+        pass
+    else:
+        def _force_closemode(m):
+            open_tag = m.group(0)
+            # Verify essa NAC está tracked
+            id_m = re.search(r'ScopeGuid="([^"]+)"', open_tag) or re.search(
+                r'sap2010:WorkflowViewState\.IdRef="([^"]+)"', open_tag
+            )
+            if not id_m or id_m.group(1) not in tracked_ids:
+                return open_tag
+            # Force CloseMode="Always"
+            if re.search(r'\bCloseMode\s*=\s*"[^"]*"', open_tag):
+                return re.sub(
+                    r'\bCloseMode\s*=\s*"[^"]*"',
+                    'CloseMode="Always"',
+                    open_tag,
+                )
+            # Inject CloseMode antes do `>` ou `/>` final
+            if open_tag.rstrip().endswith('/>'):
+                return open_tag.rstrip()[:-2].rstrip() + ' CloseMode="Always" />'
+            return open_tag.rstrip()[:-1].rstrip() + ' CloseMode="Always">'
+
+        new_content = nac_full_open_pat.sub(_force_closemode, new_content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("insert_assembly_reference")
+def apply_insert_assembly_reference(file: Path, spec: dict, dry_run: bool = True,
+                                     project_root: Path | None = None) -> bool:
+    """W-11* fixer: insere `<AssemblyReference>X</AssemblyReference>` dentro do
+    bloco `<sco:Collection x:TypeArguments="AssemblyReference">` antes da close
+    tag, preservando indent existente.
+
+    spec.name = nome do assembly (string simples, sem version/culture).
+
+    Idempotente: skip se ref já presente.
+
+    Safety:
+      - Validate name pattern (sem espaços/aspas).
+      - Requer bloco `<sco:Collection x:TypeArguments="AssemblyReference">`
+        existir (XAML standard). Sem ele, no-op (XAML provavelmente é fragment
+        ou library workflow).
+      - Studio re-sorta refs no save — não tentamos preservar alfabético aqui.
+    """
+    name = (spec or {}).get("name")
+    if not name or not isinstance(name, str):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.\-]*", name):
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Idempotent: já presente
+    if re.search(rf"<AssemblyReference>{re.escape(name)}</AssemblyReference>", content):
+        return False
+
+    # Match bloco AssemblyReference Collection + close tag. Cobre as duas formas
+    # do Studio:
+    #   <sco:Collection x:TypeArguments="AssemblyReference">...</sco:Collection>
+    #   <scg:List x:TypeArguments="AssemblyReference" Capacity="N">...</scg:List>
+    block_pat = re.compile(
+        r'(<(scg:List|sco:Collection)\s+x:TypeArguments="AssemblyReference"[^>]*>.*?)(\n[ \t]*)(</\2>)',
+        re.DOTALL,
+    )
+    m = block_pat.search(content)
+    if not m:
+        return False
+
+    body = m.group(1)
+    close_indent = m.group(3)  # newline + spaces preceding close tag
+    close_tag = m.group(4)
+
+    # Indent dos AssemblyReference: pega do primeiro existente; fallback close_indent + 2 spaces
+    ref_indent_m = re.search(r"\n([ \t]*)<AssemblyReference>", body)
+    if ref_indent_m:
+        indent = "\n" + ref_indent_m.group(1)
+    else:
+        indent = close_indent + "  "
+
+    insert = f"{indent}<AssemblyReference>{name}</AssemblyReference>"
+    new_content = content[:m.start(3)] + insert + close_indent + close_tag + content[m.end():]
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("strip_xml_attribute")
+def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
+                               project_root: Path | None = None) -> bool:
+    """D-PINALERT fixer: strip XAML attribute introduzido em versão > pin.
+
+    spec.attribute = nome atributo (sem namespace prefix). Remove ocorrências
+    `<prefix:>?<Attribute>="<value>"` mantendo whitespace mínimo. Cobre
+    namespaced (`ui:Foo`) e plain (`Foo`).
+
+    Idempotente: skip se attribute não presente.
+
+    Casos cobertos:
+        LogRetriedExceptions, RetriedExceptionsLogLevel,
+        DestinationResource, PathResource (UIA 25.10.21+).
+
+    Safety: regex limita match a attribute pattern legítimo XAML — quoted
+    value, palavra-completa antes do `=`. Não toca substrings.
+    """
+    attr = (spec or {}).get("attribute")
+    if not attr:
+        return False
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.\-]*", attr):
+        return False  # safety: nome atributo malformado
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Pattern: word boundary + opt namespace prefix + attribute name + ="..."
+    # Captura prefixed whitespace pra cleanup limpo.
+    pat = re.compile(
+        rf'(\s+)(?:[A-Za-z_][\w]*:)?{re.escape(attr)}\s*=\s*"[^"]*"'
+    )
+    new_content, n = pat.subn("", content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        # Preservar BOM se original tinha
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("strip_assembly_reference")
+def apply_strip_assembly_reference(file: Path, spec: dict, dry_run: bool = True,
+                                    project_root: Path | None = None) -> bool:
+    """W-26 fixer: remove `<AssemblyReference>X</AssemblyReference>` line do
+    bloco refs. Complementa `insert_assembly_reference` (W-11g et al).
+
+    spec.name = nome do assembly (string simples, sem version/culture).
+
+    Idempotente: skip se ref já ausente.
+
+    Safety:
+      - Validate name pattern (sem espaços/aspas).
+      - Match exato `<AssemblyReference>NAME</AssemblyReference>` precedido
+        de newline+indent — remove linha inteira atomicamente.
+      - Preserva BOM original.
+      - Não toca AssemblyReference em comentários (regex padrão XML não
+        match dentro de `<!-- -->`).
+    """
+    name = (spec or {}).get("name")
+    if not name or not isinstance(name, str):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.\-]*", name):
+        return False
+
+    raw = file.read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        bom = b"\xef\xbb\xbf"
+        content_bytes = raw[3:]
+    else:
+        bom = b""
+        content_bytes = raw
+    content = content_bytes.decode("utf-8")
+
+    # Match leading newline + indent + tag (com ou sem trailing whitespace).
+    # Remove a linha inteira atomicamente preservando o newline da próxima ref.
+    pat = re.compile(
+        rf"\n[ \t]*<AssemblyReference>{re.escape(name)}</AssemblyReference>"
+    )
+    new_content, n = pat.subn("", content, count=1)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        file.write_bytes(bom + new_content.encode("utf-8"))
+    return True

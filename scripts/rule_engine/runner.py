@@ -1,6 +1,8 @@
 """Runner orchestrates: project discovery + rule x file iteration."""
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +15,27 @@ from .suppressions import parse_suppressions, is_suppressed_at
 
 # Detector signature: (rule, file_ctx, project_ctx) -> list[Finding]
 DetectorFn = Callable[[Rule, FileContext, ProjectContext], list[Finding]]
+
+
+def _default_worker_cap() -> int:
+    """nproc/2, max 8. Override via env `RULE_ENGINE_WORKERS=N`."""
+    override = os.environ.get("RULE_ENGINE_WORKERS")
+    if override:
+        try:
+            n = int(override)
+            if n >= 1:
+                return n
+        except ValueError:
+            pass
+    nproc = os.cpu_count() or 4
+    return max(1, min(nproc // 2, 8))
+
+
+def _parallel_enabled() -> bool:
+    """Opt-out via `RULE_ENGINE_NO_PARALLEL=1` (debug/repro)."""
+    return os.environ.get("RULE_ENGINE_NO_PARALLEL", "").strip() not in (
+        "1", "true", "yes",
+    )
 
 
 class Runner:
@@ -51,8 +74,26 @@ class Runner:
         if (pc.root / "project.json").exists():
             files.append(pc.root / "project.json")
 
-        for file_path in files:
-            self._run_file(file_path, active_rules, pc, result)
+        # P2 (2026-05): per-XAML detection paralelo via ThreadPoolExecutor.
+        # Detectors são mix de I/O (file read) + CPU (lxml parse, regex).
+        # lxml libera GIL durante parse → threading dá CPU parallelism real
+        # mesmo sem multiprocessing. ValidationResult.add() é list.append,
+        # GIL-atomic em CPython.
+        # Cap: nproc/2 max 8 (override via RULE_ENGINE_WORKERS=N).
+        # Opt-out determinístico: RULE_ENGINE_NO_PARALLEL=1.
+        if _parallel_enabled() and len(files) > 1:
+            workers = min(_default_worker_cap(), len(files))
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = [
+                    ex.submit(self._run_file, fp, active_rules, pc, result)
+                    for fp in files
+                ]
+                for fut in as_completed(futures):
+                    # Re-raise se _run_file levantou (não deve — captura interna)
+                    fut.result()
+        else:
+            for file_path in files:
+                self._run_file(file_path, active_rules, pc, result)
 
         return result
 

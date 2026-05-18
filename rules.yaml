@@ -236,19 +236,32 @@ rules:
           - '<TextExpression\.ReferencesForImplementation>'
         must_not_have:
           - '<AssemblyReference>System\.Security</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Security
+      prose: |
+        Adicionar `<AssemblyReference>System.Security</AssemblyReference>` ao bloco
+        `<sco:Collection x:TypeArguments="AssemblyReference">` em Main.xaml.
 
   - id: W-11b
     severity: ERROR
     category: breaking
     target: windows
-    title: "Main.xaml falta AssemblyReference System.Runtime.InteropServices"
+    title: "XAML falta AssemblyReference System.Runtime.InteropServices"
     description: |
-      `Main.xaml` Windows target deve ter
-      `<AssemblyReference>System.Runtime.InteropServices</AssemblyReference>`
-      em `TextExpression.ReferencesForImplementation`. Sem isso, marshaling COM
-      em sub-workflows pode falhar em runtime.
+      XAML Windows target precisa `<AssemblyReference>System.Runtime.InteropServices</AssemblyReference>`
+      em `TextExpression.ReferencesForImplementation`. `SecureString`, marshaling COM
+      e P/Invoke dependem desse assembly. Sem ele, BC30652 em XAML usando Get
+      Credential / SecureString-typed args. Aplica a TODOS xamls (não só Main.xaml
+      — sub-workflows também afetados).
     applies_to:
-      include: ["Main.xaml"]
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
     detect:
       type: regex_pair
       params:
@@ -256,6 +269,525 @@ rules:
           - '<TextExpression\.ReferencesForImplementation>'
         must_not_have:
           - '<AssemblyReference>System\.Runtime\.InteropServices</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Runtime.InteropServices
+      prose: |
+        Adicionar `<AssemblyReference>System.Runtime.InteropServices</AssemblyReference>`
+        ao bloco refs. Necessário pra SecureString, COM, P/Invoke.
+
+  - id: W-11c
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta AssemblyReference System.ComponentModel.TypeConverter"
+    description: |
+      Em Windows target (.NET 6+) `MarshalByValueComponent`, `TypeConverter`,
+      `Component` vivem em `System.ComponentModel.TypeConverter`. XAML que
+      referencia DataTable, DataRow, DataView ou usa TypeConverter precisa
+      desse assembly declarado em `TextExpression.ReferencesForImplementation`.
+      Studio 23.10 abre projeto e dispara "Some references are not imported"
+      dialog quando ref está ausente; auto-import pode falhar em renomeação
+      complexa. Engine pré-popula pra evitar dialog.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.ComponentModel\.TypeConverter</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.ComponentModel.TypeConverter
+      prose: |
+        Adicionar `<AssemblyReference>System.ComponentModel.TypeConverter</AssemblyReference>`
+        ao bloco `<sco:Collection x:TypeArguments="AssemblyReference">`.
+
+  - id: W-11d
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta AssemblyReference System.Data.Common"
+    description: |
+      Em Windows target, `System.Data.DataTable` foi forwarded para `System.Data.Common`
+      (.NET 6 BCL). XAML usando DataTable/DataRow/DataView precisa do assembly
+      declarado pra Studio analyzer resolver type forward. Sem ele, Studio reporta
+      `BC31424: Type 'System.Data.DataTable' has been forwarded to assembly
+      'System.Data.Common'`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Data\.Common</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Data.Common
+      prose: |
+        Adicionar `<AssemblyReference>System.Data.Common</AssemblyReference>` ao
+        bloco refs. Evita `BC31424` design-time.
+
+  - id: W-11e
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta AssemblyReference System.Collections"
+    description: |
+      Em Windows target, `List<T>`, `Dictionary<TK,TV>`, `IEnumerable<T>` vivem
+      em `System.Collections` (.NET 6). XAML que declara variáveis ou args com
+      tipos genéricos coleção precisa do assembly. Sem ele Studio reporta
+      `BC30652: Reference required to assembly 'System.Collections' containing
+      the type 'List(Of )'`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Collections</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Collections
+      prose: |
+        Adicionar `<AssemblyReference>System.Collections</AssemblyReference>`.
+
+  - id: W-11f
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta AssemblyReference System.Linq"
+    description: |
+      LINQ extension methods (`Count`, `ToList`, `Where`, `Select`, `Any`, `First`,
+      `Single`, `All`) requerem `System.Linq` assembly. Sem ele Studio reporta
+      `BC30456: 'Count' is not a member of 'IEnumerable(Of X)'`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Linq</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Linq
+      prose: |
+        Adicionar `<AssemblyReference>System.Linq</AssemblyReference>`.
+
+  - id: W-11g
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta AssemblyReference System.Net.Primitives"
+    description: |
+      Em Windows target, `NetworkCredential`, `Cookie`, `IPEndPoint`, `IPAddress`
+      foram type-forwarded de `System` para `System.Net.Primitives` (.NET 6).
+      XAML usando NetworkCredential (Get Credential output) precisa do assembly
+      declarado. Sem ele, Studio reporta `BC31424: Type 'System.Net.NetworkCredential'
+      has been forwarded to assembly 'System.Net.Primitives'`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Net\.Primitives</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Net.Primitives
+      prose: |
+        Adicionar `<AssemblyReference>System.Net.Primitives</AssemblyReference>`.
+
+  - id: W-11x
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML xmlns assembly não declarado em ReferencesForImplementation"
+    description: |
+      Cada `xmlns:prefix="clr-namespace:NS;assembly=ASM"` declarado no XAML
+      implica que `ASM` é assembly USED por aquele workflow. Studio analyzer
+      precisa de `<AssemblyReference>ASM</AssemblyReference>` no bloco
+      `<TextExpression.ReferencesForImplementation>` pra resolver types
+      durante compile/analyze.
+
+      Sem isso, Studio dispara dialog "Some references are not imported in
+      current workflow" ao abrir/analisar projeto. Engine pré-popula refs
+      faltantes per-xaml baseado em xmlns reais — mais preciso que catálogo
+      fixo W-11c..h porque cobre TODO assembly que aquele xaml de fato usa.
+
+      Detector ortogonal aos W-11a..h (que cobrem common BCL forwards mesmo
+      sem xmlns). Recomendação: ambos ativos — W-11a..h pra refs forwarded
+      que XAML usa em VB expressions (não aparecem em xmlns), W-11x pra
+      refs declaradas via xmlns.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.xmlns_refs
+        function: detect_xmlns_required_refs
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding pelo detector
+      # (type=insert_assembly_reference, name=<asm específico>).
+      prose: |
+        Adicionar `<AssemblyReference>X</AssemblyReference>` no bloco refs
+        pra cada xmlns assembly declarado mas não referenciado.
+
+  - id: W-11h
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta AssemblyReference System.Text.RegularExpressions"
+    description: |
+      Em Windows target, `Regex`, `Match`, `MatchCollection` foram type-forwarded
+      de `System` para `System.Text.RegularExpressions` (.NET 6). XAML usando
+      regex (extração de padrões, validação) precisa do assembly declarado.
+      Sem ele Studio reporta `BC31424: Type 'System.Text.RegularExpressions.Match'
+      has been forwarded` + `BC30456` em Linq sobre `IEnumerable(Of Match)`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex_pair
+      params:
+        must_have:
+          - '<TextExpression\.ReferencesForImplementation>'
+        must_not_have:
+          - '<AssemblyReference>System\.Text\.RegularExpressions</AssemblyReference>'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: insert_assembly_reference
+        name: System.Text.RegularExpressions
+      prose: |
+        Adicionar `<AssemblyReference>System.Text.RegularExpressions</AssemblyReference>`.
+
+  - id: W-11y
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML falta refs baseline cross-version Windows target"
+    description: |
+      Baseline superset: garante que TODO xaml com bloco
+      `<TextExpression.ReferencesForImplementation>` tem refs comuns
+      necessárias pro Studio analyzer resolver types implícitos.
+
+      Lista derivada empiricamente — assemblies presentes em xamls que
+      Studio NÃO reclama (working set). Cross-version (.NET 6 BCL stable
+      entre Studio 23.10 e 26.x).
+
+      Cobre gap dos W-11a..h+x (que cobrem refs específicos por symbol/
+      xmlns). Brute-force pra refs que Studio sintetiza implicitamente mas
+      precisa estar declarado quando workflow é analisado em Studio fresh.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.xmlns_refs
+        function: detect_baseline_refs
+        # Baseline refs cross-version Windows target. Lista derivada empiricamente
+        # de xamls Sicoob funcionais. Adicionar conforme novos baselines descobertos.
+        #
+        # NÃO incluir mscorlib/System/System.Core: W-26 strip-eia esses 3 como
+        # redundantes em .NET 6 (facades type-forwarder → BC31424). Add+strip
+        # no mesmo fix loop = divergence infinita. Ver W-26 (linha ~737).
+        required_refs:
+          - System.Activities
+          - System.Xml
+          - System.Xml.Linq
+          - System.Xaml
+          - System.Data
+          - System.Drawing
+          - System.Memory
+          - System.ValueTuple
+          - System.ObjectModel
+          - System.ComponentModel.Composition
+          - System.ComponentModel.Primitives
+          - System.ServiceModel
+          - System.Runtime.Serialization
+          - System.Linq.Expressions
+          - System.Private.CoreLib
+          - System.Reflection.Metadata
+          - Microsoft.VisualBasic
+          - Microsoft.VisualBasic.Core
+          - Microsoft.Bcl.AsyncInterfaces
+          - PresentationCore
+          - PresentationFramework
+          - WindowsBase
+          - UiPath.System.Activities
+          - UiPath.UiAutomation.Activities
+          - UiPath.Workflow
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding (type=insert_assembly_reference, name=<ref>)
+      prose: |
+        Adicionar refs baseline faltantes via `insert_assembly_reference`.
+        Cobre refs comuns que Studio implicitamente espera mas que precisam
+        estar declaradas pra analyzer não reclamar.
+
+  - id: W-11z
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML VB expression usa type sem AssemblyReference resolvida"
+    description: |
+      Scan VB expressions inline buscando type FQNs (`System.X.Y...`).
+      Mapeia type → assembly via `assets/dotnet6_symbol_catalog.yaml`.
+      Se assembly não está em `<TextExpression.ReferencesForImplementation>`,
+      emite finding + fix mecânico insert.
+
+      Cobre gap do W-11x (xmlns-based): types usados em VB expressions
+      inline (`[New System.Net.NetworkCredential(...)]`,
+      `Default="[New System.Security.SecureString()]"`) NÃO aparecem em
+      xmlns declarations e escapam W-11x.
+
+      Catálogo cross-version safe (.NET 6 BCL forwards stable entre
+      Studio 23.10 e 26.x). Manutenção: adicionar entries em
+      `assets/dotnet6_symbol_catalog.yaml` conforme novos types apareçam
+      em projetos.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.xmlns_refs
+        function: detect_vb_symbol_refs
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding (type=insert_assembly_reference, name=<asm>)
+      prose: |
+        Adicionar `<AssemblyReference>X</AssemblyReference>` pra cada
+        assembly resolvido via catálogo a partir de types usados em VB
+        expressions.
+
+  - id: CCS-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "CCS_* workflow attribute usa casing errado vs lib contract"
+    description: |
+      Lib CCS_* declara properties com casing exato (ex: `out_UIESipagDirect`
+      capital). XAML do projeto pode usar casing diferente (ex: `out_UiESipagDirect`)
+      — VB.NET/XAML é case-sensitive em property names → Studio reporta
+      `Cannot set unknown member 'CCS_X.Workflow.attr_name'`.
+
+      Engine extrai contracts de `C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.nupkgs\\CCS_*.nupkg`
+      (cada nupkg contém `content/<Workflow>.xaml` com `<x:Property Name="...">`),
+      escaneia projeto buscando `<prefix:Workflow attr1=... attr2=...>` invocações,
+      compara case-insensitive. Mismatch case → fix mecânico `rename_attribute`.
+
+      Cobre case real: `out_UIESipagDirect` (lib) vs `out_UiESipagDirect` (XAML)
+      em CCS_SipagDirect.Login. Também `in_URL` (lib) vs `in_Url` (XAML).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.ccs_contract
+        function: detect_ccs_contract_check
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding (type=rename_attribute, from=<wrong>, to=<correct>)
+      prose: |
+        Renomear attribute usado em `<prefix:Workflow>` pra match exato com
+        property name declarada pela lib CCS_* em `.nupkgs/`. VB.NET case-sensitive.
+
+  - id: W-19
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "QueueItem SpecificContent/Output indexer call gera BC30057"
+    description: |
+      Em UIA 25.x, `QueueItem.SpecificContent` e `QueueItem.Output` são
+      propriedades `Dictionary(Of String, Object)`. VB expression no XAML
+      como `qi.SpecificContent("key")` pode ser interpretada pelo compiler
+      como property invocation com arg, gerando
+      `BC30057: Too many arguments to 'Public Overloads Property SpecificContent'`.
+
+      Fix mecânico: rewrite para uso explícito de `.Item("key")` — força
+      resolução como Dictionary indexer method call vs property invocation:
+
+        `.SpecificContent("X")` → `.SpecificContent.Item("X")`
+        `.Output("X")`          → `.Output.Item("X")`
+
+      Cobre forma XAML-escaped (`&quot;`) e raw quote. Single string key apenas.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex
+      pattern: '\.(SpecificContent|Output)\s*\(\s*(?:&quot;[^&]+&quot;|"[^"]+")\s*\)'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: queue_item_indexer_to_item
+      prose: |
+        Reescrever `.SpecificContent("X")` → `.SpecificContent.Item("X")` e
+        `.Output("X")` → `.Output.Item("X")` pra evitar BC30057.
+
+  # W-21 REMOVIDA: tentativa de retargetar xmlns assemblies de System.Private.CoreLib
+  # → .NET 6 ref assemblies (System.ObjectModel, System.Collections etc) gerou REGRESSÃO
+  # em Studio 23.10 (Cannot create unknown type Collection<T>, Variable(IEnumerable(Match))).
+  # Studio 23.10 NÃO aceita esses targets como xmlns assembly. Mantém Private.CoreLib
+  # como Migrator gera. Investigar ground-truth via scan Studio refs/ dir antes de
+  # retornar. Fixer mantido pra rollback (no-op + reverse helper).
+
+  - id: W-20
+    severity: WARN
+    category: breaking
+    target: windows
+    title: "XAML tem xmlns aliases orfãs (não usadas no document body)"
+    description: |
+      Activity Migrator deixa muitas xmlns aliases cruft pós-migração
+      Legacy→Windows. Algumas referenciam `.NET Framework 4` assemblies
+      (`mscorlib, Version=4.0.0.0`) que conflitam com `.NET 6` resolution
+      paths — Studio analyzer pode gerar BC31424/BC30652 confusos por
+      ambiguidade de type forwarder.
+
+      Engine strip xmlns:PREFIX="..." declarations cujo `PREFIX:` NÃO é
+      usado em nenhum lugar no document body. Hygiene cleanup + previne
+      analyzer ambiguity.
+
+      Safety:
+        - Skip core prefixes (`x`, `mc`, `xml`)
+        - Conta usage no document body (não na própria xmlns declaration)
+        - 0 usages → strip
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: regex
+      pattern: '\sxmlns:[A-Za-z_][\w]*="[^"]*"'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_orphan_xmlns
+      prose: |
+        Strip xmlns:PREFIX="..." declarations onde PREFIX não é referenciado
+        em nenhum lugar do document body. Cleanup pós-Migrator.
+
+  - id: W-26
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "XAML tem AssemblyReference Legacy redundante (mscorlib/System/System.Core)"
+    description: |
+      Activity Migrator GA strip `xmlns:` aliases Legacy mas mantém
+      `<AssemblyReference>mscorlib|System|System.Core</AssemblyReference>` no
+      body de `<TextExpression.ReferencesForImplementation>`. Em Windows
+      .NET 6 esses 3 refs são redundantes — `mscorlib` foi supersedido por
+      `System.Private.CoreLib`, `System` e `System.Core` são facades vazias
+      que apenas forwardam types.
+
+      Quando XAML usa type forwarded em VB expression — ex:
+      `new System.Net.NetworkCredential(...)` p/ unwrap SecureString —
+      Studio resolve via `mscorlib v4.0.0.0` forwarder, expecta
+      `System.Net.Primitives v4.0.0.0` no closure, mismatch com
+      `System.Net.Primitives v6.0.0.0` actually referenced → reporta
+      `BC31424: Type 'System.Net.NetworkCredential' has been forwarded to
+      assembly 'System.Net.Primitives, Version=6.0.0.0'`.
+
+      Triplet completo de cleanup pós-Migrator:
+        W-20  → strip xmlns:* Legacy (header)
+        W-26  → strip <AssemblyReference> Legacy (body)   ← este
+        W-11g → insert System.Net.Primitives (body)
+
+      Conservadora — apenas {mscorlib, System, System.Core} no v1. Refs
+      candidatas extras (System.Configuration.Install, System.Data.Entity,
+      System.ServiceModel, WindowsBase, System.Data.DataSetExtensions)
+      ficam para v2 após evidência empírica — alguns podem ser used em
+      projetos WCF/EF6/WPF.
+
+      Detector idempotente: emite finding apenas para refs Legacy
+      presentes no bloco. Em XAML já limpo, no-op silencioso.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.legacy_refs
+        function: detect_legacy_bcl_refs
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding pelo detector
+      # (type=strip_assembly_reference, name=<ref Legacy>).
+      prose: |
+        Remover cada `<AssemblyReference>{mscorlib|System|System.Core}
+        </AssemblyReference>` do bloco refs. Redundantes em Windows .NET 6
+        e disparam BC31424 quando XAML usa types forwarded.
 
   - id: W-12
     severity: ERROR
@@ -264,15 +796,31 @@ rules:
     title: "Array literal sem tipo explícito"
     description: |
       Inferência de array em Windows com Option Strict é mais rigorosa.
-      Casos que quebram: array vazio `[{}]` (`BC36914`), `ArrayRow="[{...}]"`
-      em AddDataRow (target `Object()` heterogêneo, `BC36914`).
-      Defesa: prefixar com tipo explícito — `[New String() {...}]`,
-      `[New Object() {...}]`.
+      Casos que quebram:
+        - array vazio `[{}]` (`BC36914`).
+        - `ArrayRow="[{...}]"` em AddDataRow alvo `Object()` heterogêneo
+          (`BC30333` quando elementos são Integer ou outro value type).
+      Defesa: prefixar com tipo explícito — `[New Object() {...}]` p/ ArrayRow,
+      `[New String() {...}]` p/ contextos String-typed.
+
+      Auto-fix cobre `ArrayRow="[{...}]"` (sempre seguro wrap Object — AddDataRow
+      aceita heterogêneo). Caso `[{}]` vazio e `>[{}]<` precisam contexto pra
+      type pick — manual.
     applies_to:
       include: ["**/*.xaml"]
     detect:
-      type: regex
-      pattern: 'ArrayRow="\[\{(?!New\s)|>\[\{\}\]<|"\[\{\}\]"'
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_w12_array_literal
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: wrap_arrayrow_object
+      prose: |
+        `ArrayRow="[{a, b}]"` → `ArrayRow="[New Object() {a, b}]"`.
+        Auto-fix aplica apenas em ArrayRow=" form (AddDataRow). Outros casos
+        (literal vazio, contexto String-typed) requerem manual.
 
   - id: W-13
     severity: ERROR
@@ -394,6 +942,40 @@ rules:
         Trocar `<expr>.ToInt32` por `Convert.ToInt32(<expr>)` (tolerante a
         Nothing) ou `Integer.Parse(<expr>)` (parse estrito).
         Mechanical fix cobre só identificador simples.
+
+  - id: OCR-10
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "NApplicationCard.OCREngine sem engine concreto"
+    description: |
+      `<uix:NApplicationCard.OCREngine>` contém `<ActivityFunc>` vazio (sem
+      activity OCR concreto dentro). Studio analyzer reporta "OCR Engine must
+      be set" e bloqueia execução.
+
+      Migrator headless GA injeta esse placeholder ao converter NApplicationCard
+      pre-spec OCREngine. Em workflows que não usam OCR-based selectors, bloco
+      é artificial (Migrator artifact) — strip seguro.
+
+      Auto-fix: remove apenas blocos com body vazio (só Argument declarations,
+      sem activity concreta). Workflows que setaram engine explícito
+      (UiPathScreenOcr/UiPathDocumentOcr/etc) preservados pela precisão do regex.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_ocr1_empty_engine
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_empty_ocrengine_block
+      prose: |
+        Auto-remove `<uix:NApplicationCard.OCREngine>...</...OCREngine>` quando
+        ActivityFunc body vazio. Workflows com engine explícito intact.
+        Se precisar OCR depois: declarar `<ui:UiPathScreenOcr>` (ou outro) dentro
+        do ActivityFunc.
 
   # W-5..W-9, W-18 — agent_only (heurística manual, não detectável estaticamente)
 
@@ -679,6 +1261,44 @@ rules:
         Remover entry de `project.json::designOptions.fileInfoCollection`
         cujo `fileName` aponta arquivo inexistente. Ou restaurar arquivo
         se foi deletado por engano (git checkout do path original).
+
+  - id: J-12
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "project.json arguments[*].type aponta pra .NET Framework mscorlib v4"
+    description: |
+      Activity Migrator switches `targetFramework: Legacy → Windows` (.NET 6)
+      mas deixa `project.json::arguments.input[*].type` (e output[*].type)
+      apontando pra assemblies `.NET Framework v4.0.0.0`:
+
+        "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral,
+                  PublicKeyToken=b77a5c561934e089"
+
+      Studio analyzer compila project com .NET 6 BCL mas vê argument types
+      declarados com mscorlib v4 (incompatible). Quando workflow USA esses
+      arguments em expressions VB, dispara cascade BC31424/BC30652 type
+      forwarding errors mesmo com refs corretas em XAML.
+
+      Fix mecânico: rewrite type pra short form (sem assembly clause):
+
+        "System.String, mscorlib, Version=4.0.0.0, ..." → "System.String"
+
+      Studio resolve type via project deps + AssemblyReferences. Cobre
+      input + output arguments arrays.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: regex
+      pattern: '"type":\s*"[^"]+,\s*(?:mscorlib|System|System\.Core|System\.Drawing|System\.Xml|System\.Data),\s*Version=4\.\d+\.\d+\.\d+,'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: retarget_project_argument_types
+      prose: |
+        Reescrever `project.json::arguments.input/output[*].type` pra short
+        form sem assembly clause (.NET Framework v4 refs). Studio resolve via
+        project deps em Windows target.
 
 # ---- X — Compile/runtime preventers (extraídos de lints atuais) ----
 
@@ -3189,15 +3809,18 @@ rules:
         module: scripts.rule_engine.heuristics.pin_alert
         function: detect_pin_alert
     fix:
-      apply_class: contextual  # fix depende da API (remove attr vs replace activity)
+      # Mixed: attribute strips (LogRetriedExceptions, DestinationResource, etc)
+      # têm mechanical=strip_xml_attribute → deterministic per-finding.
+      # Element replaces (NWindowOperation) sem mechanical → contextual per-finding
+      # via classifier refinement em check_perfect.py.
+      apply_class: deterministic
       prose: |
         Ver `fix:` específico no message do finding. Tipicamente:
-        - Atributo XAML exclusivo de versão > pin: REMOVER do XAML.
+        - Atributo XAML exclusivo de versão > pin: REMOVER do XAML (auto via strip_xml_attribute).
         - Activity exclusiva de versão > pin: substituir por equivalente
           Modern presente na pin (ex: NWindowOperation → NApplicationCard
-          CloseMode="Always").
-        Após edit manual, re-rodar review p/ confirmar que UIPATH:LOAD não
-        dispara mais.
+          CloseMode="Always"). MANUAL — element replace exige context.
+        Após edit, re-rodar review p/ confirmar que UIPATH:LOAD não dispara mais.
 
   - id: D-2
     severity: ERROR

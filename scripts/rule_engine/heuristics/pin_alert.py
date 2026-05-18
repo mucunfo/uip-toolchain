@@ -83,6 +83,7 @@ def detect_pin_alert(rule, fc, pc):
             intro_v = _parse_v(intro_raw)
             if pinned_v >= intro_v:
                 continue  # pin já cobre — sem alerta
+            mech_spec = api.get("mechanical")
             for match in re.finditer(pat, content):
                 line = content[: match.start()].count("\n") + 1
                 fix_text = api.get("fix", "")
@@ -98,6 +99,10 @@ def detect_pin_alert(rule, fc, pc):
                             f">= {intro_raw} mas pin atual é {raw}. "
                             f"Migrator pode ter injetado pós-bump. {fix_text}"
                         ),
+                        # Per-finding mechanical: yaml api entry pode declarar mechanical
+                        # (strip_xml_attribute pra attribute drops). Element replaces (e.g.,
+                        # NWindowOperation) ficam sem mechanical → contextual via classifier.
+                        fix_mechanical=mech_spec,
                         fix_prose=fix_text or None,
                     )
                 )

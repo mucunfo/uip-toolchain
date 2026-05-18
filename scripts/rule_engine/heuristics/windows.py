@@ -31,9 +31,30 @@ def _last_segment(chain: str) -> str:
     return chain.rsplit(".", 1)[-1]
 
 
+def _w2_mechanical_available(arg: str, method: str) -> bool:
+    """Mirror de `fixers.apply_guard_linq_arg_ref::_default_for`.
+    True quando fixer tem default sensato pra wrap. False = type-dependent,
+    fixer skipa (e detector deve emitir fix_mechanical=None).
+
+    Sync OBRIGATÓRIO com fixer — divergência = detector mente sobre o que
+    engine pode fixar.
+    """
+    if method in ("Contains", "Any", "All"):
+        return True  # Boolean return, default False sempre safe
+    bare = re.sub(r'^(in|io)_', '', arg)
+    if bare.startswith('DTab'):
+        return False  # DataTable.Select chain — guard parcial mascara erro
+    if method == 'AsEnumerable':
+        return False
+    if bare.startswith('Arr') and method in ('Select', 'Where'):
+        return True  # idempotente self-wrap
+    return False  # Dict/Lst/etc type-dependent
+
+
 def detect_w2_linq_no_guard(rule, fc, pc):
     content = fc.active_content
     findings = []
+    rule_mech = (rule.fix or {}).get("mechanical")
     for m in _RE_LINQ_ON_ARG.finditer(content):
         arg, method = m.group(1), m.group(2)
         start = max(0, m.start() - 200)
@@ -45,11 +66,13 @@ def detect_w2_linq_no_guard(rule, fc, pc):
         )
         if guarded:
             continue
+        # Per-finding mech: só se fixer realmente cobre esse caso.
+        mech_for_this = rule_mech if _w2_mechanical_available(arg, method) else None
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
             message=f"{rule.title}: {arg}.{method}(...) sem guard",
-            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_mechanical=mech_for_this,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings
@@ -92,6 +115,73 @@ def detect_w16_isnullorempty(rule, fc, pc):
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
             message=f"{rule.title}: {chain}.IsNullOrEmpty",
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+_RE_W12_ARRAYROW = re.compile(r'ArrayRow="\[\{(?!New\s)[^"]*\}\]"')
+_RE_W12_EMPTY = re.compile(r'>\[\{\}\]<|"\[\{\}\]"')
+
+
+def detect_w12_array_literal(rule, fc, pc):
+    """W-12: array literal sem type explícito.
+
+    Distingue:
+      - `ArrayRow="[{a,b}]"` em AddDataRow — wrap mecânico Object().
+      - `[{}]` vazio (`>[{}]<` ou `"[{}]"`) — manual (precisa context p/ type).
+
+    Emite fix_mechanical APENAS pro caso ArrayRow.
+    """
+    content = fc.active_content
+    findings: list[Finding] = []
+    mech = (rule.fix or {}).get("mechanical")
+    for m in _RE_W12_ARRAYROW.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=f"{rule.title}: ArrayRow sem tipo — auto-wrap Object()",
+            fix_mechanical=mech,
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    for m in _RE_W12_EMPTY.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=f"{rule.title}: array vazio sem tipo — manual (context-dependent)",
+            fix_mechanical=None,  # context-dependent
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+_RE_OCRENGINE_EMPTY = re.compile(
+    r'<uix:NApplicationCard\.OCREngine>\s*'
+    r'<ActivityFunc\b[^>]*>\s*'
+    r'(?:<ActivityFunc\.Argument>\s*<DelegateInArgument\b[^>]*/?>\s*</ActivityFunc\.Argument>\s*)*'
+    r'</ActivityFunc>\s*'
+    r'</uix:NApplicationCard\.OCREngine>',
+    re.DOTALL,
+)
+
+
+def detect_ocr1_empty_engine(rule, fc, pc):
+    """OCR-1: NApplicationCard.OCREngine com ActivityFunc body vazio.
+
+    Detecta apenas placeholders Migrator-injetados (sem activity OCR concreto
+    dentro). Workflows com engine explícito preservados.
+    """
+    content = fc.active_content
+    findings = []
+    for m in _RE_OCRENGINE_EMPTY.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=(
+                f"{rule.title}: OCREngine sem activity concreto — "
+                "Studio analyzer falha 'OCR Engine must be set'"
+            ),
             fix_mechanical=(rule.fix or {}).get("mechanical"),
             fix_prose=(rule.fix or {}).get("prose"),
         ))

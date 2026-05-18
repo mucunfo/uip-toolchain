@@ -8,13 +8,15 @@ dependencies = [
     "pathspec>=0.12",
     "openpyxl>=3.1",
     "lxml>=5.0",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [project.scripts]
-rule-engine = "scripts.rule_engine.cli:main"
+rule-engine = "rule_engine.cli:main"
+uip = "rule_engine.cli:uip_main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

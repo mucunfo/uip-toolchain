@@ -1,0 +1,141 @@
+# .NET 6 BCL + UiPath type → assembly catalog.
+#
+# Mapping FQN type name → assembly name (sem versão/culture).
+# Usado por W-11z (VB symbol scan) pra resolver refs missing baseado em
+# types usados em VB expressions inline ([New System.X(...)], Default="[...]"
+# etc.) que NÃO aparecem em xmlns declarations.
+#
+# Cross-version: válido pra Studio 23.10+ e Studio 26.x — ambos targetam
+# .NET 6 BCL. Forwards estáveis entre versões.
+#
+# Critério de inclusão:
+#   - Type aparece em VB expression de XAML real
+#   - Forward para assembly específico (BC31424) OU type principal de
+#     assembly menos óbvio (BC30652)
+#   - Não adicionar types que já vivem em System.dll / mscorlib (Studio
+#     auto-resolve esses).
+#
+# Manutenção: adicionar entries conforme novos BC errors aparecem em logs
+# Studio. Cada entry = 1 linha YAML, ~1 min de impl.
+
+mappings:
+  # System.Net — forwarded de System pra System.Net.Primitives (.NET 6)
+  System.Net.NetworkCredential: System.Net.Primitives
+  System.Net.IPAddress: System.Net.Primitives
+  System.Net.IPEndPoint: System.Net.Primitives
+  System.Net.Cookie: System.Net.Primitives
+  System.Net.CookieCollection: System.Net.Primitives
+  System.Net.CredentialCache: System.Net.Primitives
+  System.Net.ICredentials: System.Net.Primitives
+
+  # System.Security — SecureString vive em System.Runtime.InteropServices
+  System.Security.SecureString: System.Runtime.InteropServices
+
+  # System.Text.RegularExpressions
+  System.Text.RegularExpressions.Regex: System.Text.RegularExpressions
+  System.Text.RegularExpressions.Match: System.Text.RegularExpressions
+  System.Text.RegularExpressions.MatchCollection: System.Text.RegularExpressions
+  System.Text.RegularExpressions.Group: System.Text.RegularExpressions
+  System.Text.RegularExpressions.GroupCollection: System.Text.RegularExpressions
+  System.Text.RegularExpressions.Capture: System.Text.RegularExpressions
+  System.Text.RegularExpressions.RegexOptions: System.Text.RegularExpressions
+
+  # System.Data — DataTable forwarded para System.Data.Common
+  System.Data.DataTable: System.Data.Common
+  System.Data.DataRow: System.Data.Common
+  System.Data.DataView: System.Data.Common
+  System.Data.DataSet: System.Data.Common
+  System.Data.DataColumn: System.Data.Common
+  System.Data.DataRelation: System.Data.Common
+  System.Data.DataRowState: System.Data.Common
+  System.Data.DataRowVersion: System.Data.Common
+
+  # System.ComponentModel — TypeConverter family
+  System.ComponentModel.MarshalByValueComponent: System.ComponentModel.TypeConverter
+  System.ComponentModel.TypeConverter: System.ComponentModel.TypeConverter
+  System.ComponentModel.TypeConverterAttribute: System.ComponentModel.TypeConverter
+  System.ComponentModel.Component: System.ComponentModel.Primitives
+  System.ComponentModel.IComponent: System.ComponentModel.Primitives
+  System.ComponentModel.PropertyDescriptor: System.ComponentModel.TypeConverter
+
+  # System.Collections.Generic — coleções principais
+  System.Collections.Generic.List: System.Collections
+  System.Collections.Generic.Dictionary: System.Collections
+  System.Collections.Generic.IEnumerable: System.Collections
+  System.Collections.Generic.IList: System.Collections
+  System.Collections.Generic.IDictionary: System.Collections
+  System.Collections.Generic.HashSet: System.Collections
+  System.Collections.Generic.Queue: System.Collections
+  System.Collections.Generic.Stack: System.Collections
+  System.Collections.Generic.KeyValuePair: System.Collections
+  System.Collections.Generic.SortedDictionary: System.Collections
+  System.Collections.Generic.SortedList: System.Collections
+  System.Collections.Generic.LinkedList: System.Collections
+  System.Collections.Generic.IReadOnlyList: System.Collections
+  System.Collections.Generic.IReadOnlyDictionary: System.Collections
+
+  # System.Collections.ObjectModel
+  System.Collections.ObjectModel.Collection: System.ObjectModel
+  System.Collections.ObjectModel.ReadOnlyCollection: System.ObjectModel
+  System.Collections.ObjectModel.ObservableCollection: System.ObjectModel
+
+  # System.Linq
+  System.Linq.Enumerable: System.Linq
+  System.Linq.Queryable: System.Linq
+
+  # System.IO — Path forwarded para System.IO.FileSystem
+  System.IO.Path: System.Runtime.Extensions
+  System.IO.File: System.IO.FileSystem
+  System.IO.Directory: System.IO.FileSystem
+  System.IO.FileInfo: System.IO.FileSystem
+  System.IO.DirectoryInfo: System.IO.FileSystem
+  System.IO.StreamReader: System.IO
+  System.IO.StreamWriter: System.IO
+  System.IO.MemoryStream: System.IO
+  System.IO.FileStream: System.IO.FileSystem
+  System.IO.FileMode: System.IO.FileSystem
+  System.IO.FileAccess: System.IO.FileSystem
+  System.IO.FileShare: System.IO.FileSystem
+
+  # System.Threading
+  System.Threading.Thread: System.Threading.Thread
+  System.Threading.ThreadPool: System.Threading.ThreadPool
+  System.Threading.CancellationToken: System.Threading
+  System.Threading.Tasks.Task: System.Threading.Tasks
+  System.Threading.Tasks.TaskFactory: System.Threading.Tasks
+
+  # System.Diagnostics
+  System.Diagnostics.Process: System.Diagnostics.Process
+  System.Diagnostics.Stopwatch: System.Diagnostics
+
+  # System.Text — Encoding forwarded
+  System.Text.StringBuilder: System.Runtime
+  System.Text.Encoding: System.Runtime
+
+  # System.Globalization
+  System.Globalization.CultureInfo: System.Runtime
+  System.Globalization.DateTimeFormatInfo: System.Runtime
+  System.Globalization.NumberFormatInfo: System.Runtime
+
+  # System.Reflection
+  System.Reflection.Assembly: System.Runtime
+  System.Reflection.MethodInfo: System.Runtime
+
+  # System.Drawing
+  System.Drawing.Bitmap: System.Drawing.Common
+  System.Drawing.Image: System.Drawing.Common
+  System.Drawing.Color: System.Drawing.Primitives
+  System.Drawing.Point: System.Drawing.Primitives
+  System.Drawing.Size: System.Drawing.Primitives
+  System.Drawing.Rectangle: System.Drawing.Primitives
+
+  # System.Xml
+  System.Xml.XmlDocument: System.Xml
+  System.Xml.XmlNode: System.Xml
+  System.Xml.XmlElement: System.Xml
+  System.Xml.XmlAttribute: System.Xml
+  System.Xml.Linq.XDocument: System.Xml.Linq
+  System.Xml.Linq.XElement: System.Xml.Linq
+
+  # UiPath types — comuns em VB expressions Sicoob
+  UiPath.Core.Activities.GenericValue: UiPath.System.Activities

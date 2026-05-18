@@ -25,6 +25,18 @@ def _sweep_pycache() -> None:
 
 _sweep_pycache()
 
+# Compat path: rules.yaml refere python detectors como
+# `scripts.rule_engine.heuristics.<mod>` (legado de quando engine era
+# invocado via `python -m scripts.rule_engine.cli` de dentro de
+# `.uipath-rules/`). Após `pip install -e` (2026-05), pacote instalado é
+# `rule_engine` direto — `scripts.rule_engine.*` quebra em invocação via
+# console_script `uip`. Add `.uipath-rules/` ao sys.path: re-habilita
+# resolução do nome antigo (Python vê dir `scripts/` como package).
+# Não rename rules.yaml em massa pra preservar source-of-truth + git diff.
+_engine_root_for_compat = Path(__file__).resolve().parents[2]
+if str(_engine_root_for_compat) not in sys.path:
+    sys.path.insert(0, str(_engine_root_for_compat))
+
 # Force UTF-8 stdout so PT-BR + acentos + emoji safe under Windows charmap.
 # reconfigure() (3.7+) muta wrapper existente em vez de criar novo — evita
 # double-wrap GC fechar buffer original (causava "I/O operation on closed file"
@@ -87,6 +99,42 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return EXIT_OK
+
+
+def uip_main(argv: list[str] | None = None) -> int:
+    """God command entry-point — injeta subcommand 'all' implícito.
+
+    `uip <project> [flags]` ≡ `rule-engine all <project> [flags]`. Existe pra
+    eliminar dependência de alias PowerShell em profile.ps1 (não carrega em
+    `-NoProfile` shells, hooks, agents, CI).
+
+    Pass-through subcommands explícitos pra debug interno:
+        `uip <subcmd> <args>` onde subcmd in {review, fix, list, validate,
+        docs, stats, all, migrate-windows, phase-out} → rule-engine direto.
+    """
+    argv = argv if argv is not None else sys.argv[1:]
+    explicit_subcommands = {
+        "review", "fix", "list", "validate", "docs", "stats", "all",
+        "migrate-windows", "phase-out",
+    }
+    if argv and argv[0] in explicit_subcommands:
+        return main(argv)
+    if argv and argv[0] in ("-h", "--help"):
+        print(
+            "uip — god command UiPath rules engine\n"
+            "\n"
+            "USAGE:\n"
+            "  uip <project_path> [--apply-contextual] [--no-watch]\n"
+            "      Pipeline completo (migration → fix → gates → contextual).\n"
+            "\n"
+            "  uip <subcommand> [args]\n"
+            "      Pass-through pra debug: review|fix|list|validate|docs|\n"
+            "      stats|all|migrate-windows|phase-out.\n"
+            "\n"
+            "EQUIVALENTE: uip X ≡ rule-engine all X\n"
+        )
+        return EXIT_OK
+    return main(["all"] + argv)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -209,6 +257,16 @@ def build_parser() -> argparse.ArgumentParser:
     al.add_argument("--max-iters", type=int, default=0,
                     help="Limite de iters do loop (0 = ilimitado). "
                          "Útil pra testes; 0 = espera Ctrl-C ou PASS.")
+    al.add_argument("--skip-migration", action="store_true",
+                    help="Pula PHASE 0 (Activity Migrator) mesmo se "
+                         "targetFramework=Legacy. Útil quando Migrator local "
+                         "está broken/hung — engine segue direto pra fix + "
+                         "gates. Override via UIPATH_RULES_SKIP_MIGRATION=1.")
+    al.add_argument("--no-swap-after-migration", action="store_true",
+                    help="Após Migrator success, NÃO substituir source pela "
+                         "versão migrada. _Migrated/ fica como sibling, source "
+                         "permanece Legacy (uip subsequente re-disparará Migrator). "
+                         "Override via UIPATH_RULES_NO_SWAP=1.")
 
     return p
 
@@ -265,30 +323,55 @@ def _cmd_review(args) -> int:
     )
 
     if not external_gates_disabled:
-        # Gate 3: UiPath Studio Analyzer — sempre ON. Cobre lacunas estruturais
-        # da engine local (contrato lib NuGet, Roslyn compile, regras ST-* oficiais).
-        # Findings injetados em result.findings com rule_id "UIPATH:<code>".
-        _inject_analyzer_findings(
-            result, args.path,
-            timeout=getattr(args, "analyzer_gate_timeout", 180),
-            verbose=getattr(args, "verbose", False),
-        )
-
-        # Gate 4: NuGet restore — valida peer deps + feed resolution.
-        _run_nuget_restore_gate(
-            result, args.path,
-            timeout=getattr(args, "nuget_gate_timeout", 300),
-            verbose=getattr(args, "verbose", False),
-        )
-
-        # Gate 5: uipcli publish (pack dry-run) — confirma que projeto empacota
-        # publish-safe. Captura BC* compile errors + validation errors que só
-        # aparecem no fluxo de publish.
-        _run_uipcli_pack_gate(
-            result, args.path,
-            timeout=getattr(args, "pack_gate_timeout", 600),
-            verbose=getattr(args, "verbose", False),
-        )
+        # P1 (2026-05): gates 3/4/5 paralelos via ThreadPoolExecutor.
+        # Cada gate é uma invocação subprocess externa independente (uipcli
+        # analyze, nuget restore, uipcli publish) — sem shared state mutável
+        # além de `result.add(...)` (list.append é GIL-atomic em CPython).
+        # Ganho típico ~2x em PHASE 2 quando uipcli não está stalled.
+        # Cap = 3 workers (um por gate). Não usa nproc cap pois são 3 fixos.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        verbose = getattr(args, "verbose", False)
+        gates = [
+            (
+                "analyzer-gate",
+                lambda: _inject_analyzer_findings(
+                    result, args.path,
+                    timeout=getattr(args, "analyzer_gate_timeout", 180),
+                    verbose=verbose,
+                ),
+            ),
+            (
+                "nuget-gate",
+                lambda: _run_nuget_restore_gate(
+                    result, args.path,
+                    timeout=getattr(args, "nuget_gate_timeout", 300),
+                    verbose=verbose,
+                ),
+            ),
+            (
+                "pack-gate",
+                lambda: _run_uipcli_pack_gate(
+                    result, args.path,
+                    timeout=getattr(args, "pack_gate_timeout", 600),
+                    verbose=verbose,
+                ),
+            ),
+        ]
+        with ThreadPoolExecutor(max_workers=len(gates)) as ex:
+            future_to_name = {ex.submit(fn): name for name, fn in gates}
+            for fut in as_completed(future_to_name):
+                name = future_to_name[fut]
+                try:
+                    fut.result()
+                    if verbose:
+                        print(f"[{name}] complete", file=sys.stderr)
+                except Exception as e:
+                    # Gate failure não derruba review — emit finding diagnóstico.
+                    result.add_internal_error(
+                        f"{name} raised {type(e).__name__}: {e}"
+                    )
+                    print(f"[{name}] FAILED: {type(e).__name__}: {e}",
+                          file=sys.stderr)
     elif getattr(args, "verbose", False):
         print("[review] UIPATH_RULES_DISABLE_EXTERNAL_GATES set — "
               "skipping analyzer/nuget/pack gates.", file=sys.stderr)
@@ -425,6 +508,7 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     (or `UIPATH:LOAD` if no code), category `uipath`, line 0.
     """
     from .analyzer import discover_uipcli, _parse_json_block
+    from .uipcli_runner import preflight, run_uipcli_guarded
     from ._types import Finding
     import os
     import re
@@ -445,24 +529,50 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
                   file=sys.stderr)
         return
 
+    # Pre-flight: uipcli responsive + cloud reachable. Falha aqui emite
+    # finding visível (não silent skip). Severity = WARNING — preflight FAIL
+    # indica ferramenta indisponível (Studio service travado / VPN off), não
+    # bug do projeto. Gate self-skip; engine PASS continua viável se demais
+    # gates ok. Anteriormente ERROR fazia engine FAIL falsamente quando
+    # apenas o ambiente CI estava degradado.
+    pre = preflight(cli)
+    if not pre.ok:
+        result.add(Finding(
+            rule_id="UIPATH:PREFLIGHT",
+            severity=Severity.WARN,
+            category="breaking",
+            file="project.json",
+            line=0,
+            message=f"[analyzer-gate] {pre.as_message()}",
+        ))
+        print(f"[analyzer-gate] {pre.as_message()}", file=sys.stderr)
+        return
+
     if verbose:
         print(f"[analyzer-gate] running uipcli analyze on {project_json}",
               file=sys.stderr)
-    try:
-        proc = subprocess.run(
-            [str(cli), "analyze", "-p", str(project_json)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=timeout, check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError) as e:
-        print(f"[analyzer-gate] uipcli invocation failed: "
-              f"{type(e).__name__}: {e}. Gate skipped.", file=sys.stderr)
+
+    res = run_uipcli_guarded(
+        [str(cli), "analyze", "-p", str(project_json)],
+        timeout_sec=timeout,
+        preflight_result=pre,
+    )
+    if not res.completed:
+        result.add(Finding(
+            rule_id="UIPATH:ANALYZE_HALT",
+            severity=Severity.ERROR,
+            category="breaking",
+            file="project.json",
+            line=0,
+            message=f"[analyzer-gate] {res.as_diagnostic()}",
+        ))
+        print(f"[analyzer-gate] {res.as_diagnostic()}", file=sys.stderr)
         return
 
-    issues = _parse_json_block(proc.stdout or "")
+    issues = _parse_json_block(res.stdout)
     # Also capture NU\d+ NuGet package errors (1 per line, not in #json)
     nu_errors = []
-    for line in (proc.stdout or "").splitlines():
+    for line in res.stdout.splitlines():
         nu = re.match(r"^(NU\d+):\s*(.*)$", line.strip())
         if nu:
             nu_errors.append((nu.group(1), nu.group(2)))
@@ -705,11 +815,12 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
 
     Graceful degradation: skip se uipcli não disponível.
     """
-    import re
+    import os as _os
     import shutil
-    import subprocess
     import tempfile
-    from .analyzer import discover_uipcli
+    from .analyzer import (discover_uipcli, load_cached_pack_findings,
+                           save_cached_pack_findings)
+    from .uipcli_runner import preflight, run_uipcli_guarded
     from ._types import Finding
 
     cli = discover_uipcli()
@@ -725,6 +836,51 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
         if verbose:
             print(f"[PACK-GATE] no project.json at {project_root} — skipped.",
                   file=sys.stderr)
+        return
+
+    # Fix #5 (2026-05): cache pack-gate. Re-runs consecutivos sem mudança em
+    # project.json/xamls (mesma signature) re-emitem findings cached sem pagar
+    # custo uipcli publish (3-10min). Opt-out: UIPATH_RULES_NO_CACHE=1.
+    cache_disabled = (
+        _os.environ.get("UIPATH_RULES_NO_CACHE", "").strip() in ("1", "true", "yes")
+    )
+    if not cache_disabled:
+        cached = load_cached_pack_findings(project_root)
+        if cached is not None:
+            for fd in cached:
+                try:
+                    result.add(Finding(
+                        rule_id=fd["rule_id"],
+                        severity=Severity(fd["severity"]),
+                        category=fd["category"],
+                        file=fd["file"],
+                        line=int(fd.get("line", 0)),
+                        message=fd["message"],
+                    ))
+                except (KeyError, ValueError):
+                    # Cache entry corrupto — pula essa entrada, segue resto.
+                    continue
+            if verbose:
+                print(f"[PACK-GATE] cache HIT — {len(cached)} findings re-emitted, "
+                      f"skipping uipcli publish.", file=sys.stderr)
+            return
+
+    # Pre-flight: cloud + uipcli responsive ANTES de pagar custo do spawn.
+    # Falha aqui emite finding visível (não silent skip). Severity = WARNING
+    # (mesma justificativa que analyzer-gate): preflight FAIL é problema de
+    # ambiente, não bug do projeto. Anteriormente ERROR causava engine FAIL
+    # falsamente em hosts com Studio service degradado.
+    pre = preflight(cli)
+    if not pre.ok:
+        result.add(Finding(
+            rule_id="UIPATH:PREFLIGHT",
+            severity=Severity.WARN,
+            category="breaking",
+            file="project.json",
+            line=0,
+            message=f"[PACK-GATE] {pre.as_message()}",
+        ))
+        print(f"[PACK-GATE] {pre.as_message()}", file=sys.stderr)
         return
 
     # tmpdir em .uipath-rules/.tmp/pack_dryrun/<pid>/ (gitignored). NÃO usar
@@ -745,26 +901,39 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
         if verbose:
             print(f"[PACK-GATE] running uipcli publish (dry-run) "
                   f"on {project_json} -> {tmpdir}", file=sys.stderr)
-        try:
-            proc = subprocess.run(
-                [str(cli), "publish",
-                 "-p", str(project_json),
-                 "-o", "Process",
-                 "-f", str(tmpdir)],
-                capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=timeout, check=False,
-            )
-        except (subprocess.TimeoutExpired, OSError) as e:
-            print(f"[PACK-GATE] uipcli invocation failed: "
-                  f"{type(e).__name__}: {e}. Gate skipped.", file=sys.stderr)
+
+        res = run_uipcli_guarded(
+            [str(cli), "publish",
+             "-p", str(project_json),
+             "-o", "Process",
+             "-f", str(tmpdir)],
+            timeout_sec=timeout,
+            preflight_result=pre,
+        )
+
+        # Halt/timeout/preflight: emit finding diagnóstico estruturado.
+        if not res.completed:
+            result.add(Finding(
+                rule_id="UIPATH:PACK_HALT",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"[PACK-GATE] {res.as_diagnostic()}",
+            ))
+            print(f"[PACK-GATE] {res.as_diagnostic()}", file=sys.stderr)
             return
 
-        output = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        # Snapshot pra cache save: findings injetados nesse run = slice
+        # entre len pré e pós injection.
+        pre_injection_count = len(result.findings)
+
+        output = res.stdout + "\n" + res.stderr
         injected = _parse_pack_output_and_inject(result, output, project_root)
 
         # Se uipcli retornou erro mas nada foi capturado pelos regex acima,
         # emit single Finding indicando publish falhou (so user sees something).
-        if proc.returncode != 0 and injected == 0:
+        if res.returncode != 0 and injected == 0:
             # Try to capture last non-empty line as fallback msg.
             fallback_msg = ""
             for line in reversed(output.splitlines()):
@@ -778,14 +947,32 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                 category="breaking",
                 file="project.json",
                 line=0,
-                message=f"uipcli publish returned exit {proc.returncode} "
+                message=f"uipcli publish returned exit {res.returncode} "
                         f"(no parseable errors). Last line: {fallback_msg[:300]}",
             ))
             injected += 1
 
+        # Fix #5: persiste findings pra cache. Salva mesmo conjunto vazio
+        # (pack OK sem findings = cache hit válido pula uipcli no próximo run).
+        if not cache_disabled:
+            new_findings = result.findings[pre_injection_count:]
+            serializable = [
+                {
+                    "rule_id": f.rule_id,
+                    "severity": int(f.severity),
+                    "category": f.category,
+                    "file": f.file,
+                    "line": f.line,
+                    "message": f.message,
+                }
+                for f in new_findings
+            ]
+            save_cached_pack_findings(project_root, serializable)
+
         if verbose:
             print(f"[PACK-GATE] {injected} findings injected "
-                  f"(exit {proc.returncode}).", file=sys.stderr)
+                  f"(exit {res.returncode}, duration {res.duration_sec:.1f}s).",
+                  file=sys.stderr)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -1196,6 +1383,34 @@ def _cmd_fix(args) -> int:
 
     rules_by_id = {r.id: r for r in rules}
 
+    # Dedup logger pra fix loop. Mesmo finding (kind, rule_id, file) repete em
+    # múltiplas iterações do fixpoint — gera log spam (milhares de linhas
+    # idênticas inviabiliza monitor/grep). Primeira ocorrência printa
+    # inline; subsequentes contabilizam pra summary final.
+    from collections import Counter as _Counter
+    class _FixLogger:
+        def __init__(self) -> None:
+            self._seen: set[tuple[str, str, str]] = set()
+            self._counts: _Counter = _Counter()
+        def log(self, kind: str, rule_id: str, file: str, msg: str) -> None:
+            key = (kind, rule_id, file)
+            self._counts[key] += 1
+            if key not in self._seen:
+                self._seen.add(key)
+                print(msg)
+        def emit_summary(self) -> None:
+            dupes = [(k, c) for k, c in self._counts.items() if c > 1]
+            if not dupes:
+                return
+            dupes.sort(key=lambda x: -x[1])
+            print(f"\n# Eventos repetidos no fix loop (top 30 de {len(dupes)}):")
+            for (kind, rule_id, file), count in dupes[:30]:
+                base = file.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+                print(f"  [{kind}] [{rule_id}] {base}: ×{count}")
+            if len(dupes) > 30:
+                print(f"  ... +{len(dupes)-30} more repeated events")
+    _fix_log = _FixLogger()
+
     # Idempotência: alguns detectores (N-6/N-7) emitem 1 finding por (tag, attr).
     # Pattern do segundo finding fica stale após primeiro fix mutar tag.
     # Loop detect→apply até `applied=0` numa iteração (fixpoint). Dry-run roda
@@ -1236,12 +1451,18 @@ def _cmd_fix(args) -> int:
                 if rule_class not in included_classes:
                     iter_blocked += 1
                     if not dry_run:
-                        print(f"  [BLOCKED apply_class={rule_class}] [{f.rule_id}] {f.file}: revisar manualmente (ver fix.prose).")
+                        _fix_log.log(
+                            f"BLOCKED apply_class={rule_class}", f.rule_id, f.file,
+                            f"  [BLOCKED apply_class={rule_class}] [{f.rule_id}] {f.file}: revisar manualmente (ver fix.prose).",
+                        )
                     continue
             mech_type = f.fix_mechanical.get("type")
             fixer = FIXER_REGISTRY.get(mech_type)
             if fixer is None:
-                print(f"  [SKIP] [{f.rule_id}] {f.file}: fixer '{mech_type}' não registrado")
+                _fix_log.log(
+                    "SKIP", f.rule_id, f.file,
+                    f"  [SKIP] [{f.rule_id}] {f.file}: fixer '{mech_type}' não registrado",
+                )
                 continue
 
             # Per-spec deduplication: same file + rule + fix spec = same fix
@@ -1270,30 +1491,48 @@ def _cmd_fix(args) -> int:
             )
 
             if ar.status == "error":
-                print(f"  [SKIP] [{f.rule_id}] {f.file}: {ar.error}")
+                _fix_log.log(
+                    "SKIP-ERR", f.rule_id, f.file,
+                    f"  [SKIP] [{f.rule_id}] {f.file}: {ar.error}",
+                )
                 continue
             if ar.status == "regression":
                 iter_regressions += 1
-                print(f"  [REGRESSION rolled back] [{f.rule_id}] {ar.error}")
+                _fix_log.log(
+                    "REGRESSION", f.rule_id, f.file,
+                    f"  [REGRESSION rolled back] [{f.rule_id}] {ar.error}",
+                )
                 continue
             if ar.status == "regression-vb":
                 iter_vb_regressions += 1
-                print(f"  [REGRESSION-VB rolled back] [{f.rule_id}] {ar.error}")
+                _fix_log.log(
+                    "REGRESSION-VB", f.rule_id, f.file,
+                    f"  [REGRESSION-VB rolled back] [{f.rule_id}] {ar.error}",
+                )
                 continue
             if ar.status == "regression-cascade":
                 iter_cascade_regressions += 1
-                print(f"  [REGRESSION cascade rolled back] [{f.rule_id}] {f.file}: {ar.error}")
+                _fix_log.log(
+                    "REGRESSION-CASCADE", f.rule_id, f.file,
+                    f"  [REGRESSION cascade rolled back] [{f.rule_id}] {f.file}: {ar.error}",
+                )
                 continue
             if ar.status == "regression-cascade-vb":
                 iter_cascade_regressions += 1
-                print(f"  [REGRESSION cascade-VB rolled back] [{f.rule_id}] {f.file}: {ar.error}")
+                _fix_log.log(
+                    "REGRESSION-CASCADE-VB", f.rule_id, f.file,
+                    f"  [REGRESSION cascade-VB rolled back] [{f.rule_id}] {f.file}: {ar.error}",
+                )
                 continue
             if ar.changed:
                 if dry_run:
                     iter_would_fix += 1
                 else:
                     iter_applied += 1
-                print(f"  [{label}] [{f.rule_id}] {f.file}")
+                _fix_log.log(
+                    label, f.rule_id, f.file,
+                    f"  [{label}] [{f.rule_id}] {f.file}",
+                )
             else:
                 iter_no_op += 1
 
@@ -1315,6 +1554,7 @@ def _cmd_fix(args) -> int:
             break
         print(f"  [iter {iteration}] applied={iter_applied}, re-detecting...")
 
+    _fix_log.emit_summary()
     print(
         f"\nSUMMARY ({iteration} iter, classes={sorted(included_classes)}): "
         f"applied={applied} would-fix={would_fix} no-op={no_op} "
@@ -1553,7 +1793,8 @@ def _run_review_quiet(project: Path, rules_file: str) -> tuple[int, "ValidationR
     return EXIT_WARN, result
 
 
-def _phase0_migration(project: Path, rules_file: str) -> dict:
+def _phase0_migration(project: Path, rules_file: str,
+                      no_swap_after_migration: bool = False) -> dict:
     """Phase 0 — migration probe.
 
     Returns dict: {ran: bool, target_framework: str, status: str}.
@@ -1569,6 +1810,11 @@ def _phase0_migration(project: Path, rules_file: str) -> dict:
         return {"ran": False, "target_framework": tf, "status": f"skip (unknown tf={tf!r})"}
 
     from .migrate import cmd_migrate_windows
+    import os as _os_mig
+    no_swap = no_swap_after_migration or (
+        _os_mig.environ.get("UIPATH_RULES_NO_SWAP", "").strip()
+        in ("1", "true", "yes")
+    )
     mw_args = _ns(
         path=str(project),
         out=None,
@@ -1581,6 +1827,7 @@ def _phase0_migration(project: Path, rules_file: str) -> dict:
         skip_post=False,
         force=True,
         dry_run=False,
+        no_swap_after_migration=no_swap,
     )
     rc = cmd_migrate_windows(mw_args)
     return {"ran": True, "target_framework": tf, "status": f"migrated (exit={rc})"}
@@ -1617,22 +1864,47 @@ def _phase3_contextual_apply(project: Path, rules_file: str) -> dict:
 
 
 def _classify_contextual_pending(result, rule_index) -> list:
-    """Filtra findings que: severity ≤ WARN, são apply_class=contextual,
-    e ainda têm fix prose disponível. Retorna lista pra display."""
+    """Filtra findings que precisam decisão humana — apply_class ∈
+    {contextual, structural}, qualquer severity (incluindo ERROR).
+
+    Anteriormente filtrava só WARN/INFO, mas detectors com `threshold_error`
+    promovem WARN→ERROR sem que isso implique fixer mecânico — apenas
+    sinalizam gravidade. Esses findings continuam apply_class=contextual
+    e seu único fix é prose/manual. Tratá-los como blockers de PASS é
+    incorreto — eles são PENDING_REVIEW (humano decide aceitar/refatorar).
+
+    Filter inclui structural pois fix.prose existe; engine só não pode
+    aplicar mecanicamente. Display reflete status real (refactor pendente).
+    """
     pending = []
     for f in result.findings:
         if f.suppressed:
             continue
-        if f.severity not in (Severity.WARN, Severity.INFO):
+        if f.severity == Severity.HALT:
             continue
         rule = rule_index.get(f.rule_id)
         if rule is None:
             continue
         cls = get_apply_class(rule)
-        if cls != "contextual":
+        if cls not in ("contextual", "structural"):
             continue
         pending.append(f)
     return pending
+
+
+def _is_blocking_error(finding, rule_index) -> bool:
+    """ERROR conta como blocker de PASS APENAS se apply_class=deterministic
+    (engine sabe corrigir mecanicamente — se ainda há ERROR, é bug do fixer
+    ou o fixer skipou). Errors com apply_class contextual/structural são
+    PENDING_REVIEW (decisão humana), não FAIL."""
+    if finding.severity != Severity.ERROR or finding.suppressed:
+        return False
+    rule = rule_index.get(finding.rule_id)
+    if rule is None:
+        # Rule desconhecida (ex: PREFLIGHT/ANALYZE_HALT injetados) — bloqueia
+        # por segurança. Preflight já é WARN agora, não cai aqui.
+        return True
+    return get_apply_class(rule) == "deterministic"
 
 
 def _print_uip_header(project: Path, iter_no: int) -> None:
@@ -1686,6 +1958,7 @@ def _cmd_all(args) -> int:
       FAIL  → loop com watch.wait_for_change OU exit 2 se --no-watch
     """
     from .watch import wait_for_change
+    from .engine_status import EngineStatus
 
     project = Path(args.path).expanduser().resolve()
     if not project.is_dir():
@@ -1703,49 +1976,96 @@ def _cmd_all(args) -> int:
     interval = float(args.watch_interval)
     max_iters = int(args.max_iters) if args.max_iters else 0
 
+    estatus = EngineStatus(project)
+
     iter_no = 0
     while True:
         iter_no += 1
+        estatus.begin_iter(iter_no)
         if max_iters and iter_no > max_iters:
             print(f"\n[ABORT] max-iters={max_iters} atingido sem PASS.")
+            estatus.finalize("FAIL_MAX_ITERS")
             return EXIT_ERROR
 
         _print_uip_header(project, iter_no)
 
         # ---- PHASE 0: migration probe ----
-        p0 = _phase0_migration(project, args.rules_file)
-        _print_phase("0  migration", p0["status"])
+        import os as _os
+        skip_mig = bool(getattr(args, "skip_migration", False)) or (
+            _os.environ.get("UIPATH_RULES_SKIP_MIGRATION", "").strip()
+            in ("1", "true", "yes")
+        )
+        estatus.begin_phase("phase0_migration")
+        if skip_mig:
+            p0 = {"ran": False, "status": "skipped (--skip-migration)"}
+            _print_phase("0  migration", p0["status"])
+            estatus.end_phase("skipped", reason="user_opt_out")
+        else:
+            p0 = _phase0_migration(
+                project, args.rules_file,
+                no_swap_after_migration=bool(
+                    getattr(args, "no_swap_after_migration", False)
+                ),
+            )
+            _print_phase("0  migration", p0["status"])
+            estatus.end_phase("ok", probe_status=p0.get("status"))
 
         # ---- PHASE 1: deterministic auto-fix ----
+        estatus.begin_phase("phase1_deterministic")
         p1 = _phase1_deterministic(project, args.rules_file)
         _print_phase("1  deterministic", f"fix exit={p1['exit']}")
+        estatus.end_phase("ok" if p1["exit"] == 0 else "fail", fix_exit=p1["exit"])
 
         # ---- PHASE 3 (apply mode): contextual auto-apply ANTES do review final ----
         if apply_ctx:
+            estatus.begin_phase("phase3a_contextual_apply")
             p3a = _phase3_contextual_apply(project, args.rules_file)
             _print_phase("3a contextual-apply", f"fix exit={p3a['exit']}")
+            estatus.end_phase("ok" if p3a["exit"] == 0 else "fail", fix_exit=p3a["exit"])
 
         # ---- PHASE 2+4: review final com Layer 2/3/5 + classify ----
+        estatus.begin_phase("phase2_review")
         rc, result = _run_review_quiet(project, args.rules_file)
 
+        # `errors` (display) = total bruto. `errors_blocking` (PASS gate) =
+        # subset com apply_class=deterministic. Errors contextual/structural
+        # são PENDING_REVIEW (folded em contextual_pending below).
         errors = sum(1 for f in result.findings
                      if f.severity == Severity.ERROR and not f.suppressed)
+        errors_blocking = sum(1 for f in result.findings
+                              if _is_blocking_error(f, rule_index))
         warns = sum(1 for f in result.findings
                     if f.severity == Severity.WARN and not f.suppressed)
         infos = sum(1 for f in result.findings
                     if f.severity == Severity.INFO and not f.suppressed)
         halts = sum(1 for f in result.findings
                     if f.severity == Severity.HALT and not f.suppressed)
-        _print_phase("2  gates+review", f"errors={errors} warns={warns} info={infos} halts={halts}")
+        ctx_errs = errors - errors_blocking
+        _print_phase(
+            "2  gates+review",
+            f"errors={errors} (blocking={errors_blocking}, contextual={ctx_errs}) "
+            f"warns={warns} info={infos} halts={halts}",
+        )
+        estatus.end_phase(
+            "fail" if errors_blocking > 0 or halts > 0 else "ok",
+            errors=errors, errors_blocking=errors_blocking,
+            warns=warns, infos=infos, halts=halts,
+        )
 
+        estatus.begin_phase("phase3_contextual")
         contextual_pending = _classify_contextual_pending(result, rule_index)
         if apply_ctx:
             _print_phase("3b contextual-residual", f"{len(contextual_pending)} findings")
         else:
             _print_phase("3  contextual (dry-run)", f"{len(contextual_pending)} findings PENDING")
+        estatus.end_phase("ok", pending=len(contextual_pending),
+                          apply_mode=apply_ctx)
 
         # ---- PHASE 4: decisão ----
-        if errors > 0 or halts > 0:
+        # Blocker = ERROR com apply_class=deterministic (engine deve ter fixado;
+        # se ainda há, é bug do fixer) OU HALT (regra crítica de policy).
+        # Errors contextual/structural NÃO bloqueiam — viram PENDING_REVIEW.
+        if errors_blocking > 0 or halts > 0:
             status = "FAIL"
         elif contextual_pending and not apply_ctx:
             status = "PENDING_REVIEW"
@@ -1764,12 +2084,15 @@ def _cmd_all(args) -> int:
         _print_status(status, project=project, apply_contextual=apply_ctx)
 
         if status == "PASS":
+            estatus.finalize("PASS")
             return EXIT_OK
         if status == "PENDING_REVIEW":
+            estatus.finalize("PENDING_REVIEW")
             return EXIT_WARN
 
         # FAIL → loop com watch ou abort
         if no_watch:
+            estatus.finalize("FAIL")
             return EXIT_ERROR
 
         print(f"\n[WAITING] aguarda edições em {project.name} (Ctrl-C aborta)...")
@@ -1777,6 +2100,7 @@ def _cmd_all(args) -> int:
             changed = wait_for_change(project, interval_s=interval)
         except KeyboardInterrupt:
             print("\n[ABORT] interrupted by user.")
+            estatus.finalize("ABORTED")
             return EXIT_ERROR
         names = sorted({Path(p).name for p in changed})[:5]
         print(f"[CHANGE] {len(changed)} file(s) modified ({', '.join(names)}{'...' if len(changed) > 5 else ''}) — retrying...\n")

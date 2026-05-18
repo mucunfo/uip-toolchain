@@ -164,13 +164,29 @@ def run_analyzer(
     project_root: Path,
     uipcli_path: Path | None = None,
     timeout: int = 180,
+    halt_window_sec: int | None = None,
+    skip_preflight: bool = False,
 ) -> set[AnalyzerIssue] | None:
     """Run Studio Analyzer on project. Returns set of issues or None if uipcli
     unavailable / invocation failed catastrophically.
 
     Empty set = clean project (no findings).
     None = gate skipped (graceful).
+
+    Pre-flight + halt-detect (2026-05): antes de invocar `uipcli analyze`,
+    verifica install responsivo + cloud reachable. Durante execução, watchdog
+    CPU-delta mata uipcli se estagnar (60s sem progresso) — evita timeouts
+    180s mudos com causa raiz "cloud heartbeat travado".
+
+    Args:
+        halt_window_sec: janela CPU-delta. None usa default módulo (60s).
+        skip_preflight: True só pra testes (não invoca preflight). Production
+            sempre False.
     """
+    from .uipcli_runner import (
+        preflight, run_uipcli_guarded, DEFAULT_HALT_WINDOW_SEC,
+    )
+
     cli = uipcli_path or discover_uipcli()
     if cli is None or not cli.is_file():
         return None
@@ -180,19 +196,24 @@ def run_analyzer(
     project_json = project_root / "project.json"
     if not project_json.is_file():
         return None
-    try:
-        proc = subprocess.run(
-            [str(cli), "analyze", "-p", str(project_json)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError):
+
+    pre = None
+    if not skip_preflight:
+        pre = preflight(cli)
+        if not pre.ok:
+            print(f"[analyzer-gate] {pre.as_message()}", file=sys.stderr)
+            return None
+
+    res = run_uipcli_guarded(
+        [str(cli), "analyze", "-p", str(project_json)],
+        timeout_sec=timeout,
+        halt_window_sec=halt_window_sec or DEFAULT_HALT_WINDOW_SEC,
+        preflight_result=pre,
+    )
+    if not res.completed:
+        print(f"[analyzer-gate] {res.as_diagnostic()}", file=sys.stderr)
         return None
-    return parse_analyzer_output(proc.stdout or "", proc.stderr or "")
+    return parse_analyzer_output(res.stdout, res.stderr)
 
 
 def _project_signature(project_root: Path) -> str:
@@ -279,6 +300,58 @@ def save_cached_baseline(
     try:
         cache_file.write_text(
             json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+# Pack-gate cache (Fix #5 2026-05) — analyzer baseline já existia (F27);
+# este complementa cacheando findings injetados pelo gate `uipcli publish`.
+# Key idêntica (_project_signature) → invalida quando project.json/xamls mudam.
+
+def load_cached_pack_findings(
+    project_root: Path,
+    cache_dir: Path | None = None,
+) -> list[dict] | None:
+    """Carrega lista de findings serializados (dict form) do pack-gate.
+
+    Returns:
+        list[dict] com schema Finding-compatible se hit, None se miss/inválido.
+        Caller é responsável por desserializar pra Finding via FINDING_KEYS.
+    """
+    cache_dir = cache_dir or _engine_cache_dir(project_root)
+    if not cache_dir.is_dir():
+        return None
+    sig = _project_signature(project_root)
+    cache_file = cache_dir / f"pack_findings_{sig}.json"
+    if not cache_file.is_file():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, list):
+        return None
+    return data
+
+
+def save_cached_pack_findings(
+    project_root: Path,
+    findings: list[dict],
+    cache_dir: Path | None = None,
+) -> None:
+    """Persist findings (dict form) do pack-gate. No-op em error."""
+    cache_dir = cache_dir or _engine_cache_dir(project_root)
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    sig = _project_signature(project_root)
+    cache_file = cache_dir / f"pack_findings_{sig}.json"
+    try:
+        cache_file.write_text(
+            json.dumps(findings, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
     except OSError:
