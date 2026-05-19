@@ -725,8 +725,10 @@ rules:
         - "**/.tmp/**"
         - "**/.settings/**"
     detect:
-      type: regex
-      pattern: '\sxmlns:[A-Za-z_][\w]*="[^"]*"'
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.xmlns_refs
+        function: detect_w20_orphan_xmlns
     fix:
       apply_class: deterministic
       mechanical:
@@ -989,9 +991,31 @@ rules:
       Permanece em XAML como herança do template Legacy. Não bloqueia
       execução, mas é noise. Studio remove em "Save All" após abrir.
       Cleanup opcional, recomendado para reduzir surface de auditoria.
-      Agent: revisar manualmente em projetos migrados.
+
+      Detector cobre `System.ServiceModel.Internals` e `System.ServiceModel.Web`
+      — refs órfãs após Migrator GA. `System.ServiceModel` (base) ESTÁ em
+      W-11y baseline_refs (cross-version Windows target), strip-eia divergiria
+      add↔strip infinitamente.
+      Fix mecânico per-finding via strip_assembly_reference (reuse W-26).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
     detect:
-      type: agent_only
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.legacy_refs
+        function: detect_servicemodel_refs
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding (type=strip_assembly_reference,
+      # name=<System.ServiceModel*>).
+      prose: |
+        Remover cada `<AssemblyReference>System.ServiceModel*</AssemblyReference>`
+        do bloco refs. WCF não usado pelos pacotes pinados Sicoob; refs órfãs
+        apenas adicionam surface de auditoria.
 
   - id: W-6
     severity: WARN
@@ -4130,16 +4154,8 @@ rules:
     detect:
       type: agent_only
 
-  - id: API-5
-    severity: ERROR
-    category: architectural
-    target: windows
-    title: "Forçar TLS 1.2/1.3, Disable SSL verification=False em prod"
-    description: |
-      Default "Automatic" pode negociar para baixo. Compliance bancária
-      e gateway Sicoob exigem TLS 1.2+ com chain validation.
-    detect:
-      type: agent_only
+  # API-5 removida 2026-05-19: sem necessidade ativa no contexto Sicoob atual.
+  # Re-introduzir caso compliance bancária flag config inseguro em auditoria.
 
   - id: API-6
     severity: WARN
@@ -4248,8 +4264,25 @@ rules:
     description: |
       Default 30s baixo para Sisbr. Simulate não precisa de delays
       (são para HardwareEvents).
+      Detector + fix mecânico cobrem APENAS DelayBefore/After != 0 em
+      activities com InteractionMode="Simulate". Timeout enforcement
+      permanece manual (valor depende de Config Sicoob).
+      Scope-strict: guard InteractionMode="Simulate" impede polluir
+      HardwareEvents/ChromiumAPI no mesmo XAML.
+    applies_to:
+      include: ["**/*.xaml"]
     detect:
-      type: agent_only
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.windows
+        function: detect_ui7_simulate_delays
+    fix:
+      apply_class: deterministic
+      # fix_mechanical per-finding (type=force_attribute_in_activity_with_guard).
+      prose: |
+        Quando InteractionMode="Simulate", forçar DelayBefore="0" e
+        DelayAfter="0" (delays só fazem sentido em HardwareEvents).
+        Timeout permanece manual — valor depende de Config Sicoob.
 
 # ---- SYS — System ----
 
@@ -4348,12 +4381,27 @@ rules:
       `Verify Expression`/`Verify Expression With Operator`/
       `Verify Control Attribute` SOMENTE em `Tests/`. Nunca dentro de
       Performer/Process.xaml. Logam falhas sem throw, corrompem transações.
+      Fix mecânico: delete element (open+body+close OU self-close).
+      Engine cascade rollback pega caso edge (sole-child de parent
+      restritivo → XML inválido → rollback automático).
     applies_to:
       include: ["**/*.xaml"]
       exclude: ["Tests/**"]
     detect:
       type: regex
       pattern: '<ui:(?:VerifyExpression|VerifyExpressionWithOperator|VerifyControlAttribute)\b'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: delete_element
+        # Cobre 2 formas: self-close `<ui:VerifyX .../>` e bloco
+        # `<ui:VerifyX ...>...</ui:VerifyX>` (não-greedy entre open e close
+        # do MESMO nome local).
+        pattern: '<ui:(?:VerifyExpression|VerifyExpressionWithOperator|VerifyControlAttribute)\b[^>]*?/>|<ui:(VerifyExpression|VerifyExpressionWithOperator|VerifyControlAttribute)\b[^>]*?>[\s\S]*?</ui:\1>'
+      prose: |
+        Remover `<ui:VerifyExpression*>` de XAML produção. Verify só vale em
+        Test Cases (passa silent em prod, corrompe transações). Mover lógica
+        de assertion p/ Tests/ workflow correspondente.
 
   - id: TEST-2
     severity: ERROR
@@ -4464,8 +4512,27 @@ rules:
     description: |
       Studio marca legadas como (deprecated). Novas Hash exigem Key.
       Verificar Key Encoding preservado na migração.
+
+      Detector cobre HashText/HashFile (legacy). Fix mecânico via
+      rename_element para variantes Keyed* (open + close + property
+      elements). Args idênticos no schema atual — rename é seguro;
+      Key arg missing já é coberto por M-2 (required arg) independente
+      do rename.
+    applies_to:
+      include: ["**/*.xaml"]
     detect:
-      type: agent_only
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.crypto
+        function: detect_cry5_hash_legacy
+    fix:
+      apply_class: deterministic
+      # fix_mechanical per-finding (type=rename_element).
+      prose: |
+        Renomear `<ui:HashText>` → `<ui:KeyedHashText>` e
+        `<ui:HashFile>` → `<ui:KeyedHashFile>`. Args preservados.
+        Se Key arg ausente, M-2 emitirá finding separado (não bloqueia
+        o rename — Key estava obrigatório no schema legacy também).
 
   - id: CRY-6
     severity: INFO
@@ -4795,8 +4862,27 @@ rules:
     description: |
       Migrar para UiPath Extended Languages OCR (GA desde v6.22.0).
       PT-BR não usa CJK mas regra vale para XAML legado.
+
+      Detector regex cobre `<*:CjkOCR>` (e variantes property element).
+      Fix mecânico via rename_element → ExtendedLanguagesOCR. Schema
+      confirma args IDÊNTICOS entre os dois (rename seguro, sem migração
+      de attrs). Mesmo pkg (UiPath.OCR.Activities) — sem mudança de
+      dependência.
+    applies_to:
+      include: ["**/*.xaml"]
     detect:
-      type: agent_only
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.crypto
+        function: detect_iocr4_cjk_ocr
+    fix:
+      apply_class: deterministic
+      # fix_mechanical per-finding (type=rename_element) — prefix extraído
+      # do XAML (CjkOCR usa xmlns/ocr próprio, não `ui:`).
+      prose: |
+        Renomear `<*:CjkOCR>` → `<*:ExtendedLanguagesOCR>` (open, close,
+        property elements). Args preservados — schema idêntico.
+        Prefix extraído do XAML (xmlns/ocr próprio, normalmente não `ui:`).
 
   - id: IOCR-5
     severity: ERROR
@@ -5808,12 +5894,16 @@ rules:
         module: scripts.rule_engine.heuristics.activity_meta
         function: detect_m6_xmlns_missing
     fix:
-      apply_class: contextual
+      apply_class: deterministic
+      # fix_mechanical emitido per-finding (type=xmlns_declare) com prefix +
+      # xmlns_uri resolvido via schema (canonical_xmlns_set ∩ local_name).
+      # Casos ambíguos (>=2 xmlns com mesmo local_name) ficam sem fix_mech.
       prose: |
-        Adicionar `xmlns:<prefix>="..."` no root + assembly reference em
-        TextExpression.ReferencesForImplementation. Fixer mecânico
-        (xmlns_assembly_resolve) reusável quando pacote estiver em
-        project.json.
+        Adicionar `xmlns:<prefix>="..."` no <Activity> root.
+        Fix mecânico resolve URI canônica via activity schema (1 URI única
+        por local_name).
+        Assembly em project.json é checado por S-11 (finding separado se
+        ausente).
 
   - id: M-5
     severity: WARN
@@ -5878,13 +5968,20 @@ rules:
         module: scripts.rule_engine.heuristics.activity_meta
         function: detect_m8_nothing_in_value_type
     fix:
-      apply_class: contextual
+      apply_class: deterministic
+      # fix_mechanical emitido per-finding pelo detector (type=replace_nothing_value_type).
+      # Char NÃO mapeia — finding fica sem fix_mechanical (manual).
       prose: |
-        Substituir Nothing por valor válido do tipo:
-          - Integer/Long → 0 ou expressão default
-          - Boolean → False/True
-          - DateTime → DateTime.MinValue ou data específica
-        Se semântica permite null, declarar arg como Nullable(Of T) no
+        Substituir `[Nothing]` por default VB do tipo de valor:
+          - Integer/Long/Short/Byte → `[0]`
+          - Single → `[0.0F]`; Double → `[0.0]`; Decimal → `[0D]`
+          - Boolean → `[False]`
+          - DateTime → `[DateTime.MinValue]`
+          - DateTimeOffset → `[DateTimeOffset.MinValue]`
+          - TimeSpan → `[TimeSpan.Zero]`
+          - Guid → `[Guid.Empty]`
+          - Char → MANUAL (sem mapping default — semantic ambíguo)
+        Se semântica permite null real, declarar arg como Nullable(Of T) no
         callee, ou converter via wrapper.
 
   - id: M-7
@@ -5906,10 +6003,14 @@ rules:
         module: scripts.rule_engine.heuristics.activity_meta
         function: detect_m7_redundant_default
     fix:
-      apply_class: contextual
+      apply_class: deterministic
+      # fix_mechanical emitido per-finding (type=strip_redundant_default) com
+      # match exato (prefix, activity_local, attr_name, expected_value).
+      # Idempotente + scope-restricted: não toca outros atributos da tag.
       prose: |
-        Remover atribuição redundante. Studio re-emite atributo no save se
-        usuário alterar e voltar — comportamento idempotente.
+        Remover atribuição redundante (valor == schema default). Studio
+        re-emite atributo no save se usuário alterar e voltar — comportamento
+        idempotente.
 
 # ============================================================
 # Batch CX — Complexity metrics (workflow-level)

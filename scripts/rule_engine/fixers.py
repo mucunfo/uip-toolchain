@@ -2986,3 +2986,347 @@ def apply_strip_assembly_reference(file: Path, spec: dict, dry_run: bool = True,
     if not dry_run:
         file.write_bytes(bom + new_content.encode("utf-8"))
     return True
+
+
+@register("rename_element")
+def apply_rename_element(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Generic fixer: rename activity local name em todas 4 formas:
+       <prefix:OldLocal ...>       → <prefix:NewLocal ...>
+       <prefix:OldLocal .../>      → <prefix:NewLocal .../>
+       </prefix:OldLocal>          → </prefix:NewLocal>
+       <prefix:OldLocal.Foo>...    → <prefix:NewLocal.Foo>...
+       </prefix:OldLocal.Foo>      → </prefix:NewLocal.Foo>
+
+    Spec:
+      prefix:    xmlns prefix (ex: 'ui')
+      old_local: nome local atual (ex: 'HashText')
+      new_local: nome local novo (ex: 'KeyedHashText')
+
+    Safety:
+      - Idempotente: skip se old_local não presente OU já renomeado.
+      - Whitelist regex chars (letras/dígitos/_).
+      - Word-boundary: NÃO match `<ui:HashTextExtended>` quando renomeando
+        HashText.
+      - Preserva BOM.
+      - Args (attrs) preservados inteiramente — só nome muda.
+    """
+    prefix = (spec or {}).get("prefix") or ""
+    old_local = (spec or {}).get("old_local") or ""
+    new_local = (spec or {}).get("new_local") or ""
+    if not all([prefix, old_local, new_local]) or old_local == new_local:
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", prefix):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w]*", old_local):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w]*", new_local):
+        return False
+
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+
+    p = re.escape(prefix)
+    ol = re.escape(old_local)
+    # Open: `<prefix:OldLocal` seguido por space, `/`, ou `>` (word boundary)
+    open_re = re.compile(rf'<{p}:{ol}(?=[\s/>.])')
+    # Close: `</prefix:OldLocal>` ou property close `</prefix:OldLocal.Foo>`
+    close_re = re.compile(rf'</{p}:{ol}(?=[.>])')
+
+    new_content, n_open = open_re.subn(f'<{prefix}:{new_local}', content)
+    new_content, n_close = close_re.subn(f'</{prefix}:{new_local}', new_content)
+    if (n_open + n_close) == 0 or new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("force_attribute_in_activity_with_guard")
+def apply_force_attribute_in_activity_with_guard(
+    file: Path, spec: dict, dry_run: bool = True
+) -> bool:
+    """UI-7 fixer: force attr=value DENTRO de activity guardada por outro attr.
+
+    Spec (per-finding):
+      prefix:          xmlns prefix da activity (ex: 'uix')
+      activity_local:  nome local (ex: 'NTypeInto')
+      guard_attr:      attr usado pra match scope (ex: 'InteractionMode')
+      guard_value:     valor exato do guard (ex: 'Simulate')
+      attr_name:       attr alvo a forçar (ex: 'DelayBefore')
+      target_value:    valor final (ex: '0')
+      tag_line:        linha 1-based (informativo; fixer scaneia tudo)
+
+    Logic:
+      1. Encontra todos open-tags `<prefix:local ...>`
+      2. Para cada, verifica se contém `guard_attr="guard_value"` exato
+      3. Se sim: replace `attr_name="..."` por `attr_name="target_value"` OU
+         adiciona o attr se ausente
+      4. Skip tags sem guard match — protege outras activities (HardwareEvents,
+         ChromiumAPI, etc.) de pollution
+
+    Safety:
+      - Idempotente: skip se attr já = target_value.
+      - Scope-strict: guard impede polluir activities diferentes mesmo
+        com mesmo (prefix, local).
+      - Whitelist regex chars em todos campos.
+      - Preserva BOM, self-close marker.
+    """
+    prefix = (spec or {}).get("prefix") or ""
+    local = (spec or {}).get("activity_local") or ""
+    guard_attr = (spec or {}).get("guard_attr") or ""
+    guard_value = (spec or {}).get("guard_value")
+    attr = (spec or {}).get("attr_name") or ""
+    target = (spec or {}).get("target_value")
+    if not all([prefix, local, guard_attr, attr]) or guard_value is None or target is None:
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", prefix):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", local):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w]*", guard_attr):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w]*", attr):
+        return False
+
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+
+    tag_open_re = re.compile(
+        rf'<{re.escape(prefix)}:{re.escape(local)}\b([^>]*?)(/?>)'
+    )
+    guard_re = re.compile(
+        rf'\b{re.escape(guard_attr)}="{re.escape(str(guard_value))}"'
+    )
+    attr_re = re.compile(rf'(\s){re.escape(attr)}="([^"]*)"')
+
+    changed = False
+    target_str = str(target)
+
+    def _patch_tag(m: re.Match) -> str:
+        nonlocal changed
+        attrs_blob = m.group(1)
+        closer = m.group(2)
+        # Skip se guard não match — protege scope
+        if not guard_re.search(attrs_blob):
+            return m.group(0)
+        existing = attr_re.search(attrs_blob)
+        if existing:
+            if existing.group(2) == target_str:
+                return m.group(0)  # idempotent
+            new_blob = attr_re.sub(rf'\1{attr}="{target_str}"', attrs_blob, count=1)
+        else:
+            sep = "" if (attrs_blob == "" or attrs_blob.endswith(" ")) else " "
+            new_blob = f'{attrs_blob}{sep}{attr}="{target_str}"'
+        if new_blob == attrs_blob:
+            return m.group(0)
+        changed = True
+        return f'<{prefix}:{local}{new_blob}{closer}'
+
+    new_content = tag_open_re.sub(_patch_tag, content)
+    if not changed or new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("xmlns_declare")
+def apply_xmlns_declare(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """M-6 fixer: adiciona `xmlns:<prefix>="<uri>"` no <Activity> root.
+
+    Spec (per-finding, emitido por detect_m6_xmlns_missing):
+      prefix:    xmlns prefix (ex: 'ui')
+      xmlns_uri: URI canônica resolvida via schema (ex:
+                 'http://schemas.uipath.com/workflow/activities')
+
+    Safety:
+      - Idempotente: skip se xmlns:<prefix> já declarado em qualquer tag.
+      - Inject único: somente no PRIMEIRO `<Activity ...>` (root).
+      - Não toca xmlns existentes nem reordena atributos.
+      - Whitelist prefix chars (letras/dígitos/_) — evita injection em regex.
+      - Preserva BOM.
+      - Não declara dependência em project.json — se assembly faltar,
+        S-11 dispara como finding separado (escopo fora de M-6).
+    """
+    prefix = (spec or {}).get("prefix") or ""
+    xmlns_uri = (spec or {}).get("xmlns_uri") or ""
+    if not prefix or not xmlns_uri:
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", prefix):
+        return False
+    # URI sanity: sem quotes/newlines que quebrariam o XML.
+    if '"' in xmlns_uri or "\n" in xmlns_uri or "\r" in xmlns_uri:
+        return False
+
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+
+    # Idempotente: se já existe declaração xmlns:<prefix>="..." em qualquer
+    # parte do arquivo (mais comum: root), skip.
+    if re.search(rf'\bxmlns:{re.escape(prefix)}\s*=\s*"', content):
+        return False
+
+    # Inject no PRIMEIRO open-tag de <Activity ...>. Match não-greedy do attrs
+    # blob até o `>` final (ou `/>` em raros casos de Activity vazio).
+    root_re = re.compile(r'(<Activity\b)([^>]*?)(/?>)', flags=re.DOTALL)
+    m = root_re.search(content)
+    if m is None:
+        return False
+    head, attrs_blob, closer = m.group(1), m.group(2), m.group(3)
+    # Determina indent: usa newline+spaces se attrs_blob multi-line, senão space.
+    if "\n" in attrs_blob:
+        # mesma indent dos xmlns existentes — procura padrão `\n<spaces>xmlns:`
+        indent_match = re.search(r'\n([ \t]+)xmlns:', attrs_blob)
+        sep = f'\n{indent_match.group(1)}' if indent_match else "\n          "
+    else:
+        sep = " "
+    new_attrs = f'{attrs_blob}{sep}xmlns:{prefix}="{xmlns_uri}"'
+    new_content = content[:m.start()] + head + new_attrs + closer + content[m.end():]
+    if new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("strip_redundant_default")
+def apply_strip_redundant_default(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """M-7 fixer: remove `attr="<value>"` quando valor == schema default.
+
+    Spec (per-finding, emitido por detect_m7_redundant_default):
+      prefix:         xmlns prefix da activity (ex: 'ui')
+      activity_local: nome local (ex: 'WriteRange')
+      attr_name:      arg redundante (ex: 'StartingCell')
+      expected_value: valor exato emitido pelo detector (ex: 'A1')
+      tag_line:       linha 1-based do open-tag
+
+    Safety:
+      - Scope: replace acontece SOMENTE dentro do open-tag de uma activity
+        específica (prefix:local) + match exato (attr, value).
+      - Idempotente: skip se attr já ausente OU valor != expected.
+      - Whole-word match em attr_name (não match em substring).
+      - Não toca outros atributos.
+      - Preserva BOM.
+    """
+    prefix = (spec or {}).get("prefix") or ""
+    local = (spec or {}).get("activity_local") or ""
+    attr = (spec or {}).get("attr_name") or ""
+    expected_value = (spec or {}).get("expected_value")
+    if not all([prefix, local, attr]) or expected_value is None:
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", prefix):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", local):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w]*", attr):
+        return False
+
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+
+    tag_open_re = re.compile(
+        rf'<{re.escape(prefix)}:{re.escape(local)}\b([^>]*?)(/?>)'
+    )
+    # Strip ` attr="expected_value"` (leading space removed too, idempotent
+    # space cleanup). re.escape escapa eventuais `<`, `&`, etc no valor.
+    attr_re = re.compile(
+        rf'(\s+){re.escape(attr)}="{re.escape(str(expected_value))}"'
+    )
+
+    changed = False
+
+    def _patch_tag(m: re.Match) -> str:
+        nonlocal changed
+        attrs_blob = m.group(1)
+        closer = m.group(2)
+        new_blob, n = attr_re.subn("", attrs_blob)
+        if n > 0 and new_blob != attrs_blob:
+            changed = True
+            return f'<{prefix}:{local}{new_blob}{closer}'
+        return m.group(0)
+
+    new_content = tag_open_re.sub(_patch_tag, content)
+    if not changed or new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+@register("replace_nothing_value_type")
+def apply_replace_nothing_value_type(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """M-8 fixer: substitui `attr="[Nothing]"` por default VB do tipo de valor.
+
+    Spec (per-finding, emitido por detect_m8_nothing_in_value_type):
+      prefix:          xmlns prefix da activity (ex: 'ui')
+      activity_local:  nome local (ex: 'WriteRange')
+      attr_name:       arg do tipo valor (ex: 'AddHeaders')
+      tag_line:        linha 1-based do open-tag no XAML
+      default_expr:    VB bind expression substituta (ex: '[False]', '[0]')
+
+    Safety:
+      - Scope: replace acontece dentro do open-tag de uma activity específica
+        (delimitado por `<prefix:Local` até `>` ou `/>`).
+      - Idempotente: skip se attr já não é `[Nothing]`.
+      - Whole-word match em attr_name (não match em substring).
+      - Preserva BOM.
+      - Não toca outros atributos da mesma tag nem outras tags.
+    """
+    prefix = (spec or {}).get("prefix") or ""
+    local = (spec or {}).get("activity_local") or ""
+    attr = (spec or {}).get("attr_name") or ""
+    default_expr = (spec or {}).get("default_expr") or ""
+    if not all([prefix, local, attr, default_expr]):
+        return False
+    # Whitelist chars pra evitar injection em regex
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", prefix):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", local):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w]*", attr):
+        return False
+
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+
+    # Match open-tag completo: <prefix:Local ...> ou <prefix:Local .../>
+    # Captura conteúdo entre `<prefix:Local` e o `>` final do open-tag.
+    # Não-greedy + lookahead pra parar no primeiro `>` que não esteja dentro
+    # de attr quoted value.
+    tag_open_re = re.compile(
+        rf'<{re.escape(prefix)}:{re.escape(local)}\b([^>]*?)(/?>)'
+    )
+
+    nothing_re = re.compile(
+        rf'(\s){re.escape(attr)}="\s*\[\s*Nothing\s*\]\s*"',
+        flags=re.IGNORECASE,
+    )
+
+    changed = False
+
+    def _patch_tag(m: re.Match) -> str:
+        nonlocal changed
+        attrs_blob = m.group(1)
+        closer = m.group(2)
+        new_blob, n = nothing_re.subn(rf'\1{attr}="{default_expr}"', attrs_blob)
+        if n > 0 and new_blob != attrs_blob:
+            changed = True
+            return f'<{prefix}:{local}{new_blob}{closer}'
+        return m.group(0)
+
+    new_content = tag_open_re.sub(_patch_tag, content)
+    if not changed or new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True

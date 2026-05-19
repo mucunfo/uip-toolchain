@@ -485,6 +485,18 @@ def _check_overload_conflict(rule, fc, schema, refs) -> list[Finding]:
     return findings
 
 
+def _resolve_xmlns_for_local(schema, local_name: str) -> str | None:
+    """Retorna xmlns URI único onde `local_name` aparece no schema.
+    None se 0 ou >1 matches (ambíguo → fix manual)."""
+    matches = []
+    for xmlns in schema.canonical_xmlns_set():
+        if schema.candidates(xmlns, local_name):
+            matches.append(xmlns)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def _check_xmlns_missing(rule, fc, schema, refs) -> list[Finding]:
     """M-6: usa prefix UiPath conhecido mas xmlns não declarado no root."""
     findings = []
@@ -497,10 +509,20 @@ def _check_xmlns_missing(rule, fc, schema, refs) -> list[Finding]:
         if ref.prefix in seen_prefixes:
             continue  # 1 finding por prefix faltante
         seen_prefixes.add(ref.prefix)
+        # Resolve canonical URI via schema (mesmo local_name único em 1 xmlns).
+        resolved_uri = _resolve_xmlns_for_local(schema, ref.local_name)
+        fix_mech = None
+        if resolved_uri:
+            fix_mech = {
+                "type": "xmlns_declare",
+                "prefix": ref.prefix,
+                "xmlns_uri": resolved_uri,
+            }
         findings.append(_emit(
             rule, fc, ref.line,
             f"prefix '{ref.prefix}' usado em <{ref.prefix}:{ref.local_name}> "
-            f"mas xmlns:{ref.prefix} não declarado no <Activity> root"
+            f"mas xmlns:{ref.prefix} não declarado no <Activity> root",
+            fix_mechanical=fix_mech,
         ))
     return findings
 
@@ -718,6 +740,25 @@ _VALUE_TYPES = (
 )
 
 
+# M-8 fixer: default VB expression para substituir `[Nothing]` por tipo de valor.
+# Mapping derivado das semânticas-default canonical .NET: zero numérico, False
+# booleano, MinValue temporal. Char NÃO mapeia — semantic ambíguo (null-char
+# raramente é intenção); finding emitido mas sem auto-fix.
+_VALUE_TYPE_DEFAULTS: dict[str, str] = {
+    "Int16": "[0]", "Int32": "[0]", "Int64": "[0]",
+    "UInt16": "[0]", "UInt32": "[0]", "UInt64": "[0]",
+    "Byte": "[0]", "SByte": "[0]",
+    "Single": "[0.0F]", "Double": "[0.0]",
+    "Decimal": "[0D]",
+    "Boolean": "[False]",
+    "DateTime": "[DateTime.MinValue]",
+    "DateTimeOffset": "[DateTimeOffset.MinValue]",
+    "TimeSpan": "[TimeSpan.Zero]",
+    "Guid": "[Guid.Empty]",
+    # Char intencionalmente ausente — null-char raramente é intenção real.
+}
+
+
 def _check_nothing_in_value_type(rule, fc, schema, refs) -> list[Finding]:
     """M-8 (VB): bind expression `[Nothing]` em InArgument tipo valor.
 
@@ -756,11 +797,23 @@ def _check_nothing_in_value_type(rule, fc, schema, refs) -> list[Finding]:
             if full not in _VALUE_TYPES:
                 continue
             expected = bare
+            default_expr = _VALUE_TYPE_DEFAULTS.get(bare)
+            fix_mech = None
+            if default_expr:
+                fix_mech = {
+                    "type": "replace_nothing_value_type",
+                    "prefix": ref.prefix,
+                    "activity_local": ref.local_name,
+                    "attr_name": attr_name,
+                    "tag_line": ref.line,
+                    "default_expr": default_expr,
+                }
             findings.append(_emit(
                 rule, fc, ref.line,
                 f"<{ref.prefix}:{ref.local_name}> arg '{attr_name}' = "
                 f"{v_strip} (VB Nothing) mas tipo é valor ({expected}) — "
-                f"InvalidOperationException em runtime"
+                f"InvalidOperationException em runtime",
+                fix_mechanical=fix_mech,
             ))
     return findings
 
@@ -780,10 +833,19 @@ def _check_redundant_default(rule, fc, schema, refs) -> list[Finding]:
                 continue
             schema_default = str(arg.default)
             if attr_val == schema_default:
+                fix_mech = {
+                    "type": "strip_redundant_default",
+                    "prefix": ref.prefix,
+                    "activity_local": ref.local_name,
+                    "attr_name": attr_name,
+                    "expected_value": attr_val,
+                    "tag_line": ref.line,
+                }
                 findings.append(_emit(
                     rule, fc, ref.line,
                     f"<{ref.prefix}:{ref.local_name}> atribui '{attr_name}=\"{attr_val}\"' "
-                    f"que é igual ao default do schema (omitir é equivalente)"
+                    f"que é igual ao default do schema (omitir é equivalente)",
+                    fix_mechanical=fix_mech,
                 ))
     return findings
 

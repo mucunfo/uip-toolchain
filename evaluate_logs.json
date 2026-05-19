@@ -1,0 +1,37 @@
+[
+  {
+    "index": 0,
+    "message": "Digitou a data retroativa: {date}",
+    "traceability": "GOOD",
+    "reason": "specific action + contextual value (date). distinguishable.",
+    "debugging_value": "high"
+  },
+  {
+    "index": 1,
+    "message": "Clicou em consultar.",
+    "traceability": "WEAK",
+    "reason": "generic action, no context. many workflows log clicks identically.",
+    "debugging_value": "low"
+  },
+  {
+    "index": 2,
+    "message": "O sistema Sipag Net retorno um erro após clicar em 'Consultar'. Erro: {error}",
+    "traceability": "GOOD",
+    "reason": "specific system + error message. distinguishable failure signature.",
+    "debugging_value": "high"
+  },
+  {
+    "index": 3,
+    "message": "Capturou o extrato da reserva de fraude. Quantidade de linhas obtidas: {count}",
+    "traceability": "GOOD",
+    "reason": "specific action + metric (row count). validates extraction completeness.",
+    "debugging_value": "high"
+  },
+  {
+    "index": 4,
+    "message": "Iniciando processo para validação dos reajustes realizados...",
+    "traceability": "WEAK",
+    "reason": "generic startup message, no context. indistinguishable from other validation starts.",
+    "debugging_value": "low"
+  }
+]

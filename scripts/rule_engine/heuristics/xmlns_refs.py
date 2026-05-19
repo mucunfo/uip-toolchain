@@ -284,3 +284,54 @@ def detect_baseline_refs(rule, fc, pc):
         )
 
     return findings
+
+
+# W-20: orphan xmlns aliases
+_RE_XMLNS_DECL = re.compile(r'\s+xmlns:([A-Za-z_][\w]*)="[^"]*"')
+_W20_CORE_PREFIXES = frozenset({"x", "mc", "xml"})
+
+
+def detect_w20_orphan_xmlns(rule, fc, pc):
+    """W-20: emite finding por XAML que tenha pelo menos 1 xmlns alias órfã
+    (declarada mas NÃO usada no document body).
+
+    1 finding por (file, prefix) com fix_mechanical=strip_orphan_xmlns
+    (fixer scaneia file todo, idempotente — apenas 1 finding por XAML é
+    suficiente pra disparar fix). Mas pra rastreabilidade no review,
+    emitimos 1 por prefix órfão.
+
+    Pre-check evita 246 false-positive findings (versão anterior emitia
+    1 finding por xmlns DECLARATION, mesmo quando usada → fixer no-op
+    massivo).
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+    content = fc.active_content or ""
+    declarations = list(_RE_XMLNS_DECL.finditer(content))
+    if not declarations:
+        return []
+
+    findings: list[Finding] = []
+    for decl in declarations:
+        prefix = decl.group(1)
+        if prefix in _W20_CORE_PREFIXES:
+            continue
+        # Conta usages `prefix:` fora da própria xmlns declaration
+        usage_pat = re.compile(rf'(?<!xmlns:)\b{re.escape(prefix)}:')
+        if usage_pat.search(content):
+            continue
+        line = content[:decl.start()].count("\n") + 1
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=line,
+            message=(
+                f"{rule.title}: xmlns:{prefix} declarado mas 0 usages no "
+                f"document body — strip cleanup pós-Migrator."
+            ),
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
