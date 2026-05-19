@@ -38,6 +38,18 @@ _LEGACY_REFS_BLACKLIST: frozenset[str] = frozenset({
     "System.Core",
 })
 
+# W-5: WCF stack órfão pós-Migrator. Pacotes pinados Sicoob (D-1) não usam
+# WCF em runtime; refs permanecem como herança template Legacy.
+#
+# NÃO incluir `System.ServiceModel` (base): W-11y baseline_refs inclui esse
+# como ref cross-version → strip+add divergence infinita no fix loop.
+# Mesmo padrão de W-26 carve-out (mscorlib/System/System.Core). Lista
+# restrita a sub-assemblies WCF que NÃO estão no W-11y baseline.
+_SERVICEMODEL_REFS_BLACKLIST: frozenset[str] = frozenset({
+    "System.ServiceModel.Internals",
+    "System.ServiceModel.Web",
+})
+
 _RE_REFS_BLOCK = re.compile(
     r"<TextExpression\.ReferencesForImplementation>(.*?)"
     r"</TextExpression\.ReferencesForImplementation>",
@@ -97,6 +109,62 @@ def detect_legacy_bcl_refs(rule, fc, pc):
                     f"do bloco refs. Em Windows .NET 6 esse assembly é facade "
                     f"redundante coberto por System.Private.CoreLib. Cleanup "
                     f"pós-Migrator GA."
+                ),
+            )
+        )
+
+    return findings
+
+
+def detect_servicemodel_refs(rule, fc, pc):
+    """W-5: emite finding por `<AssemblyReference>System.ServiceModel*` órfã
+    no bloco refs. WCF stack não é usado pelos pacotes pinados Sicoob (D-1) em
+    runtime — herança template Legacy. Cada finding carrega
+    `mechanical=strip_assembly_reference` (reuse W-26 fixer).
+
+    Filtro `target: windows` no rule já garante invocação só em projetos
+    Windows. Idempotente: skip se nenhum ref ServiceModel presente.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    content = fc.active_content
+    block_m = _RE_REFS_BLOCK.search(content)
+    if not block_m:
+        return []
+
+    block_body = block_m.group(1)
+    found: list[str] = []
+    for m in _RE_ASM_REF.finditer(block_body):
+        name = m.group(1).strip()
+        if name in _SERVICEMODEL_REFS_BLACKLIST:
+            found.append(name)
+
+    if not found:
+        return []
+
+    findings: list[Finding] = []
+    for name in found:
+        findings.append(
+            Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=1,
+                message=(
+                    f"XAML target=Windows referencia `{name}` (WCF stack). "
+                    f"Pacotes pinados Sicoob (D-1) não usam WCF — ref é "
+                    f"herança template Legacy. Cleanup pós-Migrator."
+                ),
+                fix_mechanical={
+                    "type": "strip_assembly_reference",
+                    "name": name,
+                },
+                fix_prose=(
+                    f"Remover `<AssemblyReference>{name}</AssemblyReference>` "
+                    f"do bloco refs. WCF não usado pelos pacotes pinados; "
+                    f"ref órfã apenas adiciona surface de auditoria."
                 ),
             )
         )

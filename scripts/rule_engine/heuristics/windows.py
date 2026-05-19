@@ -210,3 +210,83 @@ def detect_w17_toint32(rule, fc, pc):
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings
+
+
+# UI-7: Simulate InteractionMode → DelayBefore/After devem ser 0
+#
+# Detecta activities UIA com `InteractionMode="Simulate"` que tenham
+# `DelayBefore` ou `DelayAfter` definidos com valor != 0. Simulate é
+# background-capable; delays só fazem sentido em HardwareEvents.
+
+_RE_UIA_ACTIVITY = re.compile(
+    r'<(uix?|uia):([A-Za-z][\w]*)\b([^>]*?)/?>', re.DOTALL
+)
+_RE_ATTR_KV = re.compile(r'\b([A-Za-z_][\w]*)\s*=\s*"([^"]*)"')
+
+
+def _is_zero_delay(value: str) -> bool:
+    """True se valor é '0', '[0]', '0.0', '[0.0]' (Double zero)."""
+    if value is None:
+        return True
+    v = value.strip()
+    if not v:
+        return True
+    # Strip outer [...] bind expression
+    if v.startswith("[") and v.endswith("]"):
+        v = v[1:-1].strip()
+    # Numeric zero literal
+    try:
+        return float(v) == 0.0
+    except ValueError:
+        return False
+
+
+def detect_ui7_simulate_delays(rule, fc, pc):
+    """UI-7: activities UIA com InteractionMode=Simulate + DelayBefore/After != 0.
+
+    Emite 1 finding por (activity, attr) violador. fix_mechanical scope-strict
+    via apply_force_attribute_in_activity_with_guard.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+    content = fc.active_content or ""
+    findings = []
+    for m in _RE_UIA_ACTIVITY.finditer(content):
+        prefix = m.group(1)
+        local = m.group(2)
+        body = m.group(3) or ""
+        attrs = {am.group(1): am.group(2) for am in _RE_ATTR_KV.finditer(body)}
+        mode = (attrs.get("InteractionMode") or "").strip()
+        if mode != "Simulate":
+            continue
+        line = _line_for(content, m.start())
+        for delay_attr in ("DelayBefore", "DelayAfter"):
+            if delay_attr not in attrs:
+                continue
+            if _is_zero_delay(attrs[delay_attr]):
+                continue
+            fix_mech = {
+                "type": "force_attribute_in_activity_with_guard",
+                "prefix": prefix,
+                "activity_local": local,
+                "guard_attr": "InteractionMode",
+                "guard_value": "Simulate",
+                "attr_name": delay_attr,
+                "target_value": "0",
+                "tag_line": line,
+            }
+            findings.append(Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=line,
+                message=(
+                    f"{rule.title}: <{prefix}:{local}> "
+                    f'InteractionMode="Simulate" mas '
+                    f'{delay_attr}="{attrs[delay_attr]}" (esperado 0)'
+                ),
+                fix_mechanical=fix_mech,
+                fix_prose=(rule.fix or {}).get("prose"),
+            ))
+    return findings

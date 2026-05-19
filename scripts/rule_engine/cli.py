@@ -418,6 +418,16 @@ _ANALYZER_SICOOB_POLICY = {
     "ST-NMG-011": "N-2 Sicoob — DataTable argumento usa prefixo 'in_DTab'/'io_DTab'/'out_DTab', nao 'dt_'.",
     "ST-NMG-008": "Duplicata de Sicoob N-8 (mesma regra, >30 chars). N-8 governa.",
     "ST-NMG-016": "Duplicata de N-8 (max length arg). N-8/lib-contract governam.",
+    # Adicionados 2026-05-19 (aprovado pelo usuario) — Sicoob convention prevalece.
+    "ST-NMG-005": "Duplicata de Sicoob U-4 (variavel definida >1x). U-4 governa.",
+    "ST-MRD-002": "Duplicata de Sicoob N-17 (DisplayName descritivo). N-17 governa global.",
+    "ST-DBP-007": "Duplicata de Sicoob A-5 (decomposicao modular por conceito). A-5 governa.",
+    "ST-MRD-009": "Duplicata de Sicoob CX-2 (nesting depth). CX-2 governa thresholds.",
+    "ST-USG-009": "Duplicata de Sicoob U-1 (variavel declarada nao usada). U-1 governa.",
+    "TA-DBP-002": "Duplicata de Sicoob TCC-1 (Test Case coverage). TCC-1 governa.",
+    "UI-ANA-017": "Duplicata de Sicoob API-1 (ContinueOnError em verbos nao-idempotentes). API-1 governa.",
+    "ST-USG-034": "Sicoob nao usa Automation Hub — exigencia nao aplicavel.",
+    "UI-USG-011": "Sisbr UI: idx= necessario p/ identificar elementos em datatables (UI-3 ByInstance + UI-2 Simulate atenuam volatilidade do idx).",
 }
 
 # Whitelist por escopo de path. Testes Sicoob nao precisam seguir convencoes
@@ -425,16 +435,14 @@ _ANALYZER_SICOOB_POLICY = {
 # = Test Item A), LogMessage nao obrigatoria (test runner separado).
 # Format: {rule_code: (path_substrings_tuple, reason)}.
 _ANALYZER_TEST_SCOPE_WHITELIST = {
-    "ST-MRD-002": (("\\Tests\\", "/Tests/"),
-                   "Tests/* — DisplayName padrao aceito em mocks/scenarios."),
+    # ST-MRD-002 e ST-NMG-008 removidos daqui — agora em GLOBAL policy
+    # (Sicoob N-17 / N-8 governam globalmente, nao só em Tests/).
     "ST-NMG-004": (("\\Tests\\", "/Tests/"),
                    "Tests/* — DisplayName duplicado aceito em test setups."),
     "ST-USG-020": (("\\Tests\\", "/Tests/"),
                    "Tests/* — Log nao usada OK em test runners (assert/mock)."),
     "ST-NMG-001": (("\\Tests\\", "/Tests/"),
                    "Tests/* — naming variado aceito em fixtures."),
-    "ST-NMG-008": (("\\Tests\\", "/Tests/"),
-                   "Tests/* — nomes longos OK em test setups descritivos."),
     "ST-ANA-009": (("\\Tests\\", "/Tests/"),
                    "Tests/* — containers colapsados OK (UI design-time)."),
 }

@@ -14,6 +14,8 @@ _findings.json
 eval.json
 eval_result.json
 evaluation.json
+eval_logs*.json
+evaluate_logs*.json
 log_eval.json
 log_traceability_eval.json
 *_eval.json

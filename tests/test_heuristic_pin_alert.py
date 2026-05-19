@@ -212,4 +212,9 @@ def test_pin_alert_loader_validates_apply_class(tmp_path):
     pin_alert = next((r for r in rules if r.id == "D-PINALERT"), None)
     assert pin_alert is not None
     assert pin_alert.severity == Severity.ERROR
-    assert pin_alert.fix and pin_alert.fix.get("apply_class") == "contextual"
+    # D-PINALERT é mixed: attribute strips (strip_xml_attribute) → deterministic
+    # per-finding, element replaces (NWindowOperation) → contextual per-finding.
+    # YAML declara `deterministic` (default) e check_perfect.py refina per
+    # finding. Loader requer apply_class declarado quando fix_mechanical
+    # é dinâmico — `deterministic` ou `contextual` ambos válidos.
+    assert pin_alert.fix and pin_alert.fix.get("apply_class") in {"deterministic", "contextual"}

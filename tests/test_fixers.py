@@ -650,8 +650,449 @@ def test_strip_idempotent(tmp_path):
     assert changed is False
 
 
+# ---- rename_element (CRY-5, IOCR-4) ----
+
+from scripts.rule_engine.fixers import apply_rename_element
+
+
+def _rn_spec(prefix="ui", old_local="HashText", new_local="KeyedHashText"):
+    return {
+        "type": "rename_element",
+        "prefix": prefix,
+        "old_local": old_local,
+        "new_local": new_local,
+    }
+
+
+def test_rename_element_open_close_and_property(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:HashText Key="k">\n'
+        '    <ui:HashText.Input>txt</ui:HashText.Input>\n'
+        '  </ui:HashText>\n'
+        '</Activity>'
+    )
+    changed = apply_rename_element(f, _rn_spec(), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    assert "<ui:KeyedHashText Key=" in content
+    assert "<ui:KeyedHashText.Input>" in content
+    assert "</ui:KeyedHashText.Input>" in content
+    assert "</ui:KeyedHashText>" in content
+    assert "HashText" not in content.replace("KeyedHashText", "")
+
+
+def test_rename_element_word_boundary(tmp_path):
+    """HashText rename NÃO deve tocar HashTextExtended."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:HashText Key="k"/>\n'
+        '  <ui:HashTextExtended/>\n'
+        '</Activity>'
+    )
+    apply_rename_element(f, _rn_spec(), dry_run=False)
+    content = f.read_text()
+    assert "<ui:KeyedHashText " in content
+    assert "<ui:HashTextExtended/>" in content
+
+
+def test_rename_element_idempotent(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns:ui="x"><ui:KeyedHashText Key="k"/></Activity>')
+    changed = apply_rename_element(f, _rn_spec(), dry_run=False)
+    assert changed is False
+
+
+def test_rename_element_dry_run(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = '<Activity xmlns:ui="x"><ui:HashText Key="k"/></Activity>'
+    f.write_text(original)
+    changed = apply_rename_element(f, _rn_spec(), dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_rename_element_rejects_malformed(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns:ui="x"><ui:HashText/></Activity>')
+    bad = _rn_spec(prefix="ui;rm -rf /")
+    assert apply_rename_element(f, bad, dry_run=False) is False
+
+
+def test_rename_element_registered():
+    assert "rename_element" in REGISTRY
+
+
+# ---- UI-7: force_attribute_in_activity_with_guard ----
+
+from scripts.rule_engine.fixers import apply_force_attribute_in_activity_with_guard
+
+
+def _ui7_spec(prefix="uix", local="NTypeInto", guard_attr="InteractionMode",
+              guard_value="Simulate", attr="DelayBefore", target="0"):
+    return {
+        "type": "force_attribute_in_activity_with_guard",
+        "prefix": prefix,
+        "activity_local": local,
+        "guard_attr": guard_attr,
+        "guard_value": guard_value,
+        "attr_name": attr,
+        "target_value": target,
+        "tag_line": 1,
+    }
+
+
+def test_ui7_forces_attr_when_guard_matches(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="x">\n'
+        '  <uix:NTypeInto InteractionMode="Simulate" DelayBefore="500" />\n'
+        '</Activity>'
+    )
+    changed = apply_force_attribute_in_activity_with_guard(f, _ui7_spec(), dry_run=False)
+    assert changed is True
+    assert 'DelayBefore="0"' in f.read_text()
+    assert 'DelayBefore="500"' not in f.read_text()
+
+
+def test_ui7_skips_when_guard_mismatch(tmp_path):
+    """Guard InteractionMode=Simulate; activity tem HardwareEvents → NÃO tocar."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="x">\n'
+        '  <uix:NTypeInto InteractionMode="HardwareEvents" DelayBefore="500" />\n'
+        '</Activity>'
+    )
+    changed = apply_force_attribute_in_activity_with_guard(f, _ui7_spec(), dry_run=False)
+    assert changed is False
+    assert 'DelayBefore="500"' in f.read_text()
+
+
+def test_ui7_idempotent_when_already_target(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="x"><uix:NTypeInto InteractionMode="Simulate" DelayBefore="0" /></Activity>'
+    )
+    changed = apply_force_attribute_in_activity_with_guard(f, _ui7_spec(), dry_run=False)
+    assert changed is False
+
+
+def test_ui7_mixed_scope_only_simulate_touched(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="x">\n'
+        '  <uix:NTypeInto InteractionMode="Simulate" DelayBefore="500" />\n'
+        '  <uix:NTypeInto InteractionMode="HardwareEvents" DelayBefore="200" />\n'
+        '</Activity>'
+    )
+    changed = apply_force_attribute_in_activity_with_guard(f, _ui7_spec(), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    # Simulate one zeroed
+    assert 'InteractionMode="Simulate" DelayBefore="0"' in content
+    # HardwareEvents preserved
+    assert 'InteractionMode="HardwareEvents" DelayBefore="200"' in content
+
+
+def test_ui7_dry_run(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = '<Activity xmlns:uix="x"><uix:NTypeInto InteractionMode="Simulate" DelayBefore="500" /></Activity>'
+    f.write_text(original)
+    changed = apply_force_attribute_in_activity_with_guard(f, _ui7_spec(), dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_ui7_rejects_malformed_prefix(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns:uix="x"><uix:NTypeInto InteractionMode="Simulate" DelayBefore="500"/></Activity>')
+    bad = _ui7_spec(prefix="uix;rm -rf /")
+    assert apply_force_attribute_in_activity_with_guard(f, bad, dry_run=False) is False
+
+
+def test_ui7_fixer_registered():
+    assert "force_attribute_in_activity_with_guard" in REGISTRY
+
+
+# ---- M-6: xmlns_declare ----
+
+from scripts.rule_engine.fixers import apply_xmlns_declare
+
+_M6_URI = "http://schemas.uipath.com/workflow/activities"
+
+
+def _m6_spec(prefix="ui", uri=_M6_URI):
+    return {"type": "xmlns_declare", "prefix": prefix, "xmlns_uri": uri}
+
+
+def test_m6_declares_xmlns_in_root(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns="x" xmlns:x="y">\n  <ui:LogMessage />\n</Activity>'
+    )
+    changed = apply_xmlns_declare(f, _m6_spec(), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    assert 'xmlns:ui="http://schemas.uipath.com/workflow/activities"' in content
+
+
+def test_m6_idempotent_when_already_declared(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        f'<Activity xmlns="x" xmlns:ui="{_M6_URI}">\n  <ui:LogMessage />\n</Activity>'
+    )
+    changed = apply_xmlns_declare(f, _m6_spec(), dry_run=False)
+    assert changed is False
+
+
+def test_m6_preserves_existing_attrs(tmp_path):
+    f = tmp_path / "x.xaml"
+    original_attrs = ['xmlns="x"', 'xmlns:x="y"']
+    f.write_text(
+        f'<Activity {" ".join(original_attrs)}>\n  <ui:LogMessage />\n</Activity>'
+    )
+    apply_xmlns_declare(f, _m6_spec(), dry_run=False)
+    content = f.read_text()
+    for attr in original_attrs:
+        assert attr in content
+
+
+def test_m6_dry_run(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = '<Activity xmlns="x"><ui:LogMessage /></Activity>'
+    f.write_text(original)
+    changed = apply_xmlns_declare(f, _m6_spec(), dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_m6_rejects_uri_with_quotes(tmp_path):
+    """URI com aspas duplas tentaria injection no XML — reject."""
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns="x"><ui:LogMessage /></Activity>')
+    bad = _m6_spec(uri='http://evil" injected="')
+    assert apply_xmlns_declare(f, bad, dry_run=False) is False
+
+
+def test_m6_rejects_malformed_prefix(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns="x"><ui:LogMessage /></Activity>')
+    assert apply_xmlns_declare(f, _m6_spec(prefix="ui:x"), dry_run=False) is False
+
+
+def test_m6_fixer_registered():
+    assert "xmlns_declare" in REGISTRY
+
+
+# ---- M-7: strip_redundant_default ----
+
+from scripts.rule_engine.fixers import apply_strip_redundant_default
+
+
+def _m7_spec(prefix="ui", local="WriteRange", attr="StartingCell",
+             expected="A1", tag_line=5):
+    return {
+        "type": "strip_redundant_default",
+        "prefix": prefix,
+        "activity_local": local,
+        "attr_name": attr,
+        "expected_value": expected,
+        "tag_line": tag_line,
+    }
+
+
+def test_m7_strips_redundant_default(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:WriteRange SheetName="Plan1" StartingCell="A1" />\n'
+        '</Activity>'
+    )
+    changed = apply_strip_redundant_default(f, _m7_spec(), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    assert "StartingCell" not in content
+    assert 'SheetName="Plan1"' in content
+
+
+def test_m7_skip_when_value_differs(tmp_path):
+    """expected_value='A1' mas atual é 'B2' — não strip."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x"><ui:WriteRange StartingCell="B2" /></Activity>'
+    )
+    changed = apply_strip_redundant_default(f, _m7_spec(expected="A1"), dry_run=False)
+    assert changed is False
+    assert 'StartingCell="B2"' in f.read_text()
+
+
+def test_m7_only_targets_specified_activity(tmp_path):
+    """WriteRange spec não toca ReadRange."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:WriteRange StartingCell="A1" />\n'
+        '  <ui:ReadRange StartingCell="A1" />\n'
+        '</Activity>'
+    )
+    changed = apply_strip_redundant_default(f, _m7_spec(local="WriteRange"), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    assert 'StartingCell' not in content.split('<ui:ReadRange')[0]
+    assert '<ui:ReadRange StartingCell="A1"' in content
+
+
+def test_m7_idempotent_when_attr_absent(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns:ui="x"><ui:WriteRange SheetName="X" /></Activity>')
+    changed = apply_strip_redundant_default(f, _m7_spec(), dry_run=False)
+    assert changed is False
+
+
+def test_m7_dry_run(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = '<Activity xmlns:ui="x"><ui:WriteRange StartingCell="A1" /></Activity>'
+    f.write_text(original)
+    changed = apply_strip_redundant_default(f, _m7_spec(), dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_m7_value_with_regex_metachars(tmp_path):
+    """expected_value contains chars that are regex metacharacters (e.g. '.')."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x"><ui:WriteRange Path="C:\\temp\\file.xlsx" /></Activity>'
+    )
+    changed = apply_strip_redundant_default(
+        f, _m7_spec(attr="Path", expected="C:\\temp\\file.xlsx"), dry_run=False
+    )
+    assert changed is True
+    assert "Path" not in f.read_text()
+
+
+def test_m7_fixer_registered():
+    assert "strip_redundant_default" in REGISTRY
+
+
+# ---- M-8: replace_nothing_value_type ----
+
+from scripts.rule_engine.fixers import apply_replace_nothing_value_type
+
+
+def _m8_spec(prefix="ui", local="WriteRange", attr="AddHeaders",
+             tag_line=5, default_expr="[False]"):
+    return {
+        "type": "replace_nothing_value_type",
+        "prefix": prefix,
+        "activity_local": local,
+        "attr_name": attr,
+        "tag_line": tag_line,
+        "default_expr": default_expr,
+    }
+
+
+def test_m8_replaces_nothing_with_default(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:WriteRange WorkbookPath="C:\\f.xlsx" AddHeaders="[Nothing]" />\n'
+        '</Activity>'
+    )
+    changed = apply_replace_nothing_value_type(f, _m8_spec(), dry_run=False)
+    assert changed is True
+    assert 'AddHeaders="[False]"' in f.read_text()
+    assert "[Nothing]" not in f.read_text()
+
+
+def test_m8_idempotent_when_not_nothing(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:WriteRange AddHeaders="[True]" />\n'
+        '</Activity>'
+    )
+    changed = apply_replace_nothing_value_type(f, _m8_spec(), dry_run=False)
+    assert changed is False
+
+
+def test_m8_only_targets_specified_activity(tmp_path):
+    """Spec aponta WriteRange; ReadRange com [Nothing] no mesmo arquivo
+    NÃO deve ser tocado."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:WriteRange AddHeaders="[Nothing]" />\n'
+        '  <ui:ReadRange AddHeaders="[Nothing]" />\n'
+        '</Activity>'
+    )
+    changed = apply_replace_nothing_value_type(f, _m8_spec(local="WriteRange"), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    assert '<ui:WriteRange AddHeaders="[False]"' in content
+    assert '<ui:ReadRange AddHeaders="[Nothing]"' in content
+
+
+def test_m8_only_targets_specified_attr(tmp_path):
+    """Spec aponta AddHeaders; outro attr [Nothing] na mesma tag NÃO tocar."""
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x">\n'
+        '  <ui:WriteRange OtherFlag="[Nothing]" AddHeaders="[Nothing]" />\n'
+        '</Activity>'
+    )
+    changed = apply_replace_nothing_value_type(f, _m8_spec(attr="AddHeaders"), dry_run=False)
+    assert changed is True
+    content = f.read_text()
+    assert 'AddHeaders="[False]"' in content
+    assert 'OtherFlag="[Nothing]"' in content
+
+
+def test_m8_handles_self_close_tag(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x"><ui:WriteRange AddHeaders="[Nothing]"/></Activity>'
+    )
+    changed = apply_replace_nothing_value_type(f, _m8_spec(), dry_run=False)
+    assert changed is True
+    assert 'AddHeaders="[False]"/>' in f.read_text()
+
+
+def test_m8_case_insensitive_nothing(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="x"><ui:WriteRange AddHeaders="[ NOTHING ]" /></Activity>'
+    )
+    changed = apply_replace_nothing_value_type(f, _m8_spec(), dry_run=False)
+    assert changed is True
+    assert 'AddHeaders="[False]"' in f.read_text()
+
+
+def test_m8_dry_run(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = '<Activity xmlns:ui="x"><ui:WriteRange AddHeaders="[Nothing]" /></Activity>'
+    f.write_text(original)
+    changed = apply_replace_nothing_value_type(f, _m8_spec(), dry_run=True)
+    assert changed is True
+    assert f.read_text() == original
+
+
+def test_m8_rejects_malformed_spec(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text('<Activity xmlns:ui="x"><ui:WriteRange AddHeaders="[Nothing]"/></Activity>')
+    # injection attempt via regex metachars
+    bad = _m8_spec(prefix="ui;rm -rf /")
+    assert apply_replace_nothing_value_type(f, bad, dry_run=False) is False
+
+
 # ---- registry wiring ----
 
 def test_w1_v2_fixers_registered():
     assert "expand_self_closed_inarg" in REGISTRY
     assert "strip_string_quotes_numeric_default" in REGISTRY
+
+
+def test_m8_fixer_registered():
+    assert "replace_nothing_value_type" in REGISTRY
