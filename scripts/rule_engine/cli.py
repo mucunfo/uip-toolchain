@@ -906,16 +906,58 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
         return
 
     tmpdir = tempfile.mkdtemp(dir=str(base_tmp), prefix="pack_")
+    # Temp NuGet.config no projeto pra apontar pra `.nupkgs/` local (CCS_*).
+    # uipcli v26 NÃO suporta flag `--libraries-source` (verifiquei help — não
+    # existe). Único mecanismo: NuGet.config standard. Sem ele, uipcli usa
+    # machine config (só nuget.org) → CCS_* não resolvem → pack falha com
+    # "O projeto tem erros de validação" — false-positive engine.
+    #
+    # Idempotent: se projeto já tem NuGet.config committed, NÃO sobrescreve
+    # (respeita config dev). Cria apenas se ausente. Pós-pack, deleta SÓ se
+    # engine criou (config_created flag) — zero rastro em projeto nem machine.
+    #
+    # Path lookup: env UIPATH_CCS_NUPKGS_DIR > default Sicoob path.
+    ccs_nupkgs = _os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
+        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
+    )
+    project_nuget_config = project_root / "NuGet.config"
+    config_created_by_engine = False
+    if not project_nuget_config.exists() and Path(ccs_nupkgs).is_dir():
+        nuget_xml = (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<configuration>\n'
+            '  <packageSources>\n'
+            '    <clear />\n'
+            f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
+            '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
+            '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
+            '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
+            '  </packageSources>\n'
+            '</configuration>\n'
+        )
+        try:
+            project_nuget_config.write_text(nuget_xml, encoding="utf-8")
+            config_created_by_engine = True
+            if verbose:
+                print(f"[PACK-GATE] created temp NuGet.config "
+                      f"({ccs_nupkgs} as Sicoob_Local source)", file=sys.stderr)
+        except OSError as e:
+            if verbose:
+                print(f"[PACK-GATE] cannot create temp NuGet.config: {e}",
+                      file=sys.stderr)
+
     try:
         if verbose:
             print(f"[PACK-GATE] running uipcli publish (dry-run) "
                   f"on {project_json} -> {tmpdir}", file=sys.stderr)
 
+        publish_args = [str(cli), "publish",
+                        "-p", str(project_json),
+                        "-o", "Process",
+                        "-f", str(tmpdir)]
+
         res = run_uipcli_guarded(
-            [str(cli), "publish",
-             "-p", str(project_json),
-             "-o", "Process",
-             "-f", str(tmpdir)],
+            publish_args,
             timeout_sec=timeout,
             preflight_result=pre,
         )
@@ -984,6 +1026,17 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                   file=sys.stderr)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+        # Cleanup temp NuGet.config: deleta SÓ se engine criou. Config pre-
+        # existente no projeto (committed) fica intacta.
+        if config_created_by_engine:
+            try:
+                project_nuget_config.unlink(missing_ok=True)
+                if verbose:
+                    print(f"[PACK-GATE] removed temp NuGet.config", file=sys.stderr)
+            except OSError as e:
+                if verbose:
+                    print(f"[PACK-GATE] cannot remove temp NuGet.config: {e}",
+                          file=sys.stderr)
 
 
 def _parse_pack_output_and_inject(result, output: str, project_root: Path) -> int:
