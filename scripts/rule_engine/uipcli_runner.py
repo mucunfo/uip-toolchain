@@ -22,6 +22,7 @@ API stable; analyzer.py e cli.py consomem via `UipcliResult`.
 """
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import sys
@@ -56,6 +57,34 @@ PREFLIGHT_SOCKET_TIMEOUT_SEC = 3
 # Phase 1 analyzer-gate + Phase 2 pack-gate + Phase 2 publish-gate todos
 # chamam preflight; sem cache cada um paga cold-start de 30-90s.
 _PREFLIGHT_CACHE: dict[str, "PreflightResult"] = {}
+
+
+def _console_spawn_attrs() -> tuple[int, "subprocess.STARTUPINFO | None"]:
+    """Windows-only console handling para Popen de uipcli.
+
+    uipcli Studio v26 cloud requer console handle alocado pra iniciar.
+    Sem console (CREATE_NO_WINDOW ou stdout=PIPE puro) trava em AllocConsole.
+    Trade-off histórico: CREATE_NEW_CONSOLE resolveu hang mas abre console
+    visível a cada gate — atrapalha workflow do dev.
+
+    Solução: CREATE_NEW_CONSOLE + STARTUPINFO(STARTF_USESHOWWINDOW, SW_HIDE).
+    Console alocada (uipcli happy), janela invisível.
+
+    Env var `UIPATH_RULES_SHOW_CLI_CONSOLE=1` força console visível — escape
+    hatch se SW_HIDE regredir hang em ambiente específico, ou pra debug
+    quando precisar ver stdout cru do uipcli.
+
+    No-op em não-Windows: returna (0, None).
+    """
+    creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    if not creationflags or not hasattr(subprocess, "STARTUPINFO"):
+        return 0, None
+    if os.environ.get("UIPATH_RULES_SHOW_CLI_CONSOLE") == "1":
+        return creationflags, None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = subprocess.SW_HIDE
+    return creationflags, si
 
 
 @dataclass
@@ -165,12 +194,12 @@ def preflight(
                 pass
 
     # Windows-only: Studio v26 cloud uipcli requer console handle alocado
-    # para iniciar. Python Popen default cria child sem console quando
-    # stdout=PIPE (CREATE_NO_WINDOW implícito) → uipcli trava em init aguardando
-    # AllocConsole. CREATE_NEW_CONSOLE força Windows a alocar console
-    # invisível pro child; uipcli completa cold start em ~9s vs 90s+ hang.
-    # No-op em não-Windows (atributo não existe; fallback 0).
-    _creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    # para iniciar. Sem console (CREATE_NO_WINDOW implícito) trava em
+    # AllocConsole. CREATE_NEW_CONSOLE + SW_HIDE: aloca console mas
+    # janela invisível. uipcli completa cold start em ~9s vs 90s+ hang.
+    # Env UIPATH_RULES_SHOW_CLI_CONSOLE=1 reverte pra console visível
+    # (escape hatch debug / regressão). No-op em não-Windows.
+    _creationflags, _startupinfo = _console_spawn_attrs()
     try:
         popen = subprocess.Popen(
             [str(uipcli_path), "--version"],
@@ -178,6 +207,7 @@ def preflight(
             stdin=subprocess.DEVNULL,
             text=True, encoding="utf-8", errors="replace",
             creationflags=_creationflags,
+            startupinfo=_startupinfo,
         )
     except OSError as e:
         res.diagnose = f"uipcli spawn fail: {e}"
@@ -318,10 +348,11 @@ def run_uipcli_guarded(
     result = UipcliResult(completed=False, returncode=-1, preflight=preflight_result)
     started = time.monotonic()
 
-    # Spawn process — CREATE_NEW_CONSOLE em Windows: Studio v26 cloud
-    # uipcli precisa console handle alocado pra start. Sem ele trava em
-    # init aguardando AllocConsole. Mesma justificativa que preflight().
-    _creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    # Spawn process — CREATE_NEW_CONSOLE + SW_HIDE em Windows: Studio v26
+    # cloud uipcli precisa console handle alocado pra start. SW_HIDE deixa
+    # a janela invisível. Env UIPATH_RULES_SHOW_CLI_CONSOLE=1 reverte.
+    # Mesma justificativa que preflight().
+    _creationflags, _startupinfo = _console_spawn_attrs()
     try:
         popen = subprocess.Popen(
             args,
@@ -332,6 +363,7 @@ def run_uipcli_guarded(
             encoding="utf-8",
             errors="replace",
             creationflags=_creationflags,
+            startupinfo=_startupinfo,
         )
     except OSError as e:
         result.halt_reason = "spawn_fail"

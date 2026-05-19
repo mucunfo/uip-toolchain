@@ -1157,6 +1157,8 @@ rules:
     description: |
       Todo projeto deve incluir UiPath.System.Activities como base.
       Faltar essas indica template incompleto.
+      Fix mecânico injeta pin Sicoob [25.4.4] (alinhado D-1a) em
+      dependencies. Libraries skipadas via skip_when designOptions.outputType.
     applies_to:
       include: ["project.json"]
     detect:
@@ -1168,6 +1170,15 @@ rules:
           - UiPath.System.Activities
         skip_when:
           designOptions.outputType: [Library]
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_dependency_pin
+        package: UiPath.System.Activities
+        version: "[25.4.4]"
+      prose: |
+        Adicionar `dependencies."UiPath.System.Activities" = "[25.4.4]"`
+        em project.json. Pin Sicoob canônico (alinhado D-1a).
 
   - id: J-6
     severity: WARN
@@ -4001,21 +4012,9 @@ rules:
     detect:
       type: agent_only
 
-  - id: DB-5
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.Database.Activities >= 1.10.0"
-    description: |
-      Versões anteriores tinham bug Try/Catch em Windows que pulava Catch.
-      1.10.1 corrige adicional Studio 2023.10.
-    applies_to:
-      include: ["project.json"]
-    detect:
-      type: nuget_version_check
-      params:
-        package: UiPath.Database.Activities
-        min: "1.10.0"
+  # DB-5 removida 2026-05-19: redundante com D-1d (pin EXATO [1.10.1],
+  # deterministic auto-fix). Versão min: 1.10.0 era mais fraca + double-flag
+  # mesmo finding em projetos com drift.
 
   - id: DB-6
     severity: ERROR
@@ -4807,11 +4806,24 @@ rules:
     description: |
       XAML migrado de versão < 6.5 deve ser atualizado.
       ForceApplyOCR não existe mais no v6.24.0.
+      Rename 1:1 oficial — schema preserva semantic (bool flag).
     applies_to:
       include: ["**/*.xaml"]
     detect:
       type: regex
       pattern: '\bForceApplyOCR\b'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: regex_replace
+        pattern: '\bForceApplyOCR\b'
+        replacement: 'ApplyOcrOnPdf'
+      prose: |
+        Trocar `ForceApplyOCR` por `ApplyOcrOnPdf`. Rename oficial UiPath
+        v6.5.0+; schema preserva bool semantic. Idempotente.
+    examples:
+      bad: '<ui:DigitizeDocument ForceApplyOCR="[True]" .../>'
+      good: '<ui:DigitizeDocument ApplyOcrOnPdf="[True]" .../>'
 
   - id: IOCR-6
     severity: WARN
