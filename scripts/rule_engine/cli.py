@@ -427,6 +427,7 @@ _ANALYZER_SICOOB_POLICY = {
     "TA-DBP-002": "Duplicata de Sicoob TCC-1 (Test Case coverage). TCC-1 governa.",
     "UI-ANA-017": "Duplicata de Sicoob API-1 (ContinueOnError em verbos nao-idempotentes). API-1 governa.",
     "ST-USG-034": "Sicoob nao usa Automation Hub — exigencia nao aplicavel.",
+    "UI-USG-011": "Sisbr UI: idx= necessario p/ identificar elementos em datatables (UI-3 ByInstance + UI-2 Simulate atenuam volatilidade do idx).",
 }
 
 # Whitelist por escopo de path. Testes Sicoob nao precisam seguir convencoes
