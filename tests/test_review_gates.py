@@ -104,6 +104,25 @@ def test_nuget_gate_emits_finding_on_nu1605(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def _fake_preflight_ok():
+    """PreflightResult OK p/ mock — evita spawn real de uipcli."""
+    from scripts.rule_engine.uipcli_runner import PreflightResult
+    return PreflightResult(
+        ok=True, uipcli_responsive=True, uipcli_version="fake-26.0",
+        cloud_reachable=True, cloud_host="fake.cloud", diagnose="",
+    )
+
+
+def _fake_uipcli_result(stdout: str, returncode: int = 1):
+    """UipcliResult OK p/ mock — evita spawn real Popen."""
+    from scripts.rule_engine.uipcli_runner import UipcliResult
+    return UipcliResult(
+        completed=True, returncode=returncode, stdout=stdout, stderr="",
+        duration_sec=1.0, halt_reason=None, halt_detail="",
+        preflight=_fake_preflight_ok(),
+    )
+
+
 def test_pack_gate_emits_finding_on_bc_error(tmp_path):
     proj = _make_project(tmp_path)
     result = ValidationResult()
@@ -116,14 +135,14 @@ def test_pack_gate_emits_finding_on_bc_error(tmp_path):
         "Tests/Unit/Foo.xaml: BC30037: Caractere inválido.\n"
         "O projeto tem erros de validação e não pode ser publicado.\n"
     )
-    fake_proc = _make_completed_proc(stdout=pack_output, rc=1)
-
     fake_cli = MagicMock()
     fake_cli.is_file.return_value = True
     fake_cli.__str__ = lambda self: "fake-uipcli.exe"
 
     with patch("scripts.rule_engine.analyzer.discover_uipcli", return_value=fake_cli), \
-         patch.object(subprocess, "run", return_value=fake_proc):
+         patch("scripts.rule_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
+         patch("scripts.rule_engine.uipcli_runner.run_uipcli_guarded",
+               return_value=_fake_uipcli_result(pack_output, returncode=1)):
         cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
 
     pack_findings = [f for f in result.findings if f.rule_id == "UIPATH:PACK"]
@@ -145,12 +164,13 @@ def test_pack_gate_fallback_on_unparseable_error(tmp_path):
     result = ValidationResult()
 
     pack_output = "some opaque error message not matching any pattern\n"
-    fake_proc = _make_completed_proc(stdout=pack_output, rc=1)
     fake_cli = MagicMock()
     fake_cli.is_file.return_value = True
 
     with patch("scripts.rule_engine.analyzer.discover_uipcli", return_value=fake_cli), \
-         patch.object(subprocess, "run", return_value=fake_proc):
+         patch("scripts.rule_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
+         patch("scripts.rule_engine.uipcli_runner.run_uipcli_guarded",
+               return_value=_fake_uipcli_result(pack_output, returncode=1)):
         cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
 
     pack_findings = [f for f in result.findings if f.rule_id == "UIPATH:PACK"]
