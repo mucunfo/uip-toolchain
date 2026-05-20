@@ -1481,148 +1481,263 @@ def _cmd_fix(args) -> int:
                 print(f"  ... +{len(dupes)-30} more repeated events")
     _fix_log = _FixLogger()
 
+    # F35: per-file rollback + retomar loop. Analyzer-gate regression em file F
+    # vira F frozen (skip nos retries seguintes do fix loop), re-roda fixpoint
+    # + analyzer-gate até gate limpo OU retries exauridos. Estado residual
+    # propaga pra PHASE 2 — não aborta pipeline em EXIT_INTERNAL.
+    ANALYZER_GATE_MAX_RETRIES = 3
+    frozen_files: set = set()
+    analyzer_retry = 0
+
     # Idempotência: alguns detectores (N-6/N-7) emitem 1 finding por (tag, attr).
     # Pattern do segundo finding fica stale após primeiro fix mutar tag.
     # Loop detect→apply até `applied=0` numa iteração (fixpoint). Dry-run roda
     # 1 iteração só (não escreve). Max 20 iters como safety bound.
+    # F35: outer loop = analyzer-gate retry. Inner = fixpoint deterministic.
     MAX_ITERATIONS = 20
     iteration = 0
-    while True:
-        iteration += 1
-        if iteration > MAX_ITERATIONS:
-            print(f"\nWARN: fixpoint não convergiu em {MAX_ITERATIONS} iterações. Abortando loop.")
-            break
 
-        result = runner.run(args.path)
+    while True:  # outer: analyzer-gate retry
+        # --- Inner: fixpoint ---
+        while True:
+            iteration += 1
+            if iteration > MAX_ITERATIONS:
+                print(f"\nWARN: fixpoint não convergiu em {MAX_ITERATIONS} iterações. Abortando loop.")
+                break
 
-        _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
+            result = runner.run(args.path)
 
-        seen_keys: set[tuple[str, str]] = set()
-        iter_applied = 0
-        iter_would_fix = 0
-        iter_blocked = 0
-        iter_no_fix = 0
-        iter_no_op = 0
-        iter_regressions = 0
-        iter_vb_regressions = 0
-        iter_cascade_regressions = 0
+            _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
 
-        for f in result.findings:
-            if f.suppressed:
-                continue
-            if filter_rules and f.rule_id not in filter_rules:
-                continue
-            if not f.fix_mechanical:
-                iter_no_fix += 1
-                continue
-            rule = rules_by_id.get(f.rule_id)
-            if rule:
-                rule_class = get_apply_class(rule)
-                if rule_class not in included_classes:
-                    iter_blocked += 1
-                    if not dry_run:
-                        _fix_log.log(
-                            f"BLOCKED apply_class={rule_class}", f.rule_id, f.file,
-                            f"  [BLOCKED apply_class={rule_class}] [{f.rule_id}] {f.file}: revisar manualmente (ver fix.prose).",
-                        )
+            seen_keys: set[tuple[str, str]] = set()
+            iter_applied = 0
+            iter_would_fix = 0
+            iter_blocked = 0
+            iter_no_fix = 0
+            iter_no_op = 0
+            iter_regressions = 0
+            iter_vb_regressions = 0
+            iter_cascade_regressions = 0
+
+            for f in result.findings:
+                if f.suppressed:
                     continue
-            mech_type = f.fix_mechanical.get("type")
-            fixer = FIXER_REGISTRY.get(mech_type)
-            if fixer is None:
-                _fix_log.log(
-                    "SKIP", f.rule_id, f.file,
-                    f"  [SKIP] [{f.rule_id}] {f.file}: fixer '{mech_type}' não registrado",
-                )
-                continue
-
-            # Per-spec deduplication: same file + rule + fix spec = same fix
-            # applied multiple times = idempotent. Different specs (per-finding
-            # mechanical from heuristics) must each run.
-            if mech_type in {"regex_replace", "delete_element", "rename_attribute"}:
-                spec_key = repr(sorted(f.fix_mechanical.items()))
-                key = (f.file, f.rule_id, spec_key)
-                if key in seen_keys:
+                if filter_rules and f.rule_id not in filter_rules:
                     continue
-                seen_keys.add(key)
+                # F35: skip files frozen por analyzer-gate em retry anterior.
+                # Mantemos arquivo em estado pré-loop pra preservar absence de
+                # regression (ex.: ST-SEC-008 SecureString scope quebrado por W-26).
+                try:
+                    if Path(f.file).resolve() in frozen_files:
+                        continue
+                except (OSError, ValueError):
+                    pass
+                if not f.fix_mechanical:
+                    iter_no_fix += 1
+                    continue
+                rule = rules_by_id.get(f.rule_id)
+                if rule:
+                    rule_class = get_apply_class(rule)
+                    if rule_class not in included_classes:
+                        iter_blocked += 1
+                        if not dry_run:
+                            _fix_log.log(
+                                f"BLOCKED apply_class={rule_class}", f.rule_id, f.file,
+                                f"  [BLOCKED apply_class={rule_class}] [{f.rule_id}] {f.file}: revisar manualmente (ver fix.prose).",
+                            )
+                        continue
+                mech_type = f.fix_mechanical.get("type")
+                fixer = FIXER_REGISTRY.get(mech_type)
+                if fixer is None:
+                    _fix_log.log(
+                        "SKIP", f.rule_id, f.file,
+                        f"  [SKIP] [{f.rule_id}] {f.file}: fixer '{mech_type}' não registrado",
+                    )
+                    continue
 
-            import inspect
-            sig = inspect.signature(fixer)
-            fixer_kwargs: dict = {}
-            if "project_root" in sig.parameters:
-                fixer_kwargs["project_root"] = project_root
+                # Per-spec deduplication: same file + rule + fix spec = same fix
+                # applied multiple times = idempotent. Different specs (per-finding
+                # mechanical from heuristics) must each run.
+                if mech_type in {"regex_replace", "delete_element", "rename_attribute"}:
+                    spec_key = repr(sorted(f.fix_mechanical.items()))
+                    key = (f.file, f.rule_id, spec_key)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
 
-            ar = apply_with_gate(
-                fixer,
-                Path(f.file),
-                f.fix_mechanical,
-                dry_run=dry_run,
-                project_root=project_root,
-                fixer_kwargs=fixer_kwargs,
-            )
+                import inspect
+                sig = inspect.signature(fixer)
+                fixer_kwargs: dict = {}
+                if "project_root" in sig.parameters:
+                    fixer_kwargs["project_root"] = project_root
 
-            if ar.status == "error":
-                _fix_log.log(
-                    "SKIP-ERR", f.rule_id, f.file,
-                    f"  [SKIP] [{f.rule_id}] {f.file}: {ar.error}",
+                ar = apply_with_gate(
+                    fixer,
+                    Path(f.file),
+                    f.fix_mechanical,
+                    dry_run=dry_run,
+                    project_root=project_root,
+                    fixer_kwargs=fixer_kwargs,
                 )
-                continue
-            if ar.status == "regression":
-                iter_regressions += 1
-                _fix_log.log(
-                    "REGRESSION", f.rule_id, f.file,
-                    f"  [REGRESSION rolled back] [{f.rule_id}] {ar.error}",
-                )
-                continue
-            if ar.status == "regression-vb":
-                iter_vb_regressions += 1
-                _fix_log.log(
-                    "REGRESSION-VB", f.rule_id, f.file,
-                    f"  [REGRESSION-VB rolled back] [{f.rule_id}] {ar.error}",
-                )
-                continue
-            if ar.status == "regression-cascade":
-                iter_cascade_regressions += 1
-                _fix_log.log(
-                    "REGRESSION-CASCADE", f.rule_id, f.file,
-                    f"  [REGRESSION cascade rolled back] [{f.rule_id}] {f.file}: {ar.error}",
-                )
-                continue
-            if ar.status == "regression-cascade-vb":
-                iter_cascade_regressions += 1
-                _fix_log.log(
-                    "REGRESSION-CASCADE-VB", f.rule_id, f.file,
-                    f"  [REGRESSION cascade-VB rolled back] [{f.rule_id}] {f.file}: {ar.error}",
-                )
-                continue
-            if ar.changed:
-                if dry_run:
-                    iter_would_fix += 1
+
+                if ar.status == "error":
+                    _fix_log.log(
+                        "SKIP-ERR", f.rule_id, f.file,
+                        f"  [SKIP] [{f.rule_id}] {f.file}: {ar.error}",
+                    )
+                    continue
+                if ar.status == "regression":
+                    iter_regressions += 1
+                    _fix_log.log(
+                        "REGRESSION", f.rule_id, f.file,
+                        f"  [REGRESSION rolled back] [{f.rule_id}] {ar.error}",
+                    )
+                    continue
+                if ar.status == "regression-vb":
+                    iter_vb_regressions += 1
+                    _fix_log.log(
+                        "REGRESSION-VB", f.rule_id, f.file,
+                        f"  [REGRESSION-VB rolled back] [{f.rule_id}] {ar.error}",
+                    )
+                    continue
+                if ar.status == "regression-cascade":
+                    iter_cascade_regressions += 1
+                    _fix_log.log(
+                        "REGRESSION-CASCADE", f.rule_id, f.file,
+                        f"  [REGRESSION cascade rolled back] [{f.rule_id}] {f.file}: {ar.error}",
+                    )
+                    continue
+                if ar.status == "regression-cascade-vb":
+                    iter_cascade_regressions += 1
+                    _fix_log.log(
+                        "REGRESSION-CASCADE-VB", f.rule_id, f.file,
+                        f"  [REGRESSION cascade-VB rolled back] [{f.rule_id}] {f.file}: {ar.error}",
+                    )
+                    continue
+                if ar.changed:
+                    if dry_run:
+                        iter_would_fix += 1
+                    else:
+                        iter_applied += 1
+                    _fix_log.log(
+                        label, f.rule_id, f.file,
+                        f"  [{label}] [{f.rule_id}] {f.file}",
+                    )
                 else:
-                    iter_applied += 1
-                _fix_log.log(
-                    label, f.rule_id, f.file,
-                    f"  [{label}] [{f.rule_id}] {f.file}",
-                )
-            else:
-                iter_no_op += 1
+                    iter_no_op += 1
 
-        applied += iter_applied
-        would_fix += iter_would_fix
-        no_op += iter_no_op
-        no_fix = iter_no_fix     # último iter (não acumula)
-        blocked = iter_blocked   # último iter
-        regressions += iter_regressions
-        vb_regressions += iter_vb_regressions
-        cascade_regressions += iter_cascade_regressions
+            applied += iter_applied
+            would_fix += iter_would_fix
+            no_op += iter_no_op
+            no_fix = iter_no_fix     # último iter (não acumula)
+            blocked = iter_blocked   # último iter
+            regressions += iter_regressions
+            vb_regressions += iter_vb_regressions
+            cascade_regressions += iter_cascade_regressions
 
-        # Convergência:
-        # - dry_run: 1 iteração (não escreve, repetir mostra mesmas findings).
-        # - apply: parar quando applied=0 nessa iteração (fixpoint).
-        if dry_run:
+            # Convergência:
+            # - dry_run: 1 iteração (não escreve, repetir mostra mesmas findings).
+            # - apply: parar quando applied=0 nessa iteração (fixpoint).
+            if dry_run:
+                break
+            if iter_applied == 0:
+                break
+            print(f"  [iter {iteration}] applied={iter_applied}, re-detecting...")
+
+        # --- Analyzer-gate (apply mode + baseline disponível) ---
+        if dry_run or analyzer_baseline is None or applied == 0:
+            break  # nada pra gate, sai do outer
+
+        from .analyzer import run_analyzer, diff_new_issues, format_issue
+        retry_tag = (
+            f" (retry {analyzer_retry}/{ANALYZER_GATE_MAX_RETRIES})"
+            if analyzer_retry > 0 else ""
+        )
+        print(f"\n# analyzer-gate: post-fix re-run{retry_tag}...")
+        analyzer_post = run_analyzer(project_root, analyzer_cli_path)
+        if analyzer_post is None:
+            print("# analyzer-gate: post run failed/timeout. Diff incomplete.")
             break
-        if iter_applied == 0:
+
+        new_issues = diff_new_issues(analyzer_baseline, analyzer_post)
+        resolved = analyzer_baseline - analyzer_post
+        new_errs = [i for i in new_issues if i.severity == "Error"]
+        new_warns = [i for i in new_issues if i.severity == "Warning"]
+        resolved_count = len(resolved)
+        print(
+            f"# analyzer-gate: {len(new_issues)} new issues "
+            f"({len(new_errs)} errors, {len(new_warns)} warnings) | "
+            f"{resolved_count} resolved"
+        )
+
+        if not new_errs:
+            # Gate limpo. Warns são informativas.
+            if new_warns:
+                print(f"\n[ANALYZER WARN] Warnings introduzidas (sem block):")
+                for i in new_warns[:10]:
+                    print(f"  ~ {format_issue(i)[:200]}")
+                if len(new_warns) > 10:
+                    print(f"  ... +{len(new_warns)-10} more")
             break
-        print(f"  [iter {iteration}] applied={iter_applied}, re-detecting...")
+
+        # New errors → rollback per-file + freeze + retry.
+        print("\n[ANALYZER REGRESSION] Errors INTRODUZIDOS pelos fixes:")
+        for i in new_errs[:30]:
+            print(f"  ! {format_issue(i)[:200]}")
+        if len(new_errs) > 30:
+            print(f"  ... +{len(new_errs)-30} more")
+
+        err_files = {i.file for i in new_errs if i.file}
+        rolled_back_paths: list = []
+        rollback_failed: list = []
+        for path, pre_bytes in pre_loop_bytes.items():
+            if path.name not in err_files:
+                continue
+            if path.resolve() in frozen_files:
+                continue  # já rollback'd em retry anterior
+            try:
+                path.write_bytes(pre_bytes)
+                rolled_back_paths.append(path)
+            except OSError as e:
+                rollback_failed.append((path.name, str(e)))
+
+        if rolled_back_paths:
+            print(
+                f"\n[ANALYZER ROLLBACK] {len(rolled_back_paths)} files "
+                f"revertidos pra estado pré-loop (freeze ativo):"
+            )
+            for p in rolled_back_paths:
+                print(f"  ~ {p.name}")
+        if rollback_failed:
+            print(f"[ANALYZER ROLLBACK FAILED] {len(rollback_failed)} files:")
+            for name, err in rollback_failed[:5]:
+                print(f"  ! {name}: {err}")
+
+        if not rolled_back_paths:
+            # Errors em arquivos fora do snapshot (ex.: gerados pós-loop). Não dá
+            # pra reverter — sai sem retry, deixa PHASE 2 reportar.
+            print(
+                "# analyzer-gate: rollback inexequível (nenhum file no snapshot). "
+                "Estado residual: ver PHASE 2."
+            )
+            break
+
+        frozen_files.update(p.resolve() for p in rolled_back_paths)
+        analyzer_retry += 1
+
+        if analyzer_retry > ANALYZER_GATE_MAX_RETRIES:
+            print(
+                f"\n[ANALYZER GATE] retries exauridos "
+                f"({ANALYZER_GATE_MAX_RETRIES}). {len(frozen_files)} file(s) "
+                f"frozen — findings remanescentes vão pra PHASE 2."
+            )
+            break
+
+        print(
+            f"# analyzer-gate: retomando fix loop "
+            f"(frozen={len(frozen_files)}, retry "
+            f"{analyzer_retry}/{ANALYZER_GATE_MAX_RETRIES})"
+        )
 
     _fix_log.emit_summary()
     print(
@@ -1632,61 +1747,15 @@ def _cmd_fix(args) -> int:
         f"regressions-rolled-back={regressions} regressions-vb={vb_regressions} "
         f"regressions-cascade={cascade_regressions}"
     )
+    if frozen_files:
+        print(
+            f"# analyzer-gate frozen files ({len(frozen_files)}): "
+            f"findings restantes nesses arquivos serão reportados em PHASE 2."
+        )
+        for p in sorted(frozen_files, key=lambda x: x.name):
+            print(f"  ~ {p.name}")
     if dry_run and would_fix > 0:
         print("Re-run with --apply to write changes.")
-
-    # Analyzer gate diff (apply mode only, baseline disponível).
-    if analyzer_baseline is not None and not dry_run and applied > 0:
-        from .analyzer import run_analyzer, diff_new_issues, format_issue
-        print(f"\n# analyzer-gate: post-fix re-run...")
-        analyzer_post = run_analyzer(project_root, analyzer_cli_path)
-        if analyzer_post is None:
-            print("# analyzer-gate: post run failed/timeout. Diff incomplete.")
-        else:
-            new_issues = diff_new_issues(analyzer_baseline, analyzer_post)
-            resolved = analyzer_baseline - analyzer_post
-            new_errs = [i for i in new_issues if i.severity == "Error"]
-            new_warns = [i for i in new_issues if i.severity == "Warning"]
-            resolved_count = len(resolved)
-            print(
-                f"# analyzer-gate: {len(new_issues)} new issues "
-                f"({len(new_errs)} errors, {len(new_warns)} warnings) | "
-                f"{resolved_count} resolved"
-            )
-            if new_errs:
-                print("\n[ANALYZER REGRESSION] Errors INTRODUZIDOS pelos fixes:")
-                for i in new_errs[:30]:
-                    print(f"  ! {format_issue(i)[:200]}")
-                if len(new_errs) > 30:
-                    print(f"  ... +{len(new_errs)-30} more")
-                # F28: auto-rollback. Identify files com errors novos via
-                # filename match. Revert pre-loop bytes (saved before fixes).
-                err_files = {i.file for i in new_errs if i.file}
-                rolled_back = 0
-                rollback_failed = []
-                for path, pre_bytes in pre_loop_bytes.items():
-                    if path.name not in err_files:
-                        continue
-                    try:
-                        path.write_bytes(pre_bytes)
-                        rolled_back += 1
-                    except OSError as e:
-                        rollback_failed.append((path.name, str(e)))
-                if rolled_back > 0:
-                    print(f"\n[ANALYZER ROLLBACK] {rolled_back} files revertidos pra estado pré-loop.")
-                    print("  Re-rodar review pra ver state pós-rollback.")
-                if rollback_failed:
-                    print(f"[ANALYZER ROLLBACK FAILED] {len(rollback_failed)} files:")
-                    for name, err in rollback_failed[:5]:
-                        print(f"  ! {name}: {err}")
-                # Exit code reflects gate failure
-                return EXIT_INTERNAL
-            if new_warns:
-                print(f"\n[ANALYZER WARN] Warnings introduzidas (sem block):")
-                for i in new_warns[:10]:
-                    print(f"  ~ {format_issue(i)[:200]}")
-                if len(new_warns) > 10:
-                    print(f"  ... +{len(new_warns)-10} more")
 
     return EXIT_OK
 
