@@ -8,7 +8,6 @@ qual arquivo modificar para qual tipo de mudança.
 | Arquivo | Função | Quando humano mexe |
 |---------|--------|--------------------|
 | `rules.yaml` | Todas as regras (id, severity, category, target, description, applies_to, detect, fix). | **Sempre. Único.** |
-| `projects.yaml` | REF + golden projects para regression baseline. | Raramente (novo projeto âncora) |
 | `ARCHITECTURE.md` | Este arquivo. | Quando arquitetura mudar |
 | `pyproject.toml` | Deps + scripts. | Raramente |
 | `scripts/rule_engine/loader.py` | Parse YAML + schema validation. | Nunca (só se schema mudar) |
@@ -307,14 +306,14 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 **Hardcoded restrictive parent lists** em fixers (ex: `_N5_RESTRICTIVE_PARENT_NAMES`): mantidas mínimas (~11 entries) para reduzir write-rollback churn. Layer 2 é authoritative pra gaps.
 
-## REF project — uso como oráculo
+## Smoke E2E em projetos reais
 
-`projects.yaml.golden_projects` lista projetos âncora. Engine garante
-findings `category=breaking` = 0 nesses projetos (exceto known_exceptions).
-
-REF atual: `importar-cadastro-avais-fiancas-honrados-performer` (Windows target).
-Escopo migração foi só técnico — regras `architectural` podem disparar em REF
-sem problema.
+`tests/test_smoke.py` roda engine em projetos reais Sicoob (REF, dispatcher,
+performer) verificando que não crasha (`exit < 10`). Findings podem existir
+— teste só confirma estabilidade. `analyzer-gate`/`pack-gate` via uipcli são
+fontes de verdade pra correção semântica. Golden project manifest com
+`known_exceptions` foi removido — manutenção alta, cobertura redundante vs
+uipcli gates + unit tests por heurística.
 
 ## Política de versionamento
 
@@ -359,8 +358,10 @@ W-1, W-2, W-4, W-11, W-13, W-14, W-15 ficam `target: windows` (relevância hist�
    - Se sim → done.
    - Se não → adicionar função em `detectors.py` (registrar em REGISTRY).
 3. Validar: `python -m scripts.rule_engine.cli validate`.
-4. Testar contra REF: `python -m scripts.rule_engine.cli review <REF_PATH>`.
-5. Confirmar regra `breaking` zera em REF (ou registrar em `projects.yaml.known_exceptions`).
+4. Adicionar unit test em `tests/test_heuristic_*.py` ou `test_detectors_*.py`
+   cobrindo XAML fixture sintético (positive + negative cases).
+5. Smoke contra projeto real: `python -m scripts.rule_engine.cli review <project>`
+   — confirmar regra dispara onde deveria + `analyzer-gate` não regride.
 
 ## Como deprecar regra
 

@@ -283,7 +283,7 @@ Contexto: sessão adicionou Layer 2 (Studio Analyzer gate via uipcli) + fixer N-
     - `UI-REL-001` — Selector restritivo IDX limit.
     - `ST-USG-009` / `ST-USG-020` — usage patterns.
     Decisão: NÃO adicionar como Layer 1 rules. Layer 2 ground truth captura. Engine focus = Sicoob conventions only.
-  - **Confirmado**: rules ERRORs restantes em REF (W-1, W-11a, N-11, W-12, J-1) estão em `projects.yaml.known_exceptions` (corretas, intencional).
+  - **Confirmado** (snapshot 2026-04): rules ERRORs restantes em REF (W-1, W-11a, N-11, W-12, J-1) eram intencionais (escopo migração técnica apenas). Golden project manifest removido em 2026-05 (vide chore/remove-golden-project) — smoke E2E + uipcli gates substituem cobertura.
 - F24 — Wrap em Sequence pra desbloquear N-5 em parents restritivos. Design phase: distinguir wrap-able single-child slot (If.Then/Else, ActivityFunc/Action) vs collection-typed (não wrap). Esforço 2-3 dias.
 - F28 — Per-iter rollback via Layer 2 (snapshot bytes pré-iter, revert se errors novos). Esforço 2 dias.
 - F29 — Outros fixers contextual/structural com lxml (N-4 args→Dict, N-9 enriquecer Message, W-2 null guards). Esforço 1 semana.
