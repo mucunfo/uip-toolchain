@@ -134,6 +134,33 @@ def _find_invocations(content: str, prefix: str, workflows: dict[str, list[str]]
 _RE_ATTR = re.compile(r'\b([A-Za-z_][\w]*)\s*=\s*"')
 
 
+# F36 (bisect 2026-05-20): rename_attribute via _whole_word_sub_skip_tags em
+# `<prefix:Workflow>` que tem SecureString-bound sibling (ex: `<c:Login
+# in_Senha="[vSsSenhaX]" in_Url="..."/>`) interage com OUTRAS mudanças XAML
+# (W-26 strip refs, S-16 remove CommentOut) e dispara ST-SEC-008 "SecureString
+# usada fora do escopo de criação". Root cause não-trivial (Studio analyzer
+# scope inference + cache invalidation). Safety guard: NÃO injetar
+# `fix_mechanical` quando invocation tem SecureString-bound arg — fica como
+# blocking finding com NEEDS_REVIEW manual (rename via Studio UI preserva
+# scope corretamente).
+_RE_SS_VAR_DECL = re.compile(
+    r'<Variable\b[^>]*?TypeArguments\s*=\s*"ss:SecureString"[^>]*?Name\s*=\s*"([^"]+)"'
+)
+
+
+def _detect_ss_sibling(tag_body: str, ss_var_names: set[str]) -> str | None:
+    """Returns nome da SecureString var referenciada em `tag_body`, ou None.
+
+    Reconhece refs VB no formato `[varName]`, `[varName.X]`, `[... varName ...]`.
+    """
+    if not ss_var_names:
+        return None
+    for var in ss_var_names:
+        if re.search(rf'\[(?:[^\]]*\b)?{re.escape(var)}\b', tag_body):
+            return var
+    return None
+
+
 def detect_ccs_contract_check(rule, fc, pc):
     """Detector CCS-PROPCHECK.
 
@@ -142,6 +169,9 @@ def detect_ccs_contract_check(rule, fc, pc):
       2. Pra cada element `<prefix:Workflow ...>` invocando CCS workflow:
          - Compara cada attribute name vs contract
          - case mismatch → finding com rename_attribute fix
+         - case mismatch + SecureString sibling → finding SEM fix_mechanical
+           (NEEDS_REVIEW manual; auto-rename + outras mudanças XAML disparam
+           ST-SEC-008 — Studio analyzer regression)
          - missing in contract → finding WARN (manual review)
     """
     if fc.path.suffix.lower() != ".xaml":
@@ -163,6 +193,9 @@ def detect_ccs_contract_check(rule, fc, pc):
     if not prefix_to_pkg:
         return []
 
+    # F36: scan SecureString variable declarations no XAML inteiro.
+    ss_var_names = set(_RE_SS_VAR_DECL.findall(content))
+
     findings: list[Finding] = []
     # Atributos reservados XAML que NÃO são args do workflow
     _RESERVED_ATTRS = frozenset({
@@ -182,6 +215,9 @@ def detect_ccs_contract_check(rule, fc, pc):
             # Extract attribute names from open tag body
             used_attrs = [m.group(1) for m in _RE_ATTR.finditer(tag_body)]
 
+            # F36: detect SecureString-bound sibling neste invocation
+            ss_sibling = _detect_ss_sibling(tag_body, ss_var_names)
+
             for attr in used_attrs:
                 # Skip XAML reserved/non-arg attrs
                 if attr in _RESERVED_ATTRS or ":" in attr:
@@ -193,28 +229,55 @@ def detect_ccs_contract_check(rule, fc, pc):
                     continue
                 expected_case = expected_lower[attr.lower()]
                 if attr != expected_case:
-                    findings.append(
-                        Finding(
-                            rule_id=rule.id,
-                            severity=rule.severity,
-                            category=rule.category,
-                            file=str(fc.path),
-                            line=line,
-                            message=(
-                                f"{pkg}.{wf_name}: attribute '{attr}' usa casing errado. "
-                                f"Lib declara '{expected_case}'."
-                            ),
-                            fix_mechanical={
-                                "type": "rename_attribute",
-                                "from": attr,
-                                "to": expected_case,
-                            },
-                            fix_prose=(
-                                f"Renomear `{attr}` → `{expected_case}` em "
-                                f"`<{prefix}:{wf_name}>` (case-correction conforme "
-                                f"contrato lib {pkg})."
-                            ),
+                    if ss_sibling is not None:
+                        # F36 safety guard — manual review only
+                        findings.append(
+                            Finding(
+                                rule_id=rule.id,
+                                severity=rule.severity,
+                                category=rule.category,
+                                file=str(fc.path),
+                                line=line,
+                                message=(
+                                    f"{pkg}.{wf_name}: attribute '{attr}' usa "
+                                    f"casing errado (lib declara '{expected_case}'). "
+                                    f"NEEDS_REVIEW: invocation tem SecureString-bound "
+                                    f"sibling '[{ss_sibling}]' — auto-rename desencadeia "
+                                    f"ST-SEC-008 (scope regression). Fix via Studio UI."
+                                ),
+                                fix_mechanical=None,
+                                fix_prose=(
+                                    f"Renomear `{attr}` -> `{expected_case}` em "
+                                    f"`<{prefix}:{wf_name}>` MANUALMENTE via Studio "
+                                    f"(arrastar attribute no Properties panel — "
+                                    f"preserva scope SecureString). Auto-rename "
+                                    f"engine causa ST-SEC-008 regression."
+                                ),
+                            )
                         )
-                    )
+                    else:
+                        findings.append(
+                            Finding(
+                                rule_id=rule.id,
+                                severity=rule.severity,
+                                category=rule.category,
+                                file=str(fc.path),
+                                line=line,
+                                message=(
+                                    f"{pkg}.{wf_name}: attribute '{attr}' usa casing errado. "
+                                    f"Lib declara '{expected_case}'."
+                                ),
+                                fix_mechanical={
+                                    "type": "rename_attribute",
+                                    "from": attr,
+                                    "to": expected_case,
+                                },
+                                fix_prose=(
+                                    f"Renomear `{attr}` → `{expected_case}` em "
+                                    f"`<{prefix}:{wf_name}>` (case-correction conforme "
+                                    f"contrato lib {pkg})."
+                                ),
+                            )
+                        )
 
     return findings
