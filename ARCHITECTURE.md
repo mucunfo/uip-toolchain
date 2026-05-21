@@ -193,23 +193,30 @@ PHASE 3  contextual        (dry-run default; --apply-contextual aplica)
 PHASE 4  decisão           PASS / PENDING_REVIEW / FAIL
 ```
 
-Em **FAIL**, loop com watch.wait_for_change aguardando edição manual.
-Em **PASS**, exit 0. Em **PENDING_REVIEW** (contextual residual), exit 1.
+Em **FAIL**, exit imediato (modo CI/agentic). Em **PASS**, exit 0. Em
+**PENDING_REVIEW** (contextual residual), exit 1.
 
-Comandos visíveis ao dev:
+**Interface pública** — só 1 variação aceita:
 
 | Cenário | Comando |
 |---|---|
-| Dia-a-dia / CI / aprovação publish (default = sem loop) | `uip <project>` |
+| Dia-a-dia / CI / aprovação publish | `uip <project>` |
 | Aprovar contextual da 1ª run | `uip <project> --apply-contextual` |
-| Studio dev interativo (loop em FAIL aguardando edição) | `uip <project> --watch` |
 
-**Default = no-watch** (fail-fast, modo CI/agentic). Exit imediato em FAIL.
-`--watch` ativa loop interativo aguardando `mtime` change (UX Studio dev).
-Flag legada `--no-watch` mantida como noop deprecated pra backward-compat.
+Tudo o resto é intrínseco (defaults internos). Escape hatches debug via
+env vars apenas:
 
-Underlying: `python -m scripts.rule_engine.cli all <project> [flags]`. PS
-alias `uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona
+| Env var | Default | Efeito |
+|---|---|---|
+| `UIPATH_RULES_FILE` | `<repo>/rules.yaml` | override rules.yaml |
+| `UIPATH_RULES_SKIP_MIGRATION` | `0` | pula PHASE 0 (Activity Migrator) |
+| `UIPATH_RULES_NO_SWAP` | `0` | não swap source ↔ _Migrated |
+| `UIPATH_RULES_WATCH` | `0` | loop interativo Studio dev (mtime watch) |
+| `UIPATH_RULES_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
+| `UIPATH_RULES_MAX_ITERS` | `0` | limite iters loop (0 = ilimitado) |
+
+Underlying: `python -m scripts.rule_engine.cli all <project>`. PS alias
+`uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona
 `cd .uipath-rules` automático.
 
 Subcomandos atomicos (`review`, `fix`, `migrate-windows`, etc.) seguem
