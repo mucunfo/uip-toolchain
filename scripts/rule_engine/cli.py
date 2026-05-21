@@ -59,6 +59,14 @@ from ._types import Severity, ValidationResult
 
 DEFAULT_RULES_FILE = Path(__file__).resolve().parents[2] / "rules.yaml"
 
+# Sentinel marker em NuGet.config gerado por engine (pack-gate, eventualmente
+# outros gates). Permite detecção idempotente de orphan config remanescente
+# de runs crashed (SIGKILL entre create e finally). Se outro processo
+# encontra NuGet.config com esse marker no projeto, sabe que foi engine-temp
+# e pode remover safely. Config pré-existente de dev NUNCA carrega marker
+# (idempotência preserva config committed).
+_TEMP_NUGET_CONFIG_SENTINEL = "engine-temp-nuget-config (.uipath-rules)"
+
 
 # Exit codes
 EXIT_OK = 0
@@ -66,6 +74,100 @@ EXIT_WARN = 1
 EXIT_ERROR = 2
 EXIT_HALT = 3
 EXIT_INTERNAL = 10
+
+
+def _cleanup_pre_migration_backups(project_root: Path) -> list[Path]:
+    """Remove `<project>_BeforeMigration_<timestamp>` siblings após PASS.
+
+    PHASE 0 Activity Migrator cria backup `_BeforeMigration_<YYYYMMDD-HHMMSS>`
+    pre-swap (migrate.py:380). Backup serve só como rollback manual emergência
+    — se engine completou pipeline com PASS, backup é dead weight (~50-200MB
+    por projeto, acumula em batch runs).
+
+    Auto-clean DISPARA somente em PASS final (não em FAIL/PENDING_REVIEW —
+    user pode querer rollback nesses casos).
+
+    Opt-out via env `UIPATH_RULES_KEEP_BACKUP=1` (debug / paranoid mode).
+
+    Returns lista de paths removidos.
+
+    Windows-safe rmtree: .git/refs/ + packed-refs são readonly → rmtree padrão
+    falha. Handler chmod +w + retry (mesma técnica de migrate.py).
+    """
+    import os as _os_cl
+    if _os_cl.environ.get("UIPATH_RULES_KEEP_BACKUP", "").strip() in ("1", "true", "yes"):
+        return []
+
+    import re as _re_cl
+    import shutil as _shutil_cl
+    import stat as _stat_cl
+
+    parent = project_root.parent
+    name = project_root.name
+    # Pattern: <name>_BeforeMigration_YYYYMMDD-HHMMSS
+    pat = _re_cl.compile(
+        _re_cl.escape(name) + r"_BeforeMigration_\d{8}-\d{6}$"
+    )
+    removed: list[Path] = []
+    if not parent.is_dir():
+        return removed
+
+    def _force_writable(func, path, exc_info):
+        try:
+            _os_cl.chmod(path, _stat_cl.S_IWRITE)
+            func(path)
+        except (OSError, PermissionError):
+            pass
+
+    for sibling in parent.iterdir():
+        if not sibling.is_dir():
+            continue
+        if not pat.match(sibling.name):
+            continue
+        try:
+            # Python 3.12+ uses onexc; older Python uses onerror.
+            try:
+                _shutil_cl.rmtree(sibling, onexc=_force_writable)
+            except TypeError:
+                _shutil_cl.rmtree(
+                    sibling,
+                    onerror=lambda f, p, e: _force_writable(f, p, e),
+                )
+            removed.append(sibling)
+        except OSError as e:
+            print(
+                f"[BACKUP-CLEAN] cannot remove {sibling.name}: {e}",
+                file=sys.stderr,
+            )
+    return removed
+
+
+def _cleanup_orphan_temp_nuget_config(project_root: Path) -> bool:
+    """Detect + remove orphan NuGet.config left by crashed engine run.
+
+    Pack-gate cria NuGet.config temp + cleanup em finally. Em crash hard
+    (SIGKILL, machine reboot, OneDrive sync race) finally não roda → orphan
+    fica no projeto. Próximo `uip` run detecta via sentinel + remove ANTES
+    de qualquer phase. Garante zero rastro de feed local Sicoob no projeto
+    mesmo em crash path.
+
+    Idempotente: NuGet.config sem sentinel (dev committed) = preserva.
+    Retorna True se removeu orphan, False se nada a fazer.
+    """
+    cfg = project_root / "NuGet.config"
+    if not cfg.is_file():
+        return False
+    try:
+        content = cfg.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if _TEMP_NUGET_CONFIG_SENTINEL not in content:
+        return False
+    try:
+        cfg.unlink()
+        return True
+    except OSError:
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,14 +226,15 @@ def uip_main(argv: list[str] | None = None) -> int:
             "uip — god command UiPath rules engine\n"
             "\n"
             "USAGE:\n"
-            "  uip <project_path> [--apply-contextual] [--watch]\n"
-            "      Pipeline completo (migration → fix → gates → contextual).\n"
-            "      Default: exit em FAIL (modo CI/agentic). --watch = loop\n"
-            "      interativo aguardando mtime change (modo Studio dev).\n"
+            "  uip <project_path> [--apply-contextual]\n"
+            "      Pipeline completo (migration probe → deterministic fix →\n"
+            "      gates Layer2/3/5 → contextual). Exit em FAIL (CI/agentic).\n"
+            "      --apply-contextual: aplica fixes contextual (default: lista\n"
+            "      PENDING_REVIEW pra decisão humana, sem aplicar).\n"
             "\n"
             "  uip <subcommand> [args]\n"
-            "      Pass-through pra debug: review|fix|list|validate|docs|\n"
-            "      stats|all|migrate-windows|phase-out.\n"
+            "      Pass-through pra debug interno: review|fix|list|validate|\n"
+            "      docs|stats|all|migrate-windows|phase-out.\n"
             "\n"
             "EQUIVALENTE: uip X ≡ rule-engine all X\n"
         )
@@ -244,39 +347,25 @@ def build_parser() -> argparse.ArgumentParser:
         "all",
         help="GOD COMMAND — pipeline completo: migration probe + "
              "deterministic auto-fix + gates Layer2/3/5 + contextual "
-             "(dry-run default). Default: exit em FAIL (CI/agentic). "
-             "--watch ativa loop interativo aguardando mtime change.",
+             "(dry-run default). Exit em FAIL (modo CI/agentic).",
     )
     al.add_argument("path", help="Project root path")
-    al.add_argument("--rules-file", default=str(DEFAULT_RULES_FILE))
     al.add_argument("--apply-contextual", action="store_true",
                     help="Aplica também fixes contextual (default: só "
                          "lista pra decisão humana, sem aplicar). Use após "
                          "review da lista PENDING da 1ª run.")
-    al.add_argument("--watch", action="store_true",
-                    help="Loop em FAIL aguardando mtime change "
-                         "(modo interativo Studio dev). Default: exit 2 "
-                         "imediato em FAIL (modo CI/agentic).")
-    al.add_argument("--no-watch", action="store_true",
-                    help="DEPRECATED — comportamento já é default. "
-                         "Aceito pra backward-compat de scripts antigos; "
-                         "pode ser removido em release futura.")
-    al.add_argument("--watch-interval", type=float, default=2.0,
-                    help="Poll cadence do mtime watcher em segundos (default 2.0). "
-                         "Só efetivo com --watch.")
-    al.add_argument("--max-iters", type=int, default=0,
-                    help="Limite de iters do loop (0 = ilimitado). "
-                         "Útil pra testes; 0 = espera Ctrl-C ou PASS.")
-    al.add_argument("--skip-migration", action="store_true",
-                    help="Pula PHASE 0 (Activity Migrator) mesmo se "
-                         "targetFramework=Legacy. Útil quando Migrator local "
-                         "está broken/hung — engine segue direto pra fix + "
-                         "gates. Override via UIPATH_RULES_SKIP_MIGRATION=1.")
-    al.add_argument("--no-swap-after-migration", action="store_true",
-                    help="Após Migrator success, NÃO substituir source pela "
-                         "versão migrada. _Migrated/ fica como sibling, source "
-                         "permanece Legacy (uip subsequente re-disparará Migrator). "
-                         "Override via UIPATH_RULES_NO_SWAP=1.")
+    # Escape hatches internos (NÃO documentados no `uip --help`). Acessíveis
+    # via env vars; tests invocam direto via `_ns(...)`. Mantidos pra debug
+    # interno e back-compat de invocações programáticas — NÃO são interface
+    # pública. Interface pública = `uip <path> [--apply-contextual]` só.
+    #
+    # Configuração runtime via env:
+    #   UIPATH_RULES_SKIP_MIGRATION=1   → pula PHASE 0 (Migrator)
+    #   UIPATH_RULES_NO_SWAP=1          → não swap após Migrator success
+    #   UIPATH_RULES_WATCH=1            → loop interativo aguardando mtime
+    #   UIPATH_RULES_WATCH_INTERVAL=<f> → cadence poll watch (segundos)
+    #   UIPATH_RULES_MAX_ITERS=<n>      → limite iters loop (0 = ilimitado)
+    #   UIPATH_RULES_FILE=<path>        → override rules.yaml
 
     return p
 
@@ -941,8 +1030,12 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
     project_nuget_config = project_root / "NuGet.config"
     config_created_by_engine = False
     if not project_nuget_config.exists() and Path(ccs_nupkgs).is_dir():
+        # Sentinel comment permite boot-time orphan cleanup em runs futuros
+        # (caso este finally não execute por crash hard). Ver
+        # `_cleanup_orphan_temp_nuget_config()`.
         nuget_xml = (
             '<?xml version="1.0" encoding="utf-8"?>\n'
+            f'<!-- {_TEMP_NUGET_CONFIG_SENTINEL} -->\n'
             '<configuration>\n'
             '  <packageSources>\n'
             '    <clear />\n'
@@ -2012,8 +2105,53 @@ def _phase3_contextual_apply(project: Path, rules_file: str) -> dict:
     return {"exit": rc}
 
 
+# F37: Pipeline-integrity rule_ids — gate-injected findings que indicam o
+# engine NÃO conseguiu validar o projeto (preflight check failed, analyzer
+# hung, pack hung). Bloqueiam PASS porque sinalizam que o resultado do
+# pipeline não é confiável (não que o projeto tem bug específico). Outros
+# UIPATH:* (Studio analyzer findings, NU* nuget warnings) são contextual:
+# analyzer reportou problema real mas engine não auto-fixa erros do Studio
+# analyzer; user deve revisar manualmente via Studio UI.
+_GATE_INTEGRITY_BLOCKING_RULES = frozenset({
+    "UIPATH:PREFLIGHT",       # uipcli não encontrado / project.json missing
+    "UIPATH:ANALYZE_HALT",    # uipcli analyze hung/timeout
+    "UIPATH:PACK_HALT",       # uipcli publish hung/timeout
+})
+
+
+def _effective_apply_class(finding, rule_index) -> str:
+    """Returns effective apply_class PER-FINDING (não per-rule).
+
+    F37: engine só bloqueia PASS pelo que prometeu auto-fixar
+    mecanicamente. Honesto:
+
+      - Rule conhecida + class=deterministic + finding.fix_mechanical
+        presente → 'deterministic' (engine sabe fixar; se ainda ERROR é
+        bug do fixer ou safety pipeline rolled back).
+      - Rule conhecida + class=deterministic + fix_mechanical=None →
+        'contextual' (detector achou problema mas safety guard preveniu
+        injeção de fix mecânico — ex: F36 CCS-1 SecureString case;
+        usuário decide manualmente via Studio UI seguindo fix.prose).
+      - Rule conhecida + class=contextual/structural → mantém (manual
+        review já era a expectativa).
+      - Rule desconhecida (gate-injected) + rule_id em
+        _GATE_INTEGRITY_BLOCKING_RULES → 'deterministic' (pipeline integrity).
+      - Rule desconhecida + outro UIPATH:*/NU* → 'contextual' (Studio
+        analyzer reportou; user investiga).
+    """
+    rule = rule_index.get(finding.rule_id)
+    if rule is None:
+        if finding.rule_id in _GATE_INTEGRITY_BLOCKING_RULES:
+            return "deterministic"
+        return "contextual"
+    rule_cls = get_apply_class(rule)
+    if rule_cls == "deterministic" and not finding.fix_mechanical:
+        return "contextual"
+    return rule_cls
+
+
 def _classify_contextual_pending(result, rule_index) -> list:
-    """Filtra findings que precisam decisão humana — apply_class ∈
+    """Filtra findings que precisam decisão humana — effective_class ∈
     {contextual, structural}, qualquer severity (incluindo ERROR).
 
     Anteriormente filtrava só WARN/INFO, mas detectors com `threshold_error`
@@ -2022,8 +2160,10 @@ def _classify_contextual_pending(result, rule_index) -> list:
     e seu único fix é prose/manual. Tratá-los como blockers de PASS é
     incorreto — eles são PENDING_REVIEW (humano decide aceitar/refatorar).
 
-    Filter inclui structural pois fix.prose existe; engine só não pode
-    aplicar mecanicamente. Display reflete status real (refactor pendente).
+    F37: inclui também findings com effective_class downgrade — rules
+    deterministic cujo fixer skipou (safety guard) E gate-injected findings
+    de Studio analyzer (UIPATH:LOAD/ST-*/PACK). Display reflete status real
+    pra usuário (precisa ação manual).
     """
     pending = []
     for f in result.findings:
@@ -2031,29 +2171,21 @@ def _classify_contextual_pending(result, rule_index) -> list:
             continue
         if f.severity == Severity.HALT:
             continue
-        rule = rule_index.get(f.rule_id)
-        if rule is None:
-            continue
-        cls = get_apply_class(rule)
-        if cls not in ("contextual", "structural"):
-            continue
-        pending.append(f)
+        cls = _effective_apply_class(f, rule_index)
+        if cls in ("contextual", "structural"):
+            pending.append(f)
     return pending
 
 
 def _is_blocking_error(finding, rule_index) -> bool:
-    """ERROR conta como blocker de PASS APENAS se apply_class=deterministic
+    """ERROR conta como blocker de PASS APENAS se effective_class=deterministic
     (engine sabe corrigir mecanicamente — se ainda há ERROR, é bug do fixer
-    ou o fixer skipou). Errors com apply_class contextual/structural são
-    PENDING_REVIEW (decisão humana), não FAIL."""
+    ou o fixer skipou COM fix_mechanical declarado). Errors com effective_class
+    contextual/structural (incluindo safety-guarded deterministic + Studio
+    analyzer findings) são PENDING_REVIEW (decisão humana), não FAIL."""
     if finding.severity != Severity.ERROR or finding.suppressed:
         return False
-    rule = rule_index.get(finding.rule_id)
-    if rule is None:
-        # Rule desconhecida (ex: PREFLIGHT/ANALYZE_HALT injetados) — bloqueia
-        # por segurança. Preflight já é WARN agora, não cai aqui.
-        return True
-    return get_apply_class(rule) == "deterministic"
+    return _effective_apply_class(finding, rule_index) == "deterministic"
 
 
 def _print_uip_header(project: Path, iter_no: int) -> None:
@@ -2119,16 +2251,42 @@ def _cmd_all(args) -> int:
             print(f"[INTERNAL] projeto não encontrado: {project}", file=sys.stderr)
             return EXIT_INTERNAL
 
-    rules = _load_rules_or_die(args.rules_file)
+    # Boot-time orphan cleanup: NuGet.config com sentinel = leftover de run
+    # crashed (SIGKILL entre create no pack-gate e finally cleanup). Remove
+    # ANTES de qualquer phase pra garantir zero rastro de feed local Sicoob
+    # no projeto em estado consistente.
+    if _cleanup_orphan_temp_nuget_config(project):
+        print(f"[BOOT] orphan engine-temp NuGet.config removed from {project.name}",
+              file=sys.stderr)
+
+    # Interface pública = `uip <path> [--apply-contextual]`. Demais settings
+    # são intrínsecos: defaults internos sobreescritos só via env vars
+    # (escape hatches debug) ou via `_ns(...)` direto (tests).
+    import os as _os_all
+    rules_file = (
+        getattr(args, "rules_file", None)
+        or _os_all.environ.get("UIPATH_RULES_FILE")
+        or str(DEFAULT_RULES_FILE)
+    )
+    rules = _load_rules_or_die(rules_file)
     rule_index = {r.id: r for r in rules}
-    apply_ctx = bool(args.apply_contextual)
-    # Default = no_watch (modo CI/agentic). --watch opt-in pra modo
-    # interativo Studio dev. --no-watch mantido como deprecated alias
-    # (noop, default já é no-watch) pra backward-compat.
-    watch_enabled = bool(getattr(args, "watch", False))
+    apply_ctx = bool(getattr(args, "apply_contextual", False))
+    # Default = no_watch (modo CI/agentic). Opt-in interativo via env
+    # UIPATH_RULES_WATCH=1 ou kwarg `watch=True` em `_ns(...)` (tests).
+    watch_enabled = bool(getattr(args, "watch", False)) or (
+        _os_all.environ.get("UIPATH_RULES_WATCH", "").strip()
+        in ("1", "true", "yes")
+    )
     no_watch = not watch_enabled
-    interval = float(args.watch_interval)
-    max_iters = int(args.max_iters) if args.max_iters else 0
+    interval = float(
+        getattr(args, "watch_interval", None)
+        or _os_all.environ.get("UIPATH_RULES_WATCH_INTERVAL", 2.0)
+    )
+    max_iters_raw = (
+        getattr(args, "max_iters", None)
+        or _os_all.environ.get("UIPATH_RULES_MAX_ITERS", 0)
+    )
+    max_iters = int(max_iters_raw) if max_iters_raw else 0
 
     estatus = EngineStatus(project)
 
@@ -2156,7 +2314,7 @@ def _cmd_all(args) -> int:
             estatus.end_phase("skipped", reason="user_opt_out")
         else:
             p0 = _phase0_migration(
-                project, args.rules_file,
+                project, rules_file,
                 no_swap_after_migration=bool(
                     getattr(args, "no_swap_after_migration", False)
                 ),
@@ -2166,20 +2324,20 @@ def _cmd_all(args) -> int:
 
         # ---- PHASE 1: deterministic auto-fix ----
         estatus.begin_phase("phase1_deterministic")
-        p1 = _phase1_deterministic(project, args.rules_file)
+        p1 = _phase1_deterministic(project, rules_file)
         _print_phase("1  deterministic", f"fix exit={p1['exit']}")
         estatus.end_phase("ok" if p1["exit"] == 0 else "fail", fix_exit=p1["exit"])
 
         # ---- PHASE 3 (apply mode): contextual auto-apply ANTES do review final ----
         if apply_ctx:
             estatus.begin_phase("phase3a_contextual_apply")
-            p3a = _phase3_contextual_apply(project, args.rules_file)
+            p3a = _phase3_contextual_apply(project, rules_file)
             _print_phase("3a contextual-apply", f"fix exit={p3a['exit']}")
             estatus.end_phase("ok" if p3a["exit"] == 0 else "fail", fix_exit=p3a["exit"])
 
         # ---- PHASE 2+4: review final com Layer 2/3/5 + classify ----
         estatus.begin_phase("phase2_review")
-        rc, result = _run_review_quiet(project, args.rules_file)
+        rc, result = _run_review_quiet(project, rules_file)
 
         # `errors` (display) = total bruto. `errors_blocking` (PASS gate) =
         # subset com apply_class=deterministic. Errors contextual/structural
@@ -2238,6 +2396,13 @@ def _cmd_all(args) -> int:
         _print_status(status, project=project, apply_contextual=apply_ctx)
 
         if status == "PASS":
+            # Auto-clean `_BeforeMigration_*` backups quando engine completou
+            # com PASS. Backup serve só como rollback manual; engine concluiu
+            # pipeline com sucesso → backup é dead weight (50-200MB).
+            # Opt-out: UIPATH_RULES_KEEP_BACKUP=1.
+            removed_backups = _cleanup_pre_migration_backups(project)
+            for b in removed_backups:
+                print(f"[BACKUP-CLEAN] removed {b.name}", file=sys.stderr)
             estatus.finalize("PASS")
             return EXIT_OK
         if status == "PENDING_REVIEW":

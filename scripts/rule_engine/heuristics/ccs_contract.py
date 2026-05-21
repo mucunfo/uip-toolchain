@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import io
 import re
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -37,7 +38,15 @@ _NUPKGS_DIR = Path(r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs")
 
 # Cache module-level: package_name → {workflow_name → [arg_names]}
 # Lazy populated no primeiro detector call.
+#
+# Thread-safety: Runner roda XAMLs em ThreadPoolExecutor (workers=nproc/2).
+# Lock garante double-checked locking: 2 threads não populam em paralelo
+# (wasted work + potencial inconsistência se loop yield). Mais importante,
+# escrita de `_CCS_CONTRACTS` só acontece DEPOIS de fully populated → reader
+# nunca vê dict parcialmente populado (race anterior assignava `{}` primeiro,
+# threads concorrentes pegavam vazio, CCS-1 perdia findings — silent FAIL).
 _CCS_CONTRACTS: dict[str, dict[str, list[str]]] | None = None
+_CCS_CONTRACTS_LOCK = threading.Lock()
 
 
 def _extract_contracts_from_nupkg(nupkg_path: Path) -> dict[str, list[str]]:
@@ -79,26 +88,37 @@ def _load_ccs_contracts() -> dict[str, dict[str, list[str]]]:
     """Lazy load + cache de TODOS contracts CCS de .nupkgs/.
 
     Retorna `{package_name: {workflow_name: [arg_names]}}`.
+
+    Thread-safe via double-checked locking. Construção do catalog acontece
+    em variável local; assignment ao global é o ÚLTIMO passo → outras threads
+    veem o dict completo ou None (re-tentam), nunca dict parcial.
     """
     global _CCS_CONTRACTS
-    if _CCS_CONTRACTS is not None:
-        return _CCS_CONTRACTS
+    cached = _CCS_CONTRACTS
+    if cached is not None:
+        return cached
 
-    _CCS_CONTRACTS = {}
-    if not _NUPKGS_DIR.exists():
-        return _CCS_CONTRACTS
+    with _CCS_CONTRACTS_LOCK:
+        # Double-check pós-lock: outra thread pode ter populado entre check
+        # acima e aquisição do lock.
+        if _CCS_CONTRACTS is not None:
+            return _CCS_CONTRACTS
 
-    for nupkg in sorted(_NUPKGS_DIR.glob("CCS_*.nupkg")):
-        # Parse nome arquivo: CCS_SipagDirect.3.0.2.nupkg → CCS_SipagDirect
-        m = re.match(r"^(CCS_[A-Za-z0-9_]+)\.[\d.]+\.nupkg$", nupkg.name)
-        if not m:
-            continue
-        pkg_name = m.group(1)
-        contracts = _extract_contracts_from_nupkg(nupkg)
-        if contracts:
-            _CCS_CONTRACTS[pkg_name] = contracts
+        catalog: dict[str, dict[str, list[str]]] = {}
+        if _NUPKGS_DIR.exists():
+            for nupkg in sorted(_NUPKGS_DIR.glob("CCS_*.nupkg")):
+                # Parse nome arquivo: CCS_SipagDirect.3.0.2.nupkg → CCS_SipagDirect
+                m = re.match(r"^(CCS_[A-Za-z0-9_]+)\.[\d.]+\.nupkg$", nupkg.name)
+                if not m:
+                    continue
+                pkg_name = m.group(1)
+                contracts = _extract_contracts_from_nupkg(nupkg)
+                if contracts:
+                    catalog[pkg_name] = contracts
 
-    return _CCS_CONTRACTS
+        # Atomic assignment APÓS população completa.
+        _CCS_CONTRACTS = catalog
+        return catalog
 
 
 def _reset_for_tests() -> None:

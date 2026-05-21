@@ -2810,13 +2810,32 @@ rules:
           - TargetApp
           - VerifyExecutionOptions
     fix:
-      apply_class: structural
+      # F39 (2026-05): structural → contextual. Engine fixer
+      # apply_insert_trace_log (fixers.py:1968) já existia mas estava
+      # bloqueado por classification. Fix mecânico cobre:
+      #   - Parent restritivo (skip)
+      #   - Parent wrap-able (wrap em Sequence)
+      #   - Open parent (insert direto)
+      #   - Message template com in_StPrefixoLog cross-rule integration
+      #   - DisplayName uniqueness (evita ST-MRD-002 / ST-NMG-004)
+      # Insertion runs APENAS via `uip --apply-contextual`. F35 per-file
+      # analyzer-gate rollback catches Message-quality regressions
+      # (N-16 LLM validator, ST-NMG-005).
+      apply_class: contextual
+      mechanical:
+        type: insert_trace_log  # spec injected per-finding by detector
       prose: |
         Inserir `<ui:LogMessage Level="Trace" Message="..."/>` LOGO APÓS
         a activity (até 600 chars depois). Logs ANTES da activity violam
         semântica de rastreabilidade pós-execução — não satisfazem N-5.
 
-        Mensagem deve ser CONTEXTUAL, não mecânica:
+        Engine auto-aplica via `uip <project> --apply-contextual`. Fixer
+        gera Message template `[in_StPrefixoLog + "Concluído: <DisplayName>"]`
+        quando workflow declara `in_StPrefixoLog`, senão `["Concluído: <DisplayName>"]`.
+        Message mecânica pode disparar N-16 (LLM traceability validator) —
+        F35 analyzer-gate rollback reverte per-file se regressão observada.
+
+        Mensagem ideal CONTEXTUAL, não mecânica:
           ✗ Mecânico (template-like): `"Iniciando: ui:HttpClient"`
           ✗ Mecânico (sem semantica): `"Executando AddDataRow"`
           ✓ Contextual: `"Recuperou " + vIntCount.ToString + " documentos do GED"`
