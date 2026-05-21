@@ -214,6 +214,7 @@ env vars apenas:
 | `UIPATH_RULES_WATCH` | `0` | loop interativo Studio dev (mtime watch) |
 | `UIPATH_RULES_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
 | `UIPATH_RULES_MAX_ITERS` | `0` | limite iters loop (0 = ilimitado) |
+| `UIPATH_RULES_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
 Underlying: `python -m scripts.rule_engine.cli all <project>`. PS alias
 `uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona

@@ -76,6 +76,72 @@ EXIT_HALT = 3
 EXIT_INTERNAL = 10
 
 
+def _cleanup_pre_migration_backups(project_root: Path) -> list[Path]:
+    """Remove `<project>_BeforeMigration_<timestamp>` siblings após PASS.
+
+    PHASE 0 Activity Migrator cria backup `_BeforeMigration_<YYYYMMDD-HHMMSS>`
+    pre-swap (migrate.py:380). Backup serve só como rollback manual emergência
+    — se engine completou pipeline com PASS, backup é dead weight (~50-200MB
+    por projeto, acumula em batch runs).
+
+    Auto-clean DISPARA somente em PASS final (não em FAIL/PENDING_REVIEW —
+    user pode querer rollback nesses casos).
+
+    Opt-out via env `UIPATH_RULES_KEEP_BACKUP=1` (debug / paranoid mode).
+
+    Returns lista de paths removidos.
+
+    Windows-safe rmtree: .git/refs/ + packed-refs são readonly → rmtree padrão
+    falha. Handler chmod +w + retry (mesma técnica de migrate.py).
+    """
+    import os as _os_cl
+    if _os_cl.environ.get("UIPATH_RULES_KEEP_BACKUP", "").strip() in ("1", "true", "yes"):
+        return []
+
+    import re as _re_cl
+    import shutil as _shutil_cl
+    import stat as _stat_cl
+
+    parent = project_root.parent
+    name = project_root.name
+    # Pattern: <name>_BeforeMigration_YYYYMMDD-HHMMSS
+    pat = _re_cl.compile(
+        _re_cl.escape(name) + r"_BeforeMigration_\d{8}-\d{6}$"
+    )
+    removed: list[Path] = []
+    if not parent.is_dir():
+        return removed
+
+    def _force_writable(func, path, exc_info):
+        try:
+            _os_cl.chmod(path, _stat_cl.S_IWRITE)
+            func(path)
+        except (OSError, PermissionError):
+            pass
+
+    for sibling in parent.iterdir():
+        if not sibling.is_dir():
+            continue
+        if not pat.match(sibling.name):
+            continue
+        try:
+            # Python 3.12+ uses onexc; older Python uses onerror.
+            try:
+                _shutil_cl.rmtree(sibling, onexc=_force_writable)
+            except TypeError:
+                _shutil_cl.rmtree(
+                    sibling,
+                    onerror=lambda f, p, e: _force_writable(f, p, e),
+                )
+            removed.append(sibling)
+        except OSError as e:
+            print(
+                f"[BACKUP-CLEAN] cannot remove {sibling.name}: {e}",
+                file=sys.stderr,
+            )
+    return removed
+
+
 def _cleanup_orphan_temp_nuget_config(project_root: Path) -> bool:
     """Detect + remove orphan NuGet.config left by crashed engine run.
 
@@ -2330,6 +2396,13 @@ def _cmd_all(args) -> int:
         _print_status(status, project=project, apply_contextual=apply_ctx)
 
         if status == "PASS":
+            # Auto-clean `_BeforeMigration_*` backups quando engine completou
+            # com PASS. Backup serve só como rollback manual; engine concluiu
+            # pipeline com sucesso → backup é dead weight (50-200MB).
+            # Opt-out: UIPATH_RULES_KEEP_BACKUP=1.
+            removed_backups = _cleanup_pre_migration_backups(project)
+            for b in removed_backups:
+                print(f"[BACKUP-CLEAN] removed {b.name}", file=sys.stderr)
             estatus.finalize("PASS")
             return EXIT_OK
         if status == "PENDING_REVIEW":

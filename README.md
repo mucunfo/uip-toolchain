@@ -27,6 +27,7 @@ Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 | `UIPATH_RULES_WATCH` | `0` | loop interativo aguardando mtime change |
 | `UIPATH_RULES_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
 | `UIPATH_RULES_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
+| `UIPATH_RULES_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
 Exit codes: `0` PASS, `1` PENDING_REVIEW (contextual aguarda `--apply-contextual`),
 `2` FAIL, `3` HALT, `10` INTERNAL.
