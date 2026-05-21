@@ -124,8 +124,10 @@ def uip_main(argv: list[str] | None = None) -> int:
             "uip — god command UiPath rules engine\n"
             "\n"
             "USAGE:\n"
-            "  uip <project_path> [--apply-contextual] [--no-watch]\n"
+            "  uip <project_path> [--apply-contextual] [--watch]\n"
             "      Pipeline completo (migration → fix → gates → contextual).\n"
+            "      Default: exit em FAIL (modo CI/agentic). --watch = loop\n"
+            "      interativo aguardando mtime change (modo Studio dev).\n"
             "\n"
             "  uip <subcommand> [args]\n"
             "      Pass-through pra debug: review|fix|list|validate|docs|\n"
@@ -242,7 +244,8 @@ def build_parser() -> argparse.ArgumentParser:
         "all",
         help="GOD COMMAND — pipeline completo: migration probe + "
              "deterministic auto-fix + gates Layer2/3/5 + contextual "
-             "(dry-run default). Loop em FAIL aguardando edição.",
+             "(dry-run default). Default: exit em FAIL (CI/agentic). "
+             "--watch ativa loop interativo aguardando mtime change.",
     )
     al.add_argument("path", help="Project root path")
     al.add_argument("--rules-file", default=str(DEFAULT_RULES_FILE))
@@ -250,10 +253,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Aplica também fixes contextual (default: só "
                          "lista pra decisão humana, sem aplicar). Use após "
                          "review da lista PENDING da 1ª run.")
+    al.add_argument("--watch", action="store_true",
+                    help="Loop em FAIL aguardando mtime change "
+                         "(modo interativo Studio dev). Default: exit 2 "
+                         "imediato em FAIL (modo CI/agentic).")
     al.add_argument("--no-watch", action="store_true",
-                    help="Não loop em FAIL — exit 2 imediato. Para CI gate.")
+                    help="DEPRECATED — comportamento já é default. "
+                         "Aceito pra backward-compat de scripts antigos; "
+                         "pode ser removido em release futura.")
     al.add_argument("--watch-interval", type=float, default=2.0,
-                    help="Poll cadence do mtime watcher em segundos (default 2.0).")
+                    help="Poll cadence do mtime watcher em segundos (default 2.0). "
+                         "Só efetivo com --watch.")
     al.add_argument("--max-iters", type=int, default=0,
                     help="Limite de iters do loop (0 = ilimitado). "
                          "Útil pra testes; 0 = espera Ctrl-C ou PASS.")
@@ -2094,7 +2104,8 @@ def _cmd_all(args) -> int:
 
       PASS  → exit 0
       PENDING_REVIEW → exit 1 (decisão humana via --apply-contextual)
-      FAIL  → loop com watch.wait_for_change OU exit 2 se --no-watch
+      FAIL  → exit 2 (default). Com --watch: loop com watch.wait_for_change
+              aguardando edições (modo Studio dev).
     """
     from .watch import wait_for_change
     from .engine_status import EngineStatus
@@ -2111,7 +2122,11 @@ def _cmd_all(args) -> int:
     rules = _load_rules_or_die(args.rules_file)
     rule_index = {r.id: r for r in rules}
     apply_ctx = bool(args.apply_contextual)
-    no_watch = bool(args.no_watch)
+    # Default = no_watch (modo CI/agentic). --watch opt-in pra modo
+    # interativo Studio dev. --no-watch mantido como deprecated alias
+    # (noop, default já é no-watch) pra backward-compat.
+    watch_enabled = bool(getattr(args, "watch", False))
+    no_watch = not watch_enabled
     interval = float(args.watch_interval)
     max_iters = int(args.max_iters) if args.max_iters else 0
 

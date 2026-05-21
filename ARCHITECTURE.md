@@ -200,9 +200,13 @@ Comandos visíveis ao dev:
 
 | Cenário | Comando |
 |---|---|
-| Dia-a-dia / aprovação publish | `uip <project>` |
+| Dia-a-dia / CI / aprovação publish (default = sem loop) | `uip <project>` |
 | Aprovar contextual da 1ª run | `uip <project> --apply-contextual` |
-| CI gate (sem loop, fail-fast) | `uip <project> --no-watch` |
+| Studio dev interativo (loop em FAIL aguardando edição) | `uip <project> --watch` |
+
+**Default = no-watch** (fail-fast, modo CI/agentic). Exit imediato em FAIL.
+`--watch` ativa loop interativo aguardando `mtime` change (UX Studio dev).
+Flag legada `--no-watch` mantida como noop deprecated pra backward-compat.
 
 Underlying: `python -m scripts.rule_engine.cli all <project> [flags]`. PS
 alias `uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona
