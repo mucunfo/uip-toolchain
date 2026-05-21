@@ -3,9 +3,10 @@
 Cobre cenários básicos:
   - Project clean (Windows, sem findings) → PASS exit 0
   - Project com migração necessária → PHASE 0 executa
-  - Project com FAIL + --no-watch → exit 2 imediato
+  - Project com FAIL (default = no-watch) → exit 2 imediato
   - Project com PENDING contextual (sem --apply-contextual) → exit 1
-  - --max-iters guard limita loop em FAIL sem watch externo
+  - --max-iters guard limita loop em FAIL com --watch ativo
+  - Backward-compat: --no-watch flag deprecated mas aceito (noop)
 """
 import json
 import os
@@ -92,13 +93,14 @@ def test_phase0_skip_no_project_json(tmp_path):
     assert "no project.json" in p0["status"]
 
 
-def test_cmd_all_no_watch_returns_quickly(windows_project):
-    """Project minimal Windows, --no-watch → terminates sem loop."""
+def test_cmd_all_default_no_watch_returns_quickly(windows_project):
+    """Project minimal Windows, default (sem --watch) → terminates sem loop."""
     args = _ns(
         path=str(windows_project),
         rules_file=str(_default_rules()),
         apply_contextual=False,
-        no_watch=True,
+        watch=False,
+        no_watch=False,
         watch_interval=2.0,
         max_iters=0,
     )
@@ -108,13 +110,45 @@ def test_cmd_all_no_watch_returns_quickly(windows_project):
     assert rc in (EXIT_OK, EXIT_WARN, EXIT_ERROR)
 
 
+def test_cmd_all_no_watch_flag_still_works_backcompat(windows_project):
+    """--no-watch deprecated flag aceito (noop pq default já é no-watch)."""
+    args = _ns(
+        path=str(windows_project),
+        rules_file=str(_default_rules()),
+        apply_contextual=False,
+        watch=False,
+        no_watch=True,
+        watch_interval=2.0,
+        max_iters=0,
+    )
+    rc = _cmd_all(args)
+    assert rc in (EXIT_OK, EXIT_WARN, EXIT_ERROR)
+
+
+def test_cmd_all_watch_flag_loops_until_max_iters(tmp_path):
+    """--watch ativo + max-iters=1 + projeto FAIL → loop guarded por max-iters."""
+    args = _ns(
+        path=str(tmp_path),
+        rules_file=str(_default_rules()),
+        apply_contextual=False,
+        watch=True,
+        no_watch=False,
+        watch_interval=0.1,
+        max_iters=1,
+    )
+    # max_iters guard previne loop infinito quando watch ativo + FAIL.
+    rc = _cmd_all(args)
+    assert rc in (EXIT_OK, EXIT_WARN, EXIT_ERROR, EXIT_INTERNAL)
+
+
 def test_cmd_all_max_iters_guard(tmp_path):
     """Projeto inválido (sem project.json) — verify max-iters não loopa infinito."""
     args = _ns(
         path=str(tmp_path),
         rules_file=str(_default_rules()),
         apply_contextual=False,
-        no_watch=True,
+        watch=False,
+        no_watch=False,
         watch_interval=2.0,
         max_iters=1,
     )
@@ -129,7 +163,8 @@ def test_cmd_all_invalid_path():
         path="/non/existent/path/xyzzy",
         rules_file=str(_default_rules()),
         apply_contextual=False,
-        no_watch=True,
+        watch=False,
+        no_watch=False,
         watch_interval=2.0,
         max_iters=0,
     )

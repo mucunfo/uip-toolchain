@@ -8,17 +8,20 @@ Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML
 
 ```powershell
 # Default: migration + deterministic fix + gates + contextual dry-run
+# (modo CI/agentic — exit imediato em FAIL, sem loop)
 uip <project_path>
 
 # 2ª run — aprova contextual remanescente da 1ª
 uip <project_path> --apply-contextual
 
-# CI gate (sem loop em FAIL)
-uip <project_path> --no-watch
+# Studio dev interativo: loop em FAIL aguardando edição (mtime watch)
+uip <project_path> --watch
 ```
 
-Em FAIL, loop espera edição manual (mtime watch). PASS = projeto done.
-PENDING_REVIEW = contextual aguarda decisão humana.
+Default = exit em FAIL (modo CI/agentic). `--watch` opt-in pra loop
+interativo aguardando edição manual via mtime change (UX Studio dev).
+PASS = projeto done. PENDING_REVIEW = contextual aguarda decisão humana.
+Flag legada `--no-watch` mantida como noop deprecated (default já é no-watch).
 
 Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 `python -m scripts.rule_engine.cli all <project>`. Subcomandos atômicos
