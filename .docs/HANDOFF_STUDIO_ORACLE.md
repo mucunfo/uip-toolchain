@@ -350,6 +350,29 @@ Boot CLI emit summary line:
 
 ---
 
+## Update — Fase 0 + Fase 1 concluídos (2026-05-22 PM)
+
+**Fase 0 — MERGED to main:**
+- PR #11: ENV-1..4 rules + W-31/W-32 ref cleanup + W-11y baseline (1907482)
+- PR #12: hook timeout 60→180s (4e2f7b6)
+- PR #13: analyzer-gate verbose log NameError fix (b370c17)
+- Studio compile validation: PACK-GATE exit 0, BC30652=0 + BC31424=0 ✓
+- 25 errors restantes em target = pre-existing contextual/structural debt
+  (CX-2/CX-4/EXC-1/UI-1/W-13/ENV-1), out-of-scope
+
+**Fase 1 — Spike concluído, Fase 2 PAUSADA:**
+- pythonnet + coreclr boot validado em Studio 26.0 (net8.0) e 23.10 (net6.0)
+- API map completa descoberta — ver `.docs/STUDIO_API_NOTES.md`
+- API drift detected entre 23.10 e 26.0 (XamlMigrationProjectEndpoint ctor
+  signature: 1 param vs 2 params). Studio internal API NOT stable.
+- D-1 pin (Sicoob = 23.10 imutável) mitiga drift risk
+- Custo Fase 2 estimado: ~2 semanas + manutenção drift contínua
+- Decision (user 2026-05-22): pause Fase 2. Engine atual cobre 100% incident.
+  Studio = out-of-band manual oracle quando precisar.
+- Spike artifacts preservados em `spike/` para reuso futuro
+
+---
+
 ## Glossário decisões empíricas
 
 - **Studio 23.10 = deploy Sicoob imutável** (D-1 pins enforcement)
