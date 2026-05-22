@@ -1,10 +1,15 @@
-"""F36 safety guard tests — CCS-1 detector skipa rename_attribute fix
-quando `<prefix:Workflow>` invocation tem SecureString-bound sibling.
+"""CCS-1 detector tests — emite rename_attribute fix em casing mismatch.
 
-Root cause documented in heuristics/ccs_contract.py F36 comment:
-auto-rename via `_whole_word_sub_skip_tags` em invocation com SecureString
-ref desencadeia ST-SEC-008 (Studio analyzer scope regression) quando
-combinado com outras mudanças XAML (W-26, S-16). Bisect 2026-05-20.
+F36 safety guard REMOVIDO 2026-05-21: empiricamente Studio 23.10 reporta
+`Cannot set unknown member` independente de SecureString sibling. Engine
+cascade rollback gate (analyzer-gate F35) isola ST-SEC-008 regression
+per-file caso aconteça. Guard só deferia fix manual que nunca era feito.
+
+Tests cobrem:
+  - Casing mismatch SEM SecureString sibling → fix_mechanical present
+  - Casing mismatch COM SecureString sibling → fix_mechanical STILL present
+    (mensagem inclui aviso sobre rollback gate)
+  - Casing exato → 0 findings (idempotente)
 """
 from __future__ import annotations
 
@@ -94,11 +99,11 @@ def test_ccs1_emits_rename_when_no_securestring(tmp_path):
         assert "NEEDS_REVIEW" not in f.message
 
 
-def test_ccs1_skips_fix_when_securestring_sibling(tmp_path):
-    """Login invocation com SecureString-bound sibling → fix_mechanical=None.
+def test_ccs1_emits_rename_when_securestring_sibling(tmp_path):
+    """Login invocation com SecureString-bound sibling → fix_mechanical STILL present.
 
-    Var SecureString declarada via `<Variable TypeArguments="ss:SecureString"
-    Name="vSsSenha"/>`. Login bind `in_Senha="[vSsSenha]"`.
+    F36 guard removido: engine cascade rollback gate isola ST-SEC-008
+    regression caso rename dispare. Mensagem mantém aviso pra auditoria.
     """
     proj, pc = _mk_project(tmp_path)
     body = (
@@ -113,17 +118,18 @@ def test_ccs1_skips_fix_when_securestring_sibling(tmp_path):
     )
     fc = _write_xaml(proj, body)
     findings = cc.detect_ccs_contract_check(_mk_rule(), fc, pc)
-    # 2 findings ainda emitidos (casing errado real) mas SEM auto-fix
+    # 2 findings com fix_mechanical present (sem guard)
     assert len(findings) == 2
     for f in findings:
-        assert f.fix_mechanical is None, (
-            f"Esperado fix_mechanical=None (safety guard SecureString), "
-            f"got {f.fix_mechanical}"
+        assert f.fix_mechanical is not None, (
+            f"F36 removido — fix_mechanical SHOULD be present mesmo com "
+            f"SecureString sibling. got {f.fix_mechanical}"
         )
-        assert "NEEDS_REVIEW" in f.message
+        assert f.fix_mechanical.get("type") == "rename_attribute"
+        # Mensagem inclui aviso sobre rollback gate
         assert "SecureString" in f.message
         assert "vSsSenha" in f.message
-        assert "Studio" in f.fix_prose
+        assert "rollback" in f.message.lower()
 
 
 def test_ccs1_emits_rename_when_securestring_unrelated_invocation(tmp_path):

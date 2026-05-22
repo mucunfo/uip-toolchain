@@ -199,6 +199,73 @@ def test_insert_trace_log_wraps_then_branch(tmp_path):
     assert 'Level="Trace"' in out
 
 
+def test_insert_trace_log_wraps_flowstep_action(tmp_path):
+    """FlowStep parent — fixer DEVE wrap em <Sequence>.
+
+    Regression: anteriormente fixer inseria LogMessage como sibling do
+    Activity dentro do FlowStep, causando 'Action' property has already
+    been set on 'FlowStep' (FlowStep aceita 1 Activity no slot Action).
+    Fix: FlowStep adicionado a _N5_WRAP_ABLE_NON_QUALIFIED → wrap em
+    Sequence (Activity-shape) preserva slot Action single-child.
+    """
+    f = tmp_path / "wf.xaml"
+    body = (
+        '  <Flowchart>\n'
+        '    <FlowStep x:Name="__ReferenceID1">\n'
+        '      <Assign DisplayName="X" sap2010:WorkflowViewState.IdRef="Assign_1">\n'
+        '        <Assign.To><OutArgument x:TypeArguments="x:Int32">[v]</OutArgument></Assign.To>\n'
+        '        <Assign.Value><InArgument x:TypeArguments="x:Int32">[1]</InArgument></Assign.Value>\n'
+        '      </Assign>\n'
+        '    </FlowStep>\n'
+        '  </Flowchart>\n'
+    )
+    f.write_text(XAML_HEAD + body + XAML_TAIL, encoding="utf-8")
+    # head=2 + Flowchart=1 + FlowStep=1 → Assign at line 5.
+    spec = {
+        "activity_name": "Assign", "activity_line": 5,
+        "trace_level": "Trace", "has_prefixo": False, "proximity_window": 600,
+    }
+    changed = apply_insert_trace_log(f, spec, dry_run=False)
+    assert changed is True
+    out = f.read_text(encoding="utf-8")
+    # Sequence wrapper present.
+    assert '<Sequence DisplayName="Sequence (wrap N-5: X)' in out
+    # Trace LogMessage present.
+    assert '<ui:LogMessage' in out
+    assert 'Level="Trace"' in out
+    # Parse via lxml: FlowStep must contain exactly ONE direct element child
+    # that is an Activity (the Sequence wrapper) + zero or one FlowStep.Next.
+    # Critical assertion: FlowStep does NOT have 2 sibling Activity children
+    # (which would emit Studio's 'Action property already set on FlowStep').
+    from lxml import etree
+    root = etree.fromstring(out.encode("utf-8"))
+    ns = {
+        "sas": "clr-namespace:System.Activities.Statements;assembly=System.Activities",
+        "x": "http://schemas.microsoft.com/winfx/2006/xaml",
+        "ui": "http://schemas.uipath.com/workflow/activities",
+        "default": "http://schemas.microsoft.com/netfx/2009/xaml/activities",
+    }
+    # FlowStep lives in default activities namespace (sem prefix). lxml
+    # localname-based query é mais robusto pra evitar issues de xmlns.
+    flowsteps = root.xpath("//*[local-name()='FlowStep']")
+    assert len(flowsteps) == 1
+    fs = flowsteps[0]
+    # Drop the qualified property children (FlowStep.Next, FlowStep.Action,
+    # ViewState attaches) — count only direct Activity children.
+    activity_children = [
+        c for c in fs
+        if not (
+            isinstance(c.tag, str)
+            and "." in c.tag.split("}", 1)[-1]
+        )
+    ]
+    assert len(activity_children) == 1, (
+        f"FlowStep deve ter 1 Activity child (Sequence wrap), got "
+        f"{len(activity_children)}: {[c.tag for c in activity_children]}"
+    )
+    assert activity_children[0].tag.split("}", 1)[-1] == "Sequence"
+
+
 def test_insert_trace_log_skip_assign_value_property(tmp_path):
     """Assign.Value não é wrap-safe — skip even se na safe-suffix list."""
     f = tmp_path / "wf.xaml"

@@ -543,9 +543,10 @@ rules:
         # Baseline refs cross-version Windows target. Lista derivada empiricamente
         # de xamls Sicoob funcionais. Adicionar conforme novos baselines descobertos.
         #
-        # NÃO incluir mscorlib/System/System.Core: W-26 strip-eia esses 3 como
-        # redundantes em .NET 6 (facades type-forwarder → BC31424). Add+strip
-        # no mesmo fix loop = divergence infinita. Ver W-26 (linha ~737).
+        # NÃO incluir mscorlib/System/System.Core aqui: cobertos por ENV-2
+        # (rule dedicada — Studio 23.10 forwarder bridge). Separação de
+        # concerns: W-11y baseline = refs cross-version genéricos, ENV-2 =
+        # legacy compat refs Sicoob deploy-specific.
         required_refs:
           - System.Activities
           - System.Xml
@@ -737,40 +738,51 @@ rules:
         Strip xmlns:PREFIX="..." declarations onde PREFIX não é referenciado
         em nenhum lugar do document body. Cleanup pós-Migrator.
 
-  - id: W-26
+  - id: ENV-2
     severity: ERROR
     category: breaking
     target: windows
-    title: "XAML tem AssemblyReference Legacy redundante (mscorlib/System/System.Core)"
+    title: "XAML missing legacy compat refs (mscorlib/System/System.Core)"
     description: |
-      Activity Migrator GA strip `xmlns:` aliases Legacy mas mantém
-      `<AssemblyReference>mscorlib|System|System.Core</AssemblyReference>` no
-      body de `<TextExpression.ReferencesForImplementation>`. Em Windows
-      .NET 6 esses 3 refs são redundantes — `mscorlib` foi supersedido por
-      `System.Private.CoreLib`, `System` e `System.Core` são facades vazias
-      que apenas forwardam types.
+      Sicoob deploy = Studio 23.10 (imutável). Activity Migrator do
+      Studio 25.x/26.x strip `<AssemblyReference>mscorlib</AssemblyReference>`
+      + `System` + `System.Core` do bloco refs (Studio 25.x não precisa
+      em .NET 6 nativo). Mas Studio 23.10 USA esses 3 refs como forwarder
+      bridge pra resolver types declarados em refs modernos
+      (`System.Private.CoreLib`, `System.Net.Primitives v6`, etc.).
 
-      Quando XAML usa type forwarded em VB expression — ex:
-      `new System.Net.NetworkCredential(...)` p/ unwrap SecureString —
-      Studio resolve via `mscorlib v4.0.0.0` forwarder, expecta
-      `System.Net.Primitives v4.0.0.0` no closure, mismatch com
-      `System.Net.Primitives v6.0.0.0` actually referenced → reporta
-      `BC31424: Type 'System.Net.NetworkCredential' has been forwarded to
-      assembly 'System.Net.Primitives, Version=6.0.0.0'`.
+      Sem esses 3 refs Studio 23.10 não bridja resolution → erros:
+        BC30652: Reference required to assembly 'System.Collections,
+                 Version=6.0.0.0' containing type 'Dictionary(Of ,)'
+        BC31424: Type 'System.Net.NetworkCredential' has been forwarded
+                 to assembly 'System.Net.Primitives, Version=6.0.0.0' —
+                 reference missing.
 
-      Triplet completo de cleanup pós-Migrator:
-        W-20  → strip xmlns:* Legacy (header)
-        W-26  → strip <AssemblyReference> Legacy (body)   ← este
-        W-11g → insert System.Net.Primitives (body)
+      Verificação empírica (2026-05-21):
+        - Projeto que ABRE em Studio 23.10: 69/69 XAMLs têm mscorlib.
+        - Projeto que QUEBRA em Studio 23.10: 0/25 XAMLs têm mscorlib.
+        - Mesmo padrão `new System.Net.NetworkCredential(...)` e
+          `scg:Dictionary` em ambos. Diff isolado: presença dos 3 refs.
 
-      Conservadora — apenas {mscorlib, System, System.Core} no v1. Refs
-      candidatas extras (System.Configuration.Install, System.Data.Entity,
-      System.ServiceModel, WindowsBase, System.Data.DataSetExtensions)
-      ficam para v2 após evidência empírica — alguns podem ser used em
-      projetos WCF/EF6/WPF.
+      ENV-2 emite 1 finding por ref faltando. Fix `insert_assembly_reference`
+      injeta no bloco. Forward-compat: Studio 25.x ignora esses 3 refs se
+      já tem refs modernos — não causa regressão.
 
-      Detector idempotente: emite finding apenas para refs Legacy
-      presentes no bloco. Em XAML já limpo, no-op silencioso.
+      Triplet correto pós-Migrator pra deploy Studio 23.10:
+        W-20  → strip xmlns:* Legacy aliases (header)
+        ENV-2 → ensure <AssemblyReference> legacy compat (body)   ← este
+        W-11g → insert System.Net.Primitives (body) — complementar
+
+      Conservadora — apenas {mscorlib, System, System.Core} no v1.
+      Outros refs legacy (Configuration.Install, Data.Entity, WindowsBase)
+      ficam separados — são WCF/EF6/WPF specific.
+
+      NOTA HISTÓRICA: rule anterior W-26 (mesmo ID space) tinha lógica
+      INVERSA — strippava esses 3 refs. Premissa empiricamente errada.
+      Substituído por ENV-2.
+
+      Idempotente: emite findings só para refs faltando. Skip silente se
+      bloco refs ausente (fragments/libraries) ou todos 3 já presentes.
     applies_to:
       include: ["**/*.xaml"]
       exclude:
@@ -781,15 +793,16 @@ rules:
       type: python
       params:
         module: scripts.rule_engine.heuristics.legacy_refs
-        function: detect_legacy_bcl_refs
+        function: detect_env2_ensure_legacy_refs
     fix:
       apply_class: deterministic
       # Mechanical injetada per-finding pelo detector
-      # (type=strip_assembly_reference, name=<ref Legacy>).
+      # (type=insert_assembly_reference, name=<ref legacy missing>).
       prose: |
-        Remover cada `<AssemblyReference>{mscorlib|System|System.Core}
-        </AssemblyReference>` do bloco refs. Redundantes em Windows .NET 6
-        e disparam BC31424 quando XAML usa types forwarded.
+        Inserir cada `<AssemblyReference>{mscorlib|System|System.Core}
+        </AssemblyReference>` faltante no bloco refs. Required pra Studio
+        23.10 (deploy Sicoob) resolver type forwarders pra .NET 6 modern
+        refs. Forward-compat com Studio 25.x.
 
   - id: W-12
     severity: ERROR
@@ -996,7 +1009,8 @@ rules:
       — refs órfãs após Migrator GA. `System.ServiceModel` (base) ESTÁ em
       W-11y baseline_refs (cross-version Windows target), strip-eia divergiria
       add↔strip infinitamente.
-      Fix mecânico per-finding via strip_assembly_reference (reuse W-26).
+      Fix mecânico per-finding via strip_assembly_reference (compartilha
+      fixer com regras de cleanup).
     applies_to:
       include: ["**/*.xaml"]
       exclude:
@@ -1296,6 +1310,108 @@ rules:
         Remover entry de `project.json::designOptions.fileInfoCollection`
         cujo `fileName` aponta arquivo inexistente. Ou restaurar arquivo
         se foi deletado por engano (git checkout do path original).
+
+  - id: ENV-1
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "project.json sem flags Studio-compat (Sicoob policy)"
+    description: |
+      Empresa Sicoob roda Studio 23.10.x (não muda). Dev runs Studio 25.x/26.x.
+      project.json precisa de 3 flags Sicoob policy pra Studio 23.10 resolver
+      transitive deps de packs UIA 25.x / System 25.x:
+
+        runtimeOptions.mustRestoreAllDependencies = true
+        designOptions.modernBehavior = false
+        designOptions.libraryOptions.includeOriginalXaml = false
+
+      Sem `mustRestoreAllDependencies=true`, Studio 23.10 lazy-loads assemblies
+      → BC30652 `Reference required to assembly 'System.Collections, v6.0.0.0'`
+      (Dictionary type) e BC31424 `Type 'System.Net.NetworkCredential' has been
+      forwarded to assembly 'System.Net.Primitives, v6.0.0.0'`. Erros aparecem
+      em qualquer XAML que use Dictionary, NetworkCredential, ou outros types
+      .NET 6 que Studio 23.10 não pre-resolve.
+
+      `modernBehavior=false` opt-out de Studio 25.x runtime features que 23.10
+      não tem → garante legacy resolution mode em ambos Studios.
+
+      `includeOriginalXaml=false` (libraryOptions) = Sicoob default — não
+      embutir source XAML em packs publicados.
+
+      Verificado vs projeto que ABRE em Studio 23.10 vs projeto que QUEBRA —
+      diff isola exatamente esses 3 flags como root cause.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.project_manifest
+        function: detect_env1_studio_compat
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada pelo detector (type=project_manifest_set_keys,
+      # keys={dotted_path: desired_value, ...}) — atomic patch single finding
+      # cobrindo todos keys divergentes.
+      prose: |
+        Aplicar em project.json:
+          - runtimeOptions.mustRestoreAllDependencies = true
+          - designOptions.modernBehavior = false
+          - designOptions.libraryOptions.includeOriginalXaml = false
+        Sicoob policy: empresa Studio 23.10 immutable → project.json deve
+        forçar restore total + legacy behavior pra evitar BC30652/BC31424.
+
+  - id: ENV-3
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "XAML usa System.Net.* em VB mas falta namespace import"
+    description: |
+      Sicoob deploy = Studio 23.10. Studio 23.10 precisa namespace
+      `<x:String>System.Net</x:String>` (e outros) importado em
+      `<TextExpression.NamespacesForImplementation>` pra VB compiler
+      resolver types em forwarder chains. Sem o import, mesmo com refs
+      corretos em ReferencesForImplementation, Studio 23.10 falha:
+
+        BC30652: Reference required to assembly 'System.Collections'
+        BC31424: Type 'System.Net.NetworkCredential' has been forwarded
+                 to assembly 'System.Net.Primitives, Version=6.0.0.0'
+
+      Verificação empírica (2026-05-21):
+        - Projeto que ABRE em Studio 23.10 (AtualizarFimExecucao.xaml):
+          `<x:String>System.Net</x:String>` import PRESENTE.
+        - Projeto que QUEBRA (RetryCurrentTransaction.xaml): import
+          AUSENTE. Diff isolado (refs idênticos).
+
+      ENV-3 cobre 3 namespaces que aparecem em padrões Sicoob:
+        - System.Net (NetworkCredential, IPEndPoint, IPAddress, Cookie,
+          WebClient, HttpWebRequest)
+        - System.Runtime.CompilerServices (RuntimeHelpers, CallerMemberName)
+        - System.Text.RegularExpressions (Regex, Match, MatchCollection)
+
+      Detector é seletivo — emite finding APENAS quando XAML body usa o
+      type prefixado em VB expression. Skip silente se namespace já
+      importado ou usage ausente.
+
+      Forward-compat: Studio 25.x ignora imports redundantes.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.legacy_refs
+        function: detect_env3_ensure_namespace_imports
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding (type=insert_namespace_import,
+      # name=<namespace>). Idempotente.
+      prose: |
+        Inserir `<x:String>{namespace}</x:String>` no bloco
+        `<TextExpression.NamespacesForImplementation>` pra Studio 23.10
+        resolver types forwarded. Solução cosmética sem regressão.
 
   - id: J-12
     severity: ERROR
