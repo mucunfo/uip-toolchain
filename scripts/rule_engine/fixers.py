@@ -3090,6 +3090,79 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
     return True
 
 
+@register("normalize_visualbasic_settings")
+def apply_normalize_visualbasic_settings(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """ENV-4 fixer: normalize legacy `<mva:VisualBasic.Settings>text</...>`
+    para canonical `<VisualBasic.Settings><x:Null /></VisualBasic.Settings>`.
+
+    ROOT CAUSE BC30652/BC31424 (isolated 2026-05-22): text-content em
+    `<mva:VisualBasic.Settings>` ativa VB compiler resolução legacy mode →
+    Dictionary/NetworkCredential resolvem via facades v4 → mismatch com
+    forwarders v6. `<x:Null />` = modern empty marker → default .NET 6
+    resolver → BC clears. Studio "Import References" valida mecanismo.
+
+    Cobre:
+      - Forma A: `<mva:VisualBasic.Settings>...text...</mva:VisualBasic.Settings>`
+      - Forma B: `<mva:VisualBasic.Settings />` (self-closing)
+
+    Pós-replace, se `xmlns:mva="...System.Activities"` não tem outras
+    referências `mva:` no body, drop attribute do root.
+
+    Idempotente: skip se já normalizado.
+
+    Safety:
+      - Preserva BOM original (Studio padrão).
+      - Não toca instances dentro de `<!-- -->` (regex padrão não match).
+      - mva: usage check é case-sensitive, conservador (preserva xmlns se
+        qualquer mva: ocorre — ex: `mva:VisualBasicValue`).
+    """
+    had_bom = _file_has_bom(file)
+    content = file.read_text(encoding="utf-8-sig")
+
+    pat_text = re.compile(
+        r"(\n([ \t]*))<mva:VisualBasic\.Settings>[^<]*</mva:VisualBasic\.Settings>"
+    )
+    pat_self_closing = re.compile(
+        r"(\n([ \t]*))<mva:VisualBasic\.Settings\s*/>"
+    )
+
+    def _canonical_replacement(m: "re.Match[str]") -> str:
+        leading = m.group(1)
+        indent = m.group(2)
+        child_indent = indent + "  "
+        return (
+            f"{leading}<VisualBasic.Settings>"
+            f"\n{child_indent}<x:Null />"
+            f"\n{indent}</VisualBasic.Settings>"
+        )
+
+    new_content, n1 = pat_text.subn(_canonical_replacement, content)
+    new_content, n2 = pat_self_closing.subn(_canonical_replacement, new_content)
+
+    if n1 + n2 == 0:
+        return False
+
+    # Drop `xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;..."` se
+    # mva: prefix não usado em outros lugares (após replacement).
+    candidate = re.sub(
+        r"\s+xmlns:mva\s*=\s*\"clr-namespace:Microsoft\.VisualBasic\.Activities[^\"]*\"",
+        "",
+        new_content,
+        count=1,
+    )
+    if candidate != new_content and not re.search(r"\bmva:", candidate):
+        new_content = candidate
+
+    if not dry_run:
+        _write_preserving_bom(file, new_content, had_bom)
+    return True
+
+
 @register("strip_assembly_reference")
 def apply_strip_assembly_reference(file: Path, spec: dict, dry_run: bool = True,
                                     project_root: Path | None = None) -> bool:

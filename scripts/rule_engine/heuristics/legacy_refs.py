@@ -235,6 +235,248 @@ def detect_env3_ensure_namespace_imports(rule, fc, pc):
     return findings
 
 
+# ENV-4 — normalize legacy `<mva:VisualBasic.Settings>` text-content.
+#
+# ROOT CAUSE isolated empiricamente (2026-05-22, projeto contestacao-de-compras-
+# ajuste-na-reserva-de-fraude-performer):
+#
+#   <mva:VisualBasic.Settings>Assembly references and imported namespaces for
+#   internal implementation</mva:VisualBasic.Settings>
+#
+# Esse stub Studio pré-19.x (template REFramework antigo) é interpretado pelo
+# VB compiler como `Microsoft.VisualBasic.Activities.VisualBasicSettings`
+# instance com payload string → ativa modo LEGACY resolution → Dictionary +
+# NetworkCredential resolvem via facades v4 (mscorlib/System .NET Fx 4.x) →
+# mismatch contra forwarder v6 (System.Private.CoreLib) → BC30652 + BC31424.
+#
+# Studio "Import References" auto-fix substituí esse element por canonical
+# `<VisualBasic.Settings><x:Null /></VisualBasic.Settings>` modern empty marker
+# → VB compiler usa default .NET 6 resolver → Dictionary v6 + NetworkCredential
+# v6 resolvem corretamente → BC clears.
+#
+# Engine ENV-4 replica esse fix mecânico. Sem ele, W-11g/W-11y/ENV-2 (insert
+# refs) NÃO bastam — text-content overrides resolver mode independent das refs.
+#
+# Detector match também self-closing `<mva:VisualBasic.Settings />` (variante
+# Migrator emite às vezes — semanticamente equivalente legacy).
+_RE_VB_SETTINGS_LEGACY = re.compile(
+    r"<mva:VisualBasic\.Settings>[^<]*</mva:VisualBasic\.Settings>"
+    r"|<mva:VisualBasic\.Settings\s*/>"
+)
+
+
+def detect_env4_normalize_vb_settings(rule, fc, pc):
+    """ENV-4: emite finding se XAML tem `<mva:VisualBasic.Settings>` legacy
+    (text-content ou self-closing). Cada finding carrega
+    `mechanical=normalize_visualbasic_settings`.
+
+    ROOT CAUSE de BC30652/BC31424 isolated 2026-05-22. Studio auto-fix
+    valida o mecanismo (ver docstring module-level).
+
+    Idempotente: skip se elemento já normalizado para canonical
+    `<VisualBasic.Settings><x:Null /></VisualBasic.Settings>`.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    content = fc.active_content
+    m = _RE_VB_SETTINGS_LEGACY.search(content)
+    if not m:
+        return []
+
+    line_no = content[: m.start()].count("\n") + 1
+
+    return [
+        Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=line_no,
+            message=(
+                "XAML tem `<mva:VisualBasic.Settings>` legacy (text-content "
+                "ou self-closing). Esse stub Studio pré-19.x ativa VB "
+                "compiler resolução LEGACY → BC30652 (Dictionary "
+                "System.Collections v6) + BC31424 (NetworkCredential "
+                "System.Net.Primitives v6) mesmo com refs corretas. "
+                "Normalize para canonical `<VisualBasic.Settings><x:Null /></"
+                "VisualBasic.Settings>` modern empty marker."
+            ),
+            fix_mechanical={"type": "normalize_visualbasic_settings"},
+            fix_prose=(
+                "Substituir `<mva:VisualBasic.Settings>text</"
+                "mva:VisualBasic.Settings>` (ou self-closing) por "
+                "`<VisualBasic.Settings><x:Null /></VisualBasic.Settings>`. "
+                "Drop `xmlns:mva=\"...System.Activities\"` se mva: prefix "
+                "não usado em outros lugares."
+            ),
+        )
+    ]
+
+
+# W-32 — strip `<AssemblyReference>System.Runtime.WindowsRuntime</...>` que
+# não existe em .NET 6. Studio loga warn `XamlMigration: removed reference
+# System.Runtime.WindowsRuntime` a cada load do XAML (uma entrada por XAML —
+# 13 entradas em 09:30:46 no projeto contestacao). Studio remove on-load mas
+# não persiste no XAML — cycle infinito de migration warnings.
+#
+# Engine W-32 persiste o strip = engine garante limpeza idempotente, Studio
+# para de logar warnings repetidos. .NET 6 não tem esse assembly (WinRT
+# bridge era .NET Framework only). Strip safe sempre.
+_W32_OBSOLETE_DOTNET4_REFS: frozenset[str] = frozenset({
+    "System.Runtime.WindowsRuntime",
+})
+
+
+def detect_obsolete_dotnet4_refs(rule, fc, pc):
+    """W-32: emite finding por `<AssemblyReference>X</AssemblyReference>` que
+    é refs .NET Framework 4.x-only sem equivalente em .NET 6. Studio XamlMigration
+    strip on-load mas não persiste — engine W-32 persiste no XAML.
+
+    Lista canonical em `_W32_OBSOLETE_DOTNET4_REFS`. Conservadora: apenas refs
+    confirmadas obsoletas em .NET 6 (Studio log valida).
+
+    Reuse fixer `strip_assembly_reference` existente.
+
+    Idempotente: skip se nenhum ref obsoleto presente.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    content = fc.active_content
+    block_m = _RE_REFS_BLOCK.search(content)
+    if not block_m:
+        return []
+
+    block_body = block_m.group(1)
+    found: list[str] = []
+    for m in _RE_ASM_REF.finditer(block_body):
+        name = m.group(1).strip()
+        if name in _W32_OBSOLETE_DOTNET4_REFS:
+            found.append(name)
+
+    if not found:
+        return []
+
+    findings: list[Finding] = []
+    for name in found:
+        findings.append(
+            Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=1,
+                message=(
+                    f"XAML target=Windows tem `<AssemblyReference>{name}</"
+                    f"AssemblyReference>` — assembly obsoleto .NET Framework "
+                    f"4.x sem equivalente em .NET 6. Studio XamlMigration "
+                    f"strip on-load mas não persiste — cycle infinito de "
+                    f"WARN no Studio.Project.log a cada load."
+                ),
+                fix_mechanical={
+                    "type": "strip_assembly_reference",
+                    "name": name,
+                },
+                fix_prose=(
+                    f"Remover `<AssemblyReference>{name}</AssemblyReference>` "
+                    f"do bloco refs. Cleanup persistente — engine elimina "
+                    f"o que Studio strippa ao carregar o XAML."
+                ),
+            )
+        )
+
+    return findings
+
+
+# W-31 — scrub legacy facade refs sem usage em XAML body. Lista CONSERVADORA
+# de refs que Studio "Import References" auto-fix removeu em validation
+# empírica (2026-05-22, RetryCurrentTransaction.xaml). NÃO blind strip como
+# W-26 errado: detector verifica que ref não tem xmlns:* mapping body usage.
+#
+# Lista é específica a refs LEGACY FACADE template REFramework antigo que não
+# existem em .NET 6 OU não são usadas em workflows Sicoob padrão.
+_W31_LEGACY_FACADE_REFS: frozenset[str] = frozenset({
+    "OfficeDevPnP.Core",
+    "System.Configuration.Install",
+    "System.Data.Entity",
+    "UiPathTeam.SharePoint",
+    "UiPath.Word",
+})
+
+
+def detect_unused_legacy_facade_refs(rule, fc, pc):
+    """W-31: emite finding por `<AssemblyReference>X</AssemblyReference>` que
+    é facade Legacy template + NÃO tem usage no body XAML (sem xmlns prefix
+    apontando pro mesmo assembly).
+
+    Lista canonical em `_W31_LEGACY_FACADE_REFS`. Cada finding tem usage
+    guard: ref só é flagged se body NÃO tem `assembly=<name>` em qualquer
+    xmlns declaração.
+
+    Reuse fixer `strip_assembly_reference` existente.
+
+    Idempotente: skip se nenhum ref legacy presente sem usage.
+
+    Diferença W-26 errado: W-26 strippava mscorlib/System/System.Core blind
+    (sem guard) baseado em hipótese errada. W-31 stripa apenas facades
+    template Legacy SEM usage real comprovado.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    content = fc.active_content
+    block_m = _RE_REFS_BLOCK.search(content)
+    if not block_m:
+        return []
+
+    block_body = block_m.group(1)
+    # Lista xmlns declarations cuja assembly clause referencia algo
+    xmlns_assemblies: set[str] = set()
+    for m in re.finditer(r'xmlns:[A-Za-z_][\w]*="clr-namespace:[^"]*?;\s*assembly=([^"]+)"', content):
+        xmlns_assemblies.add(m.group(1).strip())
+
+    found: list[str] = []
+    for m in _RE_ASM_REF.finditer(block_body):
+        name = m.group(1).strip()
+        if name in _W31_LEGACY_FACADE_REFS and name not in xmlns_assemblies:
+            found.append(name)
+
+    if not found:
+        return []
+
+    findings: list[Finding] = []
+    for name in found:
+        findings.append(
+            Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=1,
+                message=(
+                    f"XAML target=Windows tem `<AssemblyReference>{name}</"
+                    f"AssemblyReference>` (facade Legacy) sem nenhum "
+                    f"`xmlns:*=\"clr-namespace:*;assembly={name}\"` no body. "
+                    f"Studio Import References auto-fix strippa esse ref "
+                    f"como template legacy unused. Engine W-31 replica."
+                ),
+                fix_mechanical={
+                    "type": "strip_assembly_reference",
+                    "name": name,
+                },
+                fix_prose=(
+                    f"Remover `<AssemblyReference>{name}</AssemblyReference>` "
+                    f"do bloco refs — facade Legacy sem usage body. "
+                    f"Validado contra W-26 errado (que strippava blind sem "
+                    f"guard de usage)."
+                ),
+            )
+        )
+
+    return findings
+
+
 def detect_servicemodel_refs(rule, fc, pc):
     """W-5: emite finding por `<AssemblyReference>System.ServiceModel*` órfã
     no bloco refs. WCF stack não é usado pelos pacotes pinados Sicoob (D-1) em
