@@ -49,7 +49,7 @@ def main() -> int:
              str(project_root), "--format", "json"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(SCRIPTS_DIR.parent),
-            timeout=60,
+            timeout=180,
         )
     except Exception as e:
         print(f"[uipath-hook] rule_engine failed: {e}", file=sys.stderr)
