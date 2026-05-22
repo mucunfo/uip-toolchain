@@ -249,55 +249,41 @@ def detect_ccs_contract_check(rule, fc, pc):
                     continue
                 expected_case = expected_lower[attr.lower()]
                 if attr != expected_case:
+                    # F36 guard REMOVED 2026-05-21: empiricamente Studio 23.10
+                    # (empresa deploy) reporta `Cannot set unknown member` em
+                    # casing errado independente de SecureString sibling. Engine
+                    # cascade rollback gate (analyzer-gate F35) já isola
+                    # ST-SEC-008 regression per-file caso cascade aconteça.
+                    # Guard anterior só deferia fix manual que nunca era feito.
+                    finding_msg = (
+                        f"{pkg}.{wf_name}: attribute '{attr}' usa casing errado. "
+                        f"Lib declara '{expected_case}'."
+                    )
                     if ss_sibling is not None:
-                        # F36 safety guard — manual review only
-                        findings.append(
-                            Finding(
-                                rule_id=rule.id,
-                                severity=rule.severity,
-                                category=rule.category,
-                                file=str(fc.path),
-                                line=line,
-                                message=(
-                                    f"{pkg}.{wf_name}: attribute '{attr}' usa "
-                                    f"casing errado (lib declara '{expected_case}'). "
-                                    f"NEEDS_REVIEW: invocation tem SecureString-bound "
-                                    f"sibling '[{ss_sibling}]' — auto-rename desencadeia "
-                                    f"ST-SEC-008 (scope regression). Fix via Studio UI."
-                                ),
-                                fix_mechanical=None,
-                                fix_prose=(
-                                    f"Renomear `{attr}` -> `{expected_case}` em "
-                                    f"`<{prefix}:{wf_name}>` MANUALMENTE via Studio "
-                                    f"(arrastar attribute no Properties panel — "
-                                    f"preserva scope SecureString). Auto-rename "
-                                    f"engine causa ST-SEC-008 regression."
-                                ),
-                            )
+                        finding_msg += (
+                            f" (SecureString-bound sibling '[{ss_sibling}]' presente — "
+                            f"se rename disparar ST-SEC-008 em analyzer-gate, "
+                            f"cascade rollback isola o arquivo automaticamente.)"
                         )
-                    else:
-                        findings.append(
-                            Finding(
-                                rule_id=rule.id,
-                                severity=rule.severity,
-                                category=rule.category,
-                                file=str(fc.path),
-                                line=line,
-                                message=(
-                                    f"{pkg}.{wf_name}: attribute '{attr}' usa casing errado. "
-                                    f"Lib declara '{expected_case}'."
-                                ),
-                                fix_mechanical={
-                                    "type": "rename_attribute",
-                                    "from": attr,
-                                    "to": expected_case,
-                                },
-                                fix_prose=(
-                                    f"Renomear `{attr}` → `{expected_case}` em "
-                                    f"`<{prefix}:{wf_name}>` (case-correction conforme "
-                                    f"contrato lib {pkg})."
-                                ),
-                            )
+                    findings.append(
+                        Finding(
+                            rule_id=rule.id,
+                            severity=rule.severity,
+                            category=rule.category,
+                            file=str(fc.path),
+                            line=line,
+                            message=finding_msg,
+                            fix_mechanical={
+                                "type": "rename_attribute",
+                                "from": attr,
+                                "to": expected_case,
+                            },
+                            fix_prose=(
+                                f"Renomear `{attr}` → `{expected_case}` em "
+                                f"`<{prefix}:{wf_name}>` (case-correction conforme "
+                                f"contrato lib {pkg})."
+                            ),
                         )
+                    )
 
     return findings

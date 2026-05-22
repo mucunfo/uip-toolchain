@@ -1162,6 +1162,12 @@ _N5_WRAP_ABLE_NON_QUALIFIED = frozenset({
     # ActivityAction: delegate body — accept single Activity. Sequence é
     # Activity-shape, wrap legítimo.
     "ActivityAction",
+    # FlowStep: System.Activities.Statements — single-Activity slot (implicit
+    # `Action` property). Schema não cobre WF base types → cai em "unknown".
+    # Insert direto como sibling causa Studio error `'Action' property has
+    # already been set on 'FlowStep'`. Wrap em Sequence é safe: Sequence é
+    # Activity → FlowStep Action aceita → 1 child Activity preserved.
+    "FlowStep",
 })
 
 
@@ -2307,6 +2313,78 @@ def apply_project_manifest_remove_stale_entries(
     return True
 
 
+@register("project_manifest_set_keys")
+def apply_project_manifest_set_keys(
+    file: Path, spec: dict, dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """ENV-1 fixer: set/override múltiplas keys em project.json via paths dotted.
+
+    Spec:
+      keys: dict[str, Any] — path dotted → valor desejado.
+            Ex: {"runtimeOptions.mustRestoreAllDependencies": True,
+                 "designOptions.modernBehavior": False}
+            Cria sub-objects intermediários se ausentes. Sobrescreve valores
+            divergentes. Type-check estrito por leaf — só aceita primitivo
+            (bool/int/str/None) na folha pra evitar mutações estruturais
+            acidentais.
+
+    Idempotente: skip se todos keys já têm valor desejado. Preserva BOM +
+    indent=2 + trailing newline (mesmo padrão J-8/J-12).
+    """
+    import json as _json
+    keys = spec.get("keys") or {}
+    if not keys or not isinstance(keys, dict):
+        return False
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    text = raw.decode("utf-8-sig")
+    try:
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict):
+        return False
+
+    _ALLOWED_LEAF = (bool, int, float, str, type(None))
+    changed = False
+    for dotted, desired in keys.items():
+        if not isinstance(desired, _ALLOWED_LEAF):
+            continue  # safety: skip non-primitive leaf
+        parts = dotted.split(".")
+        cur = data
+        for k in parts[:-1]:
+            nxt = cur.get(k)
+            if not isinstance(nxt, dict):
+                if nxt is not None:
+                    # collision com tipo não-dict → skip esse key (não
+                    # sobrescrever array/scalar com object).
+                    cur = None
+                    break
+                nxt = {}
+                cur[k] = nxt
+            cur = nxt
+        if cur is None:
+            continue
+        leaf = parts[-1]
+        existing = cur.get(leaf, _SENTINEL)
+        if existing == desired:
+            continue
+        cur[leaf] = desired
+        changed = True
+
+    if not changed:
+        return False
+    new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+_SENTINEL = object()
+
+
 @register("gitignore_append_lines")
 def apply_gitignore_append_lines(file: Path, spec: dict, dry_run: bool = True) -> bool:
     """HY-4 fixer: garante entries obrigatórios em .gitignore.
@@ -2900,6 +2978,76 @@ def apply_insert_assembly_reference(file: Path, spec: dict, dry_run: bool = True
     return True
 
 
+@register("insert_namespace_import")
+def apply_insert_namespace_import(file: Path, spec: dict, dry_run: bool = True,
+                                    project_root: Path | None = None) -> bool:
+    """ENV-3 fixer: insere `<x:String>NS</x:String>` dentro do bloco
+    `<TextExpression.NamespacesForImplementation>` antes da close tag,
+    preservando indent existente.
+
+    spec.name = nome namespace (ex: 'System.Net').
+
+    Idempotente: skip se namespace já presente. Sem bloco refs → no-op
+    (XAML não-workflow).
+
+    Studio 23.10 precisa imports explícitos no NamespacesForImplementation
+    pra VB resolver types em assemblies forwarded chain (NetworkCredential
+    via System.Net → System.Net.Primitives, etc.).
+    """
+    name = (spec or {}).get("name")
+    if not name or not isinstance(name, str):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", name):
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Idempotent: já presente
+    if re.search(rf"<x:String>{re.escape(name)}</x:String>", content):
+        return False
+
+    # Match bloco NamespacesForImplementation. Studio escreve via
+    # <scg:List x:TypeArguments="x:String" Capacity="N"> ... </scg:List>.
+    block_pat = re.compile(
+        r'(<scg:List\s+x:TypeArguments="x:String"[^>]*>.*?)(\n[ \t]*)(</scg:List>)',
+        re.DOTALL,
+    )
+    # Bloco específico — precisa estar dentro de NamespacesForImplementation
+    ns_block_pat = re.compile(
+        r'(<TextExpression\.NamespacesForImplementation>.*?)'
+        r'(<scg:List\s+x:TypeArguments="x:String"[^>]*>)(.*?)(\n[ \t]*)(</scg:List>)'
+        r'(.*?</TextExpression\.NamespacesForImplementation>)',
+        re.DOTALL,
+    )
+    m = ns_block_pat.search(content)
+    if not m:
+        return False
+
+    body = m.group(3)
+    close_indent = m.group(4)
+
+    # Indent dos x:String: pega do primeiro existente; fallback close_indent + 2 spaces
+    str_indent_m = re.search(r"\n([ \t]*)<x:String>", body)
+    if str_indent_m:
+        indent = "\n" + str_indent_m.group(1)
+    else:
+        indent = close_indent + "  "
+
+    insert = f"{indent}<x:String>{name}</x:String>"
+    new_content = (
+        content[:m.start(4)] + insert + close_indent
+        + m.group(5) + m.group(6) + content[m.end():]
+    )
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
 @register("strip_xml_attribute")
 def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
                                project_root: Path | None = None) -> bool:
@@ -2939,6 +3087,79 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
         raw = file.read_bytes()
         prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
         file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("normalize_visualbasic_settings")
+def apply_normalize_visualbasic_settings(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """ENV-4 fixer: normalize legacy `<mva:VisualBasic.Settings>text</...>`
+    para canonical `<VisualBasic.Settings><x:Null /></VisualBasic.Settings>`.
+
+    ROOT CAUSE BC30652/BC31424 (isolated 2026-05-22): text-content em
+    `<mva:VisualBasic.Settings>` ativa VB compiler resolução legacy mode →
+    Dictionary/NetworkCredential resolvem via facades v4 → mismatch com
+    forwarders v6. `<x:Null />` = modern empty marker → default .NET 6
+    resolver → BC clears. Studio "Import References" valida mecanismo.
+
+    Cobre:
+      - Forma A: `<mva:VisualBasic.Settings>...text...</mva:VisualBasic.Settings>`
+      - Forma B: `<mva:VisualBasic.Settings />` (self-closing)
+
+    Pós-replace, se `xmlns:mva="...System.Activities"` não tem outras
+    referências `mva:` no body, drop attribute do root.
+
+    Idempotente: skip se já normalizado.
+
+    Safety:
+      - Preserva BOM original (Studio padrão).
+      - Não toca instances dentro de `<!-- -->` (regex padrão não match).
+      - mva: usage check é case-sensitive, conservador (preserva xmlns se
+        qualquer mva: ocorre — ex: `mva:VisualBasicValue`).
+    """
+    had_bom = _file_has_bom(file)
+    content = file.read_text(encoding="utf-8-sig")
+
+    pat_text = re.compile(
+        r"(\n([ \t]*))<mva:VisualBasic\.Settings>[^<]*</mva:VisualBasic\.Settings>"
+    )
+    pat_self_closing = re.compile(
+        r"(\n([ \t]*))<mva:VisualBasic\.Settings\s*/>"
+    )
+
+    def _canonical_replacement(m: "re.Match[str]") -> str:
+        leading = m.group(1)
+        indent = m.group(2)
+        child_indent = indent + "  "
+        return (
+            f"{leading}<VisualBasic.Settings>"
+            f"\n{child_indent}<x:Null />"
+            f"\n{indent}</VisualBasic.Settings>"
+        )
+
+    new_content, n1 = pat_text.subn(_canonical_replacement, content)
+    new_content, n2 = pat_self_closing.subn(_canonical_replacement, new_content)
+
+    if n1 + n2 == 0:
+        return False
+
+    # Drop `xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;..."` se
+    # mva: prefix não usado em outros lugares (após replacement).
+    candidate = re.sub(
+        r"\s+xmlns:mva\s*=\s*\"clr-namespace:Microsoft\.VisualBasic\.Activities[^\"]*\"",
+        "",
+        new_content,
+        count=1,
+    )
+    if candidate != new_content and not re.search(r"\bmva:", candidate):
+        new_content = candidate
+
+    if not dry_run:
+        _write_preserving_bom(file, new_content, had_bom)
     return True
 
 

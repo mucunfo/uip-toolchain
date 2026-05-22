@@ -1629,7 +1629,7 @@ def _cmd_fix(args) -> int:
                     continue
                 # F35: skip files frozen por analyzer-gate em retry anterior.
                 # Mantemos arquivo em estado pré-loop pra preservar absence de
-                # regression (ex.: ST-SEC-008 SecureString scope quebrado por W-26).
+                # regression (ex.: ST-SEC-008 SecureString scope cascade).
                 try:
                     if Path(f.file).resolve() in frozen_files:
                         continue
@@ -1764,7 +1764,24 @@ def _cmd_fix(args) -> int:
 
         new_issues = diff_new_issues(analyzer_baseline, analyzer_post)
         resolved = analyzer_baseline - analyzer_post
-        new_errs = [i for i in new_issues if i.severity == "Error"]
+        # F38 (2026-05-21): analyzer-gate ignora errors policy-aceitos Sicoob
+        # (ST-SEC-008 SecureString chain, etc.). Antes filtro só usava RAW
+        # severity Studio analyzer — _ANALYZER_SICOOB_POLICY downgrade só
+        # aplicava em review formatting (line 696-731). Resultado: gate
+        # rolava back fixes ESCANDO-se em policy-aceitos como se fossem
+        # regressões reais. Aplica policy filter aqui pra consistência.
+        new_errs = [
+            i for i in new_issues
+            if i.severity == "Error"
+            and i.error_code not in _ANALYZER_SICOOB_POLICY
+        ]
+        # Surface policy-suppressed "errors" as INFO-level diagnostics (não
+        # bloqueia gate). Auditoria visível.
+        policy_suppressed_errs = [
+            i for i in new_issues
+            if i.severity == "Error"
+            and i.error_code in _ANALYZER_SICOOB_POLICY
+        ]
         new_warns = [i for i in new_issues if i.severity == "Warning"]
         resolved_count = len(resolved)
         print(
@@ -1773,6 +1790,16 @@ def _cmd_fix(args) -> int:
             f"{resolved_count} resolved"
         )
 
+        if policy_suppressed_errs:
+            print(
+                f"\n[ANALYZER POLICY-SUPPRESSED] {len(policy_suppressed_errs)} "
+                f"errors aceitos por _ANALYZER_SICOOB_POLICY (não causam rollback):"
+            )
+            for i in policy_suppressed_errs[:10]:
+                policy_note = _ANALYZER_SICOOB_POLICY.get(i.error_code, "")
+                print(f"  ~ {format_issue(i)[:160]} | {policy_note[:80]}")
+            if len(policy_suppressed_errs) > 10:
+                print(f"  ... +{len(policy_suppressed_errs)-10} more")
         if not new_errs:
             # Gate limpo. Warns são informativas.
             if new_warns:

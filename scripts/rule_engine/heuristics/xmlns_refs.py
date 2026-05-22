@@ -38,13 +38,13 @@ _RE_REFS_BLOCK = re.compile(
     r'<TextExpression\.ReferencesForImplementation>'
 )
 
-# Assemblies que NÃO devem ser auto-adicionados como AssemblyReference
-# mesmo quando aparecem em xmlns. Razões:
+# Assemblies que NÃO devem ser auto-adicionados via xmlns detection
+# (cobertos por outras rules ou skipados por design).
 #   - System.Private.CoreLib: synthetic .NET 6 internal, Studio reclama
-#     se incluído explicitamente em alguns contextos
-#   - mscorlib/System/System.Core: redundantes em .NET 6 (mscorlib supersedido
-#     por System.Private.CoreLib; System/System.Core são facades type-forwarder).
-#     W-26 strip-eia esses 3 → add+strip mesmo fix loop = divergence infinita.
+#     se incluído explicitamente em alguns contextos.
+#   - mscorlib/System/System.Core: cobertos por ENV-2 (legacy compat refs
+#     deploy Studio 23.10). Skipar aqui evita conflito entre xmlns-detection
+#     genérica e rule dedicada ENV-2.
 #   - Empty/whitespace
 _SKIP_ASSEMBLIES: frozenset[str] = frozenset({
     "",
