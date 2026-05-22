@@ -760,7 +760,7 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     if verbose:
         print(f"[analyzer-gate] {injected} findings injected "
               f"({policy_downgraded} downgraded por policy Sicoob; exit code "
-              f"{proc.returncode}).", file=sys.stderr)
+              f"{res.returncode}).", file=sys.stderr)
 
 
 # NuGet warning codes que tratamos como ERROR (blocking publish):
