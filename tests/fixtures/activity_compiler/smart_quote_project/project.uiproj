@@ -1,0 +1,6 @@
+{
+  "Name": "SmartQuoteProject",
+  "ProjectType": "Library",
+  "Description": "Fixture with smart-quote VB compile fail for activity_compiler tests.",
+  "MainFile": "Main.xaml"
+}

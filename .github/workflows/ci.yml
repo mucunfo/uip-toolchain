@@ -32,3 +32,8 @@ jobs:
 
       - name: Run pytest
         run: python -m pytest tests/ -q --tb=short
+
+      - name: Snapshot regression verify
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m scripts.snapshot_regression --skip-missing

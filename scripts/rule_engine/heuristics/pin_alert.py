@@ -99,9 +99,39 @@ def detect_pin_alert(rule, fc, pc):
                             f">= {intro_raw} mas pin atual é {raw}. "
                             f"Migrator pode ter injetado pós-bump. {fix_text}"
                         ),
-                        # Per-finding mechanical: yaml api entry pode declarar mechanical
-                        # (strip_xml_attribute pra attribute drops). Element replaces (e.g.,
-                        # NWindowOperation) ficam sem mechanical → contextual via classifier.
+                        fix_mechanical=mech_spec,
+                        fix_prose=fix_text or None,
+                    )
+                )
+
+        # `removed_apis`: APIs/atribs removidos em versão >= removed_in.
+        # Caso típico: Activity Migrator faz upgrade (ex: Office365 1.x→3.x)
+        # mas deixa atributos obsoletos no XAML legacy → Studio load-fail
+        # `Não é possível definir o associado desconhecido 'Activity.Attr'`.
+        for api in (pkg_data or {}).get("removed_apis", []) or []:
+            rem_raw = api.get("removed_in")
+            pat = api.get("pattern")
+            if not rem_raw or not pat:
+                continue
+            rem_v = _parse_v(rem_raw)
+            if pinned_v < rem_v:
+                continue  # pin ainda inclui API — sem alerta
+            mech_spec = api.get("mechanical")
+            for match in re.finditer(pat, content):
+                line = content[: match.start()].count("\n") + 1
+                fix_text = api.get("fix", "")
+                findings.append(
+                    Finding(
+                        rule_id=rule.id,
+                        severity=rule.severity,
+                        category=rule.category,
+                        file=str(fc.path),
+                        line=line,
+                        message=(
+                            f"{rule.title}: API '{pat}' removida em {package} "
+                            f">= {rem_raw} mas XAML legacy ainda usa. "
+                            f"Migrator upgrade deixou attr obsoleto. {fix_text}"
+                        ),
                         fix_mechanical=mech_spec,
                         fix_prose=fix_text or None,
                     )

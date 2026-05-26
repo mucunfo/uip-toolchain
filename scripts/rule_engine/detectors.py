@@ -194,7 +194,10 @@ def detect_duplicate_id(rule: Rule, fc: FileContext, pc) -> list[Finding]:
     # tolerados. Layer 2 (Studio Analyzer) silent.
     skip_patterns = params.get("skip_patterns") or []
     skip_re = [re.compile(p) for p in skip_patterns]
-    pattern = re.compile(rf'{re.escape(attr)}="([^"]+)"')
+    # Negative lookbehind impede match em attrs que TERMINAM com o nome
+    # (ex: `MockedActivityIdRef=` é REFERENCE p/ um IdRef, não declaração;
+    # só `sap2010:WorkflowViewState.IdRef=` é declaração real).
+    pattern = re.compile(rf'(?<![A-Za-z0-9_]){re.escape(attr)}="([^"]+)"')
     values = pattern.findall(fc.active_content)
     counts = Counter(values)
     findings: list[Finding] = []
@@ -203,7 +206,7 @@ def detect_duplicate_id(rule: Rule, fc: FileContext, pc) -> list[Finding]:
             continue
         if any(sp.match(val) for sp in skip_re):
             continue
-        m = re.search(rf'{re.escape(attr)}="{re.escape(val)}"', fc.active_content)
+        m = re.search(rf'(?<![A-Za-z0-9_]){re.escape(attr)}="{re.escape(val)}"', fc.active_content)
         line = _line_for(fc.active_content, m.start()) if m else 1
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,

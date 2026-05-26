@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <RootNamespace>SicoobUiPath.RuntimeLoadTest</RootNamespace>
+    <AssemblyName>runtime_loadtest</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>10</LangVersion>
+    <UseWindowsForms>false</UseWindowsForms>
+    <UseWPF>false</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      UiPath.Workflow = Public SDK seam (CoreWF fork) que provê
+      System.Activities.* runtime + XamlIntegration + Validation.
+      Latest publicado: 6.0.0-20240401-07 (feed UiPath-Official flat2).
+      Plano original pedia 6.0.0-20250901-04 mas ainda não publicada
+      no feed público — fallback prerelease mais recente.
+
+      UiPath.Activities.Api 25.4.4 NÃO existe no feed público
+      (max 24.10.1). Plano confundiu com UiPath.System.Activities 25.4.4.
+      Trocado por UiPath.System.Activities 25.4.4 — provê namespace
+      xmlns "http://schemas.uipath.com/workflow/activities" required
+      para resolver tipos UiPath durante XAML load.
+    -->
+    <PackageReference Include="UiPath.Workflow" Version="6.0.0-20240401-07" />
+    <PackageReference Include="UiPath.System.Activities" Version="25.4.4" />
+    <PackageReference Include="UiPath.UIAutomation.Activities" Version="25.10.8" />
+    <!--
+      UiPath.Activities.Contracts 22.10.3 = shared contracts assembly
+      (referenced by UiPath.OCR/Mail/Excel activities). Public SDK
+      seam não traz transitivamente; add explícito p/ resolver
+      FileNotFoundException durante XAML load das atividades core.
+    -->
+    <PackageReference Include="UiPath.Activities.Contracts" Version="22.10.3" />
+    <!--
+      Canonical Sicoob project.json dependencies — pin EXATO Sicoob para
+      cada pacote ativo. Sem essas refs, XAMLs que usam ExcelApplicationScope,
+      SendMail, Office365 activities falham com type unresolved durante load.
+    -->
+    <PackageReference Include="UiPath.Excel.Activities" Version="3.1.2" />
+    <PackageReference Include="UiPath.Mail.Activities" Version="1.24.2" />
+    <PackageReference Include="UiPath.MicrosoftOffice365.Activities" Version="2.7.24" />
+    <PackageReference Include="UiPath.Testing.Activities" Version="24.10.4" />
+    <!--
+      Phase 1A.3 — closure transitive de CCS_Controle.dll.
+      CCS_Controle.1.1.0.nuspec declara:
+        UiPath.Database.Activities 1.10.1
+        UiPath.WebAPI.Activities 1.20.1
+      Sem essas refs, Phase 1A.2 CCS DLL preload dispara
+      FileNotFoundException ao tocar tipos Database/WebAPI durante
+      XAML load → 6 RT-LOAD-UNHANDLED. Pin EXATO ditado pelo nuspec
+      CCS (NÃO override — Sicoob é source-of-truth).
+      Nota: Sicoob usa "WebAPI.Activities" (NÃO "Web.Activities").
+    -->
+    <PackageReference Include="UiPath.Database.Activities" Version="1.10.1" />
+    <PackageReference Include="UiPath.WebAPI.Activities" Version="1.20.1" />
+    <PackageReference Include="Microsoft.VisualBasic" Version="10.3.0" />
+  </ItemGroup>
+
+  <!--
+    Phase 1A.2 — CCS_*.dll closure injection.
+    CCS_*.nupkg só existe no Sicoob feed (não-público), e Sicoob não tem
+    feed NuGet local restorable. Strategy: pre-extract DLLs do .nupkgs/
+    snapshot local (extract_ccs.ps1), depois MSBuild copia pra output dir
+    como Content "PreserveNewest". Sem PackageReference (não tem feed).
+
+    Idempotência: marker file ccs_libs/.extracted.marker. Build script
+    chama extract_ccs.ps1 só quando marker faltar — re-build em cima de
+    ccs_libs já extraído é no-op.
+  -->
+  <Target Name="ExtractCcsLibs" BeforeTargets="BeforeBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\extract_ccs.ps1&quot;"
+          Condition="!Exists('$(MSBuildProjectDirectory)\ccs_libs\.extracted.marker')" />
+  </Target>
+
+  <ItemGroup>
+    <!--
+      Flatten via <Link>: força copy ao output dir SEM preservar subpath
+      `ccs_libs\`. Program.cs::PreloadXmlnsBearingAssemblies() scaneia só
+      o binDir raiz (non-recursive), então CCS_*.dll TEM que ficar em
+      bin\Release\net6.0-windows\*.dll, não em bin\...\ccs_libs\*.dll.
+    -->
+    <None Include="ccs_libs\*.dll" Condition="Exists('$(MSBuildProjectDirectory)\ccs_libs')">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+</Project>

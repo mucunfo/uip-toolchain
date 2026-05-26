@@ -198,6 +198,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_stats(args)
     if args.command == "all":
         return _cmd_all(args)
+    if args.command == "pre-migrate-check":
+        return _cmd_pre_migrate_check(args)
+    if args.command == "pack-scrub":
+        return _cmd_pack_scrub(args)
+    if args.command == "migrate-check":
+        return _cmd_migrate_check(args)
 
     parser.print_help()
     return EXIT_OK
@@ -218,6 +224,8 @@ def uip_main(argv: list[str] | None = None) -> int:
     explicit_subcommands = {
         "review", "fix", "list", "validate", "docs", "stats", "all",
         "migrate-windows", "phase-out",
+        # Phase 7 (2026-05): new standalone subcommands.
+        "pre-migrate-check", "pack-scrub", "migrate-check",
     }
     if argv and argv[0] in explicit_subcommands:
         return main(argv)
@@ -267,6 +275,30 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Timeout uipcli publish (pack dry-run) em segundos (default 600).")
     rev.add_argument("--nuget-gate-timeout", type=int, default=300,
                      help="Timeout NuGet restore em segundos (default 300).")
+    rev.add_argument("--runtime-loadtest-timeout", type=int, default=180,
+                     help="Timeout (s) pra runtime_loadtest .NET subprocess "
+                          "gate (default 180). Carrega cada XAML via "
+                          "ActivityXamlServices.Load + CacheMetadata walk; "
+                          "catches Variable.Default VB compile errors, type "
+                          "resolution fails, malformed Activity tree.")
+    # Phase 1B (2026-05): activity-compile gate paralelo. AOT compile VB
+    # expressions via UiPath.ActivityCompiler.CommandLine.exe (binário
+    # oficial Studio). Catches BC<NNNN> em Variable.Default / InArgument /
+    # OutArgument que escapam ao analyzer estático.
+    rev.add_argument("--activity-compile-timeout", type=int, default=180,
+                     help="Timeout (s) pra UiPath.ActivityCompiler.CommandLine "
+                          "subprocess gate (default 180). Invoca o binário "
+                          "oficial Studio (Stream E §01) pra compilar AOT as "
+                          "expressions VB de cada XAML. Catches BC<NNNN> VB "
+                          "compile errors em Variable.Default / InArgument / "
+                          "OutArgument que escapam ao analyzer estático.")
+    # Phase 6 (2026-05): executor-validate gate (opt-in via env
+    # UIPATH_RULES_EXECUTOR_GATE=1). Per-XAML invocation via UiRobot wrapper.
+    # Caro — só ativado por env, NÃO default.
+    rev.add_argument("--executor-timeout", type=int, default=300,
+                     help="Per-XAML timeout (s) para executor-validate gate "
+                          "(opt-in via UIPATH_RULES_EXECUTOR_GATE=1). "
+                          "Default 300.")
 
     st = sub.add_parser("stats", help="Aggregate telemetry: top rules + trends")
     st.add_argument("--since", default="30d",
@@ -342,6 +374,85 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Sobrescreve --out se já existir")
     mw.add_argument("--dry-run", action="store_true",
                     help="Mostra plano, não executa Migrator")
+
+    # Phase 2 (2026-05): pre-migrate-check subcommand. Offline clone do
+    # MigratedPackageVersionResolver — reproduz §6 do dossier Stream E.
+    # Surfaces drift PRE Activity Migrator pra evitar surprise post-migrate.
+    pmc = sub.add_parser(
+        "pre-migrate-check",
+        help="Offline pre-check pin drift PRE Activity Migrator (reproduz "
+             "MigratedPackageVersionResolver.GetRecommendedVersion §6).",
+    )
+    pmc.add_argument("path", help="Project root path (must contain project.json)")
+    pmc.add_argument(
+        "--target-framework",
+        default="net6.0-windows7.0",
+        help="TFM target post-migrate (default net6.0-windows7.0).",
+    )
+    pmc.add_argument(
+        "--cache-dir",
+        default=str(Path(__file__).resolve().parents[2] / ".tmp" / "nuget_cache"),
+        help="NuGet response cache dir (default .uipath-rules/.tmp/nuget_cache/).",
+    )
+    pmc.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format.",
+    )
+    pmc.add_argument(
+        "--include-prerelease",
+        action="store_true",
+        help="Include -prerelease versions (default off; matches Studio).",
+    )
+    # Phase 2.1 (2026-05): local .nupkgs/ folder fallback. Source-of-truth para
+    # pacotes proprietarios CCS_* (Sicoob) que nao existem em nuget.org public.
+    pmc.add_argument(
+        "--local-nupkgs",
+        default=r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs",
+        help="Pasta local .nupkgs/ usada como source-of-truth offline para "
+             "pacotes proprietarios CCS_* (Sicoob). Pass '' (empty) para "
+             "desabilitar e usar apenas NuGet public.",
+    )
+
+    # Phase 4 (2026-05): pack-scrub subcommand. Remove <repository> leak do
+    # .nuspec dentro de um .nupkg published. Stream E dossier §05.
+    ps = sub.add_parser(
+        "pack-scrub",
+        help="Remove <repository> leak do .nuspec dentro de um .nupkg "
+             "post-publish (Stream E dossier §05)",
+    )
+    ps.add_argument("nupkg", help="Path ao .nupkg")
+    ps.add_argument("-o", "--output", default=None,
+                    help="Output path; default = inplace (atomic replace)")
+    ps.add_argument("--inspect-only", action="store_true",
+                    help="Só inspect, não modifica (alias: --dry-run)")
+    ps.add_argument("--dry-run", action="store_true", dest="inspect_only",
+                    help=argparse.SUPPRESS)
+    ps.add_argument("--sign-cert", default=None,
+                    help="Se setado, invoca `nuget sign` post-scrub com este "
+                         "cert thumbprint (SHA-1/SHA-256). Requer nuget no PATH.")
+    ps.add_argument("--timestamper",
+                    default="http://timestamp.digicert.com",
+                    help="RFC 3161 timestamp server (usado só se --sign-cert)")
+
+    # Phase 5 (2026-05): migrate-check subcommand (advisory, opt-in).
+    # Reflection-driven Activity Migrator probe — surfaces what GA Migrator
+    # would do, sem mutar projeto.
+    mc = sub.add_parser(
+        "migrate-check",
+        help="Reflection-driven Activity Migrator probe (Stream E §04). "
+             "Surfaces what the GA 'Migrate to Windows' would do, sem mutar.",
+    )
+    mc.add_argument("project", help="Path ao project root ou project.json")
+    mc.add_argument("--dry-run", action="store_true", default=True,
+                    help="DEFAULT True — apenas advisory, não muta XAML")
+    mc.add_argument("--dll", default=None,
+                    help="Override UiPath.UIAutomationNext.Migration.dll path")
+    mc.add_argument("--format", choices=["json", "text"], default="text",
+                    help="Output format (default text)")
+    mc.add_argument("--timeout", type=int, default=300,
+                    help="Timeout (s) para migrator_headless subprocess (default 300)")
 
     al = sub.add_parser(
         "all",
@@ -455,7 +566,39 @@ def _cmd_review(args) -> int:
                     verbose=verbose,
                 ),
             ),
+            (
+                "runtime-loadtest",
+                lambda: _run_runtime_loadtest_gate(
+                    result, args.path,
+                    timeout=getattr(args, "runtime_loadtest_timeout", 180),
+                    verbose=verbose,
+                ),
+            ),
+            # Phase 1B (2026-05): AOT VB compile via Studio's
+            # UiPath.ActivityCompiler.CommandLine.exe — complementar a
+            # runtime-loadtest (que carrega XAML via ActivityXamlServices.Load
+            # sem AOT-compilar expressions).
+            (
+                "activity-compile",
+                lambda: _run_activity_compile_gate(
+                    result, args.path,
+                    timeout=getattr(args, "activity_compile_timeout", 180),
+                    verbose=verbose,
+                ),
+            ),
         ]
+        # Phase 6 (2026-05): executor-validate gate é OPT-IN via env var.
+        # Caro (15-300s/XAML), em projetos Windows target emite só INFRA.
+        # Habilita só quando há caso real de drift pack-gate-only não pega.
+        if _os.environ.get("UIPATH_RULES_EXECUTOR_GATE", "").strip() in ("1", "true", "yes"):
+            gates.append((
+                "executor-validate",
+                lambda: _run_executor_validate_gate(
+                    result, args.path,
+                    timeout=getattr(args, "executor_timeout", 300),
+                    verbose=verbose,
+                ),
+            ))
         with ThreadPoolExecutor(max_workers=len(gates)) as ex:
             future_to_name = {ex.submit(fn): name for name, fn in gates}
             for fut in as_completed(future_to_name):
@@ -1150,6 +1293,104 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                           file=sys.stderr)
 
 
+def _run_runtime_loadtest_gate(result, project_path: str, timeout: int = 180,
+                                verbose: bool = False) -> None:
+    """PHASE 2 gate: runtime XAML load test via .NET subprocess.
+
+    Carrega cada XAML do projeto via UiPath SDK ActivityXamlServices.Load
+    + WorkflowInspectionServices.CacheMetadata. Catches errors que analyze
+    estático não pega:
+      - VB compile errors em Variable.Default (smart-quote “” bugs etc.)
+      - Type resolution failures (assembly ref missing)
+      - Malformed Activity tree (XAML parse errors)
+      - Required arg sem binding, type mismatch
+
+    Custos: cheaper que pack-gate full publish (~5-30s per projeto), mais
+    profundo que analyze (que só roda regras estáticas declarativas).
+
+    Graceful degradation: se binary `runtime_loadtest.exe` não built,
+    wrapper emite finding diagnóstico RT-LOAD-INFRA (severity WARN, não
+    bloqueia engine PASS) + retorna. Build instructions em
+    `.uipath-rules/runtime_loadtest/README.md`.
+    """
+    from pathlib import Path as _Path
+    from .runtime_loadtest import run_loadtest
+
+    project = _Path(project_path)
+    if verbose:
+        print(f"[runtime-loadtest] running em {project}", file=sys.stderr)
+    code, findings = run_loadtest(project, timeout=timeout)
+    for f in findings:
+        result.add(f)
+    if verbose:
+        print(f"[runtime-loadtest] exit={code} findings={len(findings)}",
+              file=sys.stderr)
+
+
+def _run_activity_compile_gate(result, project_path: str, timeout: int = 180,
+                                verbose: bool = False) -> None:
+    """PHASE 2 gate: AOT compile VB expressions via Studio compiler subprocess.
+
+    Invoca UiPath.ActivityCompiler.CommandLine.exe (mesmo binário que Studio
+    usa internamente durante Publish) com verb `run` em modo dry-run pra
+    capturar BC<NNNN> compile diagnostics de expressions em:
+      - Variable.Default (smart-quote bugs, parens unbalanced, identifier
+        not declared)
+      - InArgument / OutArgument expression scope
+      - Type unresolved em condições IfElse/While/Assign
+
+    Custos: mais profundo que analyzer (que só roda regras declarativas),
+    overlaps com runtime-loadtest (que carrega XAML via ActivityXamlServices
+    sem AOT-compilar expressions). Os dois são complementares:
+      - runtime-loadtest catches XAML parse + CacheMetadata + type resolution.
+      - activity-compile catches VB syntax + expression-scope compile errors.
+
+    Graceful degradation: se Studio não instalado / binary não encontrado,
+    wrapper emite AC-COMPILE-INFRA (severity WARN, não bloqueia engine PASS).
+    Override binary via env UIPATH_ACTIVITY_COMPILER_BIN.
+    """
+    from pathlib import Path as _Path
+    from .activity_compiler import run_compile
+
+    project = _Path(project_path)
+    if verbose:
+        print(f"[activity-compile] running em {project}", file=sys.stderr)
+    code, findings = run_compile(project, timeout=timeout)
+    for f in findings:
+        result.add(f)
+    if verbose:
+        print(f"[activity-compile] exit={code} findings={len(findings)}",
+              file=sys.stderr)
+
+
+def _run_executor_validate_gate(result, project_path: str, timeout: int = 300,
+                                 verbose: bool = False) -> None:
+    """PHASE 2 gate (opt-in): Robot Executor wrapper validation.
+
+    Invoca UiRobot wrapper (`executor_drive`) por XAML safe-to-run no
+    projeto. Catches drift `Activity could not be loaded` que pack-gate /
+    analyze não pegam em legacy targets ou Tests/Test_*.xaml pre-pack.
+
+    Caro: 15-60s por XAML, projetos têm 5-30 tests → adiciona 2-15min ao
+    pipeline. Por isso **opt-in** via `UIPATH_RULES_EXECUTOR_GATE=1`.
+
+    Em projetos Sicoob modernos (Windows target), UiRobot CLI rejeita raw
+    XAML — gate emite só RB-EXEC-INFRA (INFO). Use seletivamente em legacy.
+    """
+    from pathlib import Path as _Path
+    from .executor_drive import run_validate as run_executor_validate
+
+    project = _Path(project_path)
+    if verbose:
+        print(f"[executor-validate] running em {project}", file=sys.stderr)
+    code, findings = run_executor_validate(project, timeout=timeout)
+    for f in findings:
+        result.add(f)
+    if verbose:
+        print(f"[executor-validate] exit={code} findings={len(findings)}",
+              file=sys.stderr)
+
+
 def _parse_pack_output_and_inject(result, output: str, project_root: Path) -> int:
     """Parse uipcli publish stdout/stderr, emit UIPATH:PACK findings.
 
@@ -1600,6 +1841,15 @@ def _cmd_fix(args) -> int:
     MAX_ITERATIONS = 20
     iteration = 0
 
+    # Phase 10 (2026-05-26): subprocess gates inline em runner.run via cache
+    # incremental. runtime-loadtest baseline iter 0 (full project), targeted
+    # re-run só nos files modificados em iters subsequentes. Sem cache,
+    # gate custa 30-60s × 20 iters = inviável. Cache disabled em dry_run
+    # (preview-only, runner.run não escreve → sem need de re-detect via gate).
+    from ._gate_cache import FixLoopGateCache
+    _use_runner_gates = not dry_run
+    gate_cache = FixLoopGateCache(project_root) if _use_runner_gates else None
+
     while True:  # outer: analyzer-gate retry
         # --- Inner: fixpoint ---
         while True:
@@ -1608,7 +1858,11 @@ def _cmd_fix(args) -> int:
                 print(f"\nWARN: fixpoint não convergiu em {MAX_ITERATIONS} iterações. Abortando loop.")
                 break
 
-            result = runner.run(args.path)
+            result = runner.run(
+                args.path,
+                include_gates=_use_runner_gates,
+                gate_cache=gate_cache,
+            )
 
             _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
 
@@ -1621,6 +1875,9 @@ def _cmd_fix(args) -> int:
             iter_regressions = 0
             iter_vb_regressions = 0
             iter_cascade_regressions = 0
+            # Phase 10: track XAML files mutated por iter atual pra refresh
+            # targeted do gate_cache (runtime-loadtest re-run só nesses paths).
+            iter_modified_files: set[Path] = set()
 
             for f in result.findings:
                 if f.suppressed:
@@ -1722,6 +1979,12 @@ def _cmd_fix(args) -> int:
                         iter_would_fix += 1
                     else:
                         iter_applied += 1
+                        # Phase 10: registra path modificado pra refresh do
+                        # gate_cache pós-iter.
+                        try:
+                            iter_modified_files.add(Path(f.file).resolve())
+                        except (OSError, ValueError):
+                            pass
                     _fix_log.log(
                         label, f.rule_id, f.file,
                         f"  [{label}] [{f.rule_id}] {f.file}",
@@ -1745,6 +2008,20 @@ def _cmd_fix(args) -> int:
                 break
             if iter_applied == 0:
                 break
+            # Phase 10: refresh gate_cache TARGETED nos files modificados deste
+            # iter. Próximo runner.run() consume cache.merged_findings() em vez
+            # de re-rodar runtime_loadtest em todo projeto.
+            if gate_cache is not None and iter_modified_files:
+                try:
+                    gate_cache.refresh_after_iter(iter_modified_files)
+                except Exception as e:  # pragma: no cover — defensive
+                    print(
+                        f"  [WARN] gate_cache refresh raised "
+                        f"{type(e).__name__}: {e}. Falling back a re-run full.",
+                        file=sys.stderr,
+                    )
+                    # Reset cache pra forçar baseline run no próximo iter.
+                    gate_cache = FixLoopGateCache(project_root)
             print(f"  [iter {iteration}] applied={iter_applied}, re-detecting...")
 
         # --- Analyzer-gate (apply mode + baseline disponível) ---
@@ -1854,6 +2131,10 @@ def _cmd_fix(args) -> int:
 
         frozen_files.update(p.resolve() for p in rolled_back_paths)
         analyzer_retry += 1
+        # Phase 10: rollback mudou XAML bytes — invalidar gate_cache pra
+        # forçar baseline re-run no próximo outer iter.
+        if gate_cache is not None:
+            gate_cache = FixLoopGateCache(project_root)
 
         if analyzer_retry > ANALYZER_GATE_MAX_RETRIES:
             print(
@@ -2450,6 +2731,216 @@ def _cmd_all(args) -> int:
             return EXIT_ERROR
         names = sorted({Path(p).name for p in changed})[:5]
         print(f"[CHANGE] {len(changed)} file(s) modified ({', '.join(names)}{'...' if len(changed) > 5 else ''}) — retrying...\n")
+
+
+def _cmd_pre_migrate_check(args) -> int:
+    """Phase 2 (2026-05): Run MigratedPackageVersionResolver offline clone.
+
+    Exit codes:
+        0 = todas SAME           => safe to invoke Activity Migrator
+        1 = qualquer UPDATED     => predicted pin drift target; engine flags
+                                    D-1*/D-PINALERT post-migrate
+        2 = qualquer UNRESOLVED  => blocker; missing pkg/version (cannot
+                                    safely migrate)
+        3 = infra error          => NuGet unreachable AND no cache (caller
+                                    should retry with VPN/proxy)
+    """
+    from .migrate_resolver import (
+        ResolutionAction,
+        check_project,
+    )
+
+    project_root = Path(args.path).resolve()
+    project_json = project_root / "project.json"
+    if not project_json.exists():
+        print(f"[pre-migrate-check] project.json not found: {project_json}",
+              file=sys.stderr)
+        return EXIT_HALT
+
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
+
+    # Phase 2.1: pasta .nupkgs/ local. Empty string => disable (remote-only).
+    local_nupkgs_raw = getattr(args, "local_nupkgs", None)
+    local_nupkgs_folder: Optional[Path] = None
+    if local_nupkgs_raw:
+        candidate = Path(local_nupkgs_raw)
+        if candidate.exists() and candidate.is_dir():
+            local_nupkgs_folder = candidate
+        else:
+            print(
+                f"[pre-migrate-check] --local-nupkgs {candidate} not a directory; "
+                f"falling back to remote-only.",
+                file=sys.stderr,
+            )
+
+    try:
+        results = check_project(
+            project_json,
+            target_framework=args.target_framework,
+            cache_dir=cache_dir,
+            include_prerelease=args.include_prerelease,
+            local_nupkgs_folder=local_nupkgs_folder,
+        )
+    except Exception as exc:  # pragma: no cover — final safety net
+        print(f"[pre-migrate-check] internal error: {exc}", file=sys.stderr)
+        return EXIT_INTERNAL
+
+    summary = {
+        "same":       sum(1 for r in results if r.action == ResolutionAction.SAME),
+        "updated":    sum(1 for r in results if r.action == ResolutionAction.UPDATED),
+        "unresolved": sum(1 for r in results if r.action == ResolutionAction.UNRESOLVED),
+        "total":      len(results),
+    }
+
+    if args.format == "json":
+        payload = {
+            "project_json": str(project_json),
+            "target_framework": args.target_framework,
+            "summary": summary,
+            "results": [r.to_dict() for r in results],
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"pre-migrate-check :: {project_json}")
+        print(f"target_framework  :: {args.target_framework}")
+        print(f"summary           :: {summary}")
+        for r in results:
+            mark = {"Same": "OK", "Updated": "DRIFT", "Unresolved": "MISS"}[r.action.value]
+            print(f"  [{mark:5}] {r.package_id} : {r.current_version} -> "
+                  f"{r.recommended_version}  ({r.reason})")
+
+    # Exit policy: blocker (UNRESOLVED) > drift (UPDATED) > clean (SAME).
+    # All UNRESOLVED with no candidates = treat as infra error (3) only
+    # when count == 0 across the board (likely NuGet down). Mixed
+    # UNRESOLVED + SAME/UPDATED = real per-package gap, still exit 2.
+    if summary["unresolved"] == summary["total"] and summary["total"] > 0:
+        # Tutto unresolved & every result reason looks like "fetch failed":
+        all_fetch_fail = all(
+            "fetch failed" in r.reason.lower() or "unreachable" in r.reason.lower()
+            for r in results
+        )
+        if all_fetch_fail:
+            print("[pre-migrate-check] all NuGet fetches failed — "
+                  "treating as infra error (exit 3).", file=sys.stderr)
+            return EXIT_HALT
+    if summary["unresolved"] > 0:
+        return EXIT_ERROR
+    if summary["updated"] > 0:
+        return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_pack_scrub(args) -> int:
+    """Phase 4 (2026-05): scrub <repository> leak from .nuspec inside .nupkg.
+
+    Exit codes:
+        0 = scrub OK / dry-run / no-change (idempotente)
+        1 = sign falhou pós scrub OK
+        2 = arquivo não existe / IO fail
+        10 = exception interna
+    """
+    from .pack_scrubber import scrub_repository, sign, inspect
+
+    target = Path(args.nupkg)
+    if not target.exists():
+        print(f"ERROR: {target} not found", file=sys.stderr)
+        return EXIT_ERROR
+
+    inspect_only = getattr(args, "inspect_only", False)
+
+    try:
+        info_before = inspect(target)
+        out = Path(args.output) if args.output else None
+        info_after = scrub_repository(
+            target, output_path=out, dry_run=inspect_only
+        )
+    except Exception as exc:  # pragma: no cover — final safety net
+        print(f"[pack-scrub] internal error: {exc}", file=sys.stderr)
+        return EXIT_INTERNAL
+
+    scrubbed = (
+        info_before.repository_url is not None
+        and info_after.repository_url is None
+    )
+    final_path = out if out else target
+    tag = "DRY-RUN" if inspect_only else ("SCRUBBED" if scrubbed else "NO-CHANGE")
+    print(f"[{tag}] {final_path}")
+    print(f"  before.repository_url: {info_before.repository_url or '(none)'}")
+    print(f"  after.repository_url : {info_after.repository_url or '(none)'}")
+
+    # Optional signing post-scrub.
+    if args.sign_cert and not inspect_only:
+        ok, msg = sign(
+            final_path,
+            cert_fingerprint=args.sign_cert,
+            timestamper=args.timestamper,
+        )
+        print(f"[SIGN {'OK' if ok else 'FAIL'}] {msg}")
+        if not ok:
+            return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_migrate_check(args) -> int:
+    """Phase 5 (2026-05): advisory Activity Migrator probe (opt-in).
+
+    Exit codes:
+        0 = sem findings, host resolvable, dry-run completo
+        1 = findings emitidos (advisory; nunca causa HALT)
+        2 = path inválido / project não existe
+        (nunca 3 HALT — migrate-check é advisory only)
+    """
+    from .migrator_headless import run_migrate, run_probe
+
+    project_root = Path(args.project)
+    if project_root.is_file():
+        project_root = project_root.parent
+    if not project_root.exists():
+        print(f"ERROR: {project_root} not found", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Probe first — fail-fast if Migration DLL inacessível. Probe é cheap
+    # (~30s) e isola erros de infra dos findings reais.
+    probe_code, probe_payload = run_probe(timeout=30, dll_override=args.dll)
+    if probe_code != 0:
+        if args.format == "json":
+            print(json.dumps({"probe": probe_payload}, indent=2))
+        else:
+            print(f"[PROBE FAIL] Migration host unavailable. "
+                  f"Code={probe_code}. See JSON dump for details.")
+            print(json.dumps(probe_payload, indent=2))
+        return EXIT_WARN  # advisory; nunca HALT pelo migrate-check
+
+    code, findings = run_migrate(
+        project_root, dry_run=args.dry_run, timeout=args.timeout,
+        dll_override=args.dll,
+    )
+    if args.format == "json":
+        # Inline serialization — Finding dataclass via asdict; severity Enum
+        # vira int (compat com outros JSON outputs do engine).
+        payload = {
+            "exit_code": code,
+            "total": len(findings),
+            "findings": [
+                {
+                    "rule_id": f.rule_id,
+                    "severity": int(f.severity),
+                    "severity_name": f.severity.name,
+                    "category": f.category,
+                    "file": f.file,
+                    "line": f.line,
+                    "message": f.message,
+                }
+                for f in findings
+            ],
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for f in findings:
+            print(f"[{f.severity.name}] {f.rule_id} {f.file}: {f.message}")
+        print(f"\nTotal findings: {len(findings)} (exit={code})")
+    # Advisory exit: never HALT, never FAIL pipeline solely on migrator_headless.
+    return EXIT_WARN if findings else EXIT_OK
 
 
 if __name__ == "__main__":

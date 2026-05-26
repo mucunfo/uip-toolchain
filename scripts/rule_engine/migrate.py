@@ -22,6 +22,7 @@ Activity Migrator NÃO é instalado por default. Resolve binário via:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,168 @@ _MIGRATOR_BIN_NAMES = (
     "uipath-activity-migrator",
     "UiPath.ActivityMigrator.exe",
 )
+
+
+# Whitelist Sicoob: activities Classic onde Migrator UiPath reporta
+# `UIAUTOMATION-ACTIVITY-MIGRATION-ERROR-MigrationNotImplemented` MAS a activity
+# é runtime-compat com UIA Modern 25.10.8 (pin Sicoob D-1b). Migrator decide
+# não bumpar `targetFramework` por causa desses errors; engine força bump
+# quando TODAS as activities not-implemented estão aqui.
+#
+# Adicionar entry só após validar manualmente: (a) activity preservada em REF
+# Sicoob migrado (ex: importar-cadastro-avais-fiancas-honrados-performer),
+# (b) projeto roda no Studio 23.10.13 + Windows target.
+_BENIGN_MIGRATION_NOT_IMPLEMENTED = frozenset({
+    "UiPath.Core.Activities.SaveImage",
+})
+
+
+def _parse_migration_not_implemented_types(stdout: str) -> set[str]:
+    """Extrai FQN das activities marcadas `MigrationNotImplemented` pelo Migrator.
+
+    Stdout format observado (PT-BR locale UiPath Studio Sicoob):
+      `      <DisplayName> - Tipo: <FQN> migrou com sucesso em <ms> ms.`           ← sucesso (ignorar)
+      `      <DisplayName> - Tipo: <FQN> migrou com avisos em <ms> ms.`            ← warning (ignorar)
+      `      Falha na migração <DisplayName> - Tipo: <FQN> em <ms> ms. Erros: Migração não implementada.`  ← falha real
+      `[WARNING] UIAUTOMATION-ACTIVITY-MIGRATION-ERROR-MigrationNotImplemented in <file>:`
+      `  Falha na migração <DisplayName> - Tipo: <FQN> em <ms> ms. Erros: Migração não implementada.`
+
+    Match restrito a linhas começando com "Falha na migração". Evita falsos
+    positivos de linhas "migrou com sucesso" / "com avisos".
+    """
+    import re as _re
+    # "Falha na migra\S+ <text> - Tipo: <FQN> em <N> ms. Erros: ..."
+    # \S+ cobre "migração" (com cedilha) sem depender de unicode-aware regex.
+    pat = _re.compile(
+        r"Falha na migra\S+\s+.+?-\s+Tipo:\s+([A-Za-z][\w\.]+)\s+em\s+\d+\s*ms"
+    )
+    return set(pat.findall(stdout or ""))
+
+
+# Regras deterministic que Migrator depende. Aplicadas em pre-migrate fix
+# (ANTES da invocação do Migrator binary) para evitar CacheMetadata failures
+# silenciosas que deixam tf=Legacy sem MigrationNotImplemented log.
+#
+# Critério inclusão: regra deterministic + Migrator falha em pre-validation
+# quando finding presente. Adicionar entry só após repro: (a) repo Sicoob real
+# falhou no Migrator por essa razão, (b) fix mecânico estável.
+_PRE_MIGRATE_BLOCKER_RULES = (
+    "CCS-1",  # case mismatch attr CCS_*.method (in_Url vs in_URL) → CacheMetadata bind fail
+    "X-1",    # Duplicate IdRef em XAML → Migrator confuso, falha workflow load
+)
+
+
+def _pre_migrate_fix_blockers(source_root: Path, rules_file: str | None) -> int:
+    """Aplica fix deterministic restrito às regras que Migrator depende.
+
+    Returns:
+      0 OK ou no-op
+      -1 falha interna do _cmd_fix
+    """
+    # Import local — circular import safety se migrate.py for importado
+    # antes de cli.py finalizar.
+    from .cli import _cmd_fix as _fix_inner
+
+    print(f"# Pre-migrate fix: regras {list(_PRE_MIGRATE_BLOCKER_RULES)} (Migrator dep)")
+    pre_args = type("A", (), {})()
+    pre_args.path = str(source_root)
+    pre_args.rules_file = rules_file
+    pre_args.apply = True
+    pre_args.rules = ",".join(_PRE_MIGRATE_BLOCKER_RULES)
+    pre_args.include_class = "deterministic"
+    # Analyzer gate caro (uipcli analyze ~10-30s). Pre-migrate é cirúrgico —
+    # whitelist regras estáveis, sem risco que justifique gate.
+    pre_args.no_analyzer_gate = True
+    try:
+        rc = _fix_inner(pre_args)
+    except Exception as e:  # noqa: BLE001
+        print(f"[ERROR] _cmd_fix em pre-migrate threw: {type(e).__name__}: {e}",
+              file=sys.stderr)
+        return -1
+    print(f"# Pre-migrate fix exit={rc}\n")
+    return 0
+
+
+_ORPHAN_SCRUB_PREFIXES = ("UiPathTeam.",)
+
+
+def _scrub_orphan_deps(src: Path) -> int:
+    """Pre-Migrator: remove deps do project.json sem referencias em XAMLs.
+
+    Why:
+      Activity Migrator `RestoreStep` falha quando pacote pin'ado eh
+      incompativel com .NET Core (ex: `UiPathTeam.Display.Activities
+      [1.0.0]` so Windows .NET Framework). Sem reference em XAML, dep eh
+      orphan declarativo — remove preventivo destrava Migrator.
+
+    Restricao:
+      So atua em pacotes prefixos community-prone
+      (`UiPathTeam.*`). UiPath.* core nao tocados (podem ser usados
+      transitivamente via behaviour activities not always declared).
+      CCS_* ja handled por `_align_ccs_deps_to_local_nupkgs`.
+
+    Returns: nro de deps removidos.
+    """
+    pj = src / "project.json"
+    if not pj.exists():
+        return 0
+    raw = pj.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content_bytes = raw[3:] if bom else raw
+    try:
+        data = _json.loads(content_bytes.decode("utf-8"))
+    except _json.JSONDecodeError:
+        return 0
+    deps = data.get("dependencies", {})
+    if not isinstance(deps, dict):
+        return 0
+    candidates = [k for k in deps if k.startswith(_ORPHAN_SCRUB_PREFIXES)]
+    if not candidates:
+        return 0
+    refs: set[str] = set()
+    for xaml in src.rglob("*.xaml"):
+        try:
+            t = xaml.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        for m in re.finditer(r'assembly=([A-Za-z0-9_\.]+)', t):
+            refs.add(m.group(1))
+    removed = []
+    for pkg in candidates:
+        asm_alts = {pkg}
+        if pkg.endswith(".Activities"):
+            asm_alts.add(pkg[:-len(".Activities")])
+        if not (asm_alts & refs):
+            removed.append(pkg)
+    if not removed:
+        return 0
+    for pkg in removed:
+        deps.pop(pkg, None)
+    out = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    pj.write_bytes((b"\xef\xbb\xbf" if bom else b"") + out.encode("utf-8"))
+    print(f"# Orphan dep scrub: removidos {removed}")
+    return len(removed)
+
+
+def _force_bump_target_framework(project_json: Path) -> bool:
+    """Força `targetFramework: Windows` em `project.json`. Preserva BOM + indent.
+
+    Caller já validou que activities not-implemented são todas benignas
+    (whitelist Sicoob).
+    """
+    raw = project_json.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content_bytes = raw[3:] if bom else raw
+    try:
+        data = _json.loads(content_bytes.decode("utf-8"))
+    except _json.JSONDecodeError:
+        return False
+    if data.get("targetFramework") == "Windows":
+        return False
+    data["targetFramework"] = "Windows"
+    out = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    project_json.write_bytes((b"\xef\xbb\xbf" if bom else b"") + out.encode("utf-8"))
+    return True
 
 
 # `.nupkgs/` Sicoob: source-of-truth local pra CCS_*. Path configurável via
@@ -241,6 +404,23 @@ def cmd_migrate_windows(args) -> int:
     if aligned > 0:
         print(f"# CCS align: {aligned} deps atualizadas pra versões em .nupkgs/\n")
 
+    # Orphan dep scrub: UiPathTeam.* deps sem refs em XAMLs bloqueiam Migrator
+    # restore (versões legacy .NET Framework only). Scope restritivo —
+    # UiPath.* core não tocado, CCS_* já alignado acima.
+    scrubbed = _scrub_orphan_deps(src)
+    if scrubbed > 0:
+        print(f"# Orphan scrub: {scrubbed} deps removidas\n")
+
+    # Pre-migrate fix: aplica regras deterministic que Migrator depende ANTES
+    # da invocação. Sem isso, Migrator CacheMetadata falha em pre-validation
+    # quando attr case-mismatch (CCS-1) ou IdRef duplicate (X-1) presente
+    # → exit=0 silencioso, sem MigrationNotImplemented, tf segue Legacy,
+    # engine não consegue recuperar via tf-force whitelist.
+    pre_rc = _pre_migrate_fix_blockers(src, args.rules_file)
+    if pre_rc < 0:
+        print(f"[ERROR] pre-migrate fix falhou (rc={pre_rc}).", file=sys.stderr)
+        return EXIT_ERROR
+
     # ---- Phase 2: Activity Migrator -------------------------------------
     print("## [2/4] UiPath Activity Migrator")
     migrator = find_migrator(args.migrator_path)
@@ -328,8 +508,35 @@ def cmd_migrate_windows(args) -> int:
 
     new_tf = _read_target_framework(out)
     if new_tf != "Windows":
-        print(f"[ERROR] output targetFramework={new_tf!r}, esperado 'Windows'.", file=sys.stderr)
-        return EXIT_ERROR
+        # Migrator pode reportar exit=0 + criar _Migrated/ mas NÃO bumpar tf
+        # quando há `MigrationNotImplemented` errors. Algumas activities Classic
+        # marcadas not-implemented (ex: SaveImage) são runtime-compat com UIA
+        # Modern (pin Sicoob D-1b 25.10.8). Engine força bump quando todas
+        # not-implemented são benignas (whitelist Sicoob).
+        not_impl_types = _parse_migration_not_implemented_types(res.stdout or "")
+        if not_impl_types:
+            non_benign = not_impl_types - _BENIGN_MIGRATION_NOT_IMPLEMENTED
+            if not non_benign:
+                proj_json = out / "project.json"
+                if _force_bump_target_framework(proj_json):
+                    print(
+                        f"# tf-force: bump tf=Windows aplicado. "
+                        f"MigrationNotImplemented em {sorted(not_impl_types)} "
+                        f"todas na whitelist Sicoob (compat UIA Modern 25.10.8).",
+                        file=sys.stderr,
+                    )
+                    new_tf = "Windows"
+            else:
+                print(
+                    f"[ERROR] MigrationNotImplemented com activities fora da "
+                    f"whitelist Sicoob: {sorted(non_benign)}. "
+                    f"Adicionar à _BENIGN_MIGRATION_NOT_IMPLEMENTED só após "
+                    f"validar runtime-compat em REF.",
+                    file=sys.stderr,
+                )
+        if new_tf != "Windows":
+            print(f"[ERROR] output targetFramework={new_tf!r}, esperado 'Windows'.", file=sys.stderr)
+            return EXIT_ERROR
 
     # ---- Phase 3: post-fix engine ---------------------------------------
     print("## [3/4] Post-fix engine (deterministic)")

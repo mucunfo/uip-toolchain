@@ -98,7 +98,11 @@ def _parse_rule(
             raise SchemaError(f"rule[{idx}]: missing required field '{field_name}'")
 
     rid = raw["id"]
-    if not re.match(r"^[A-Z][A-Z0-9]*-\w+$", str(rid)):
+    # Rule IDs: começam com prefixo upper alphanum (S, W, M, RT, F37, etc.),
+    # seguido por `-`, depois um ou mais segmentos alphanum/underscore
+    # separados por `-`. Permite multi-hyphen pra IDs gate-injected como
+    # RT-LOAD-INVALID_WORKFLOW (Phase 9E) e RT-LOAD-AMBIGUOUS-ARG.
+    if not re.match(r"^[A-Z][A-Z0-9]*(?:-[A-Za-z0-9_]+)+$", str(rid)):
         raise SchemaError(f"rule[{idx}]: invalid id format '{rid}'")
 
     sev_raw = str(raw["severity"]).upper()

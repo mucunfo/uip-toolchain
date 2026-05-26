@@ -49,12 +49,17 @@ def test_regex_replace_no_match_returns_false(tmp_path):
 # ---- rename_attribute ----
 
 def test_rename_attribute(tmp_path):
+    """Renames identifier in realistic XAML positions: attribute VALUE
+    (`Name="..."`) and VB body refs. Does NOT rename attribute NAMES
+    (skip-by-design per 2026-05-25 safety policy — prevents renaming
+    activity property names like `ColumnIndex` cascading from variable
+    rename N-1 finding)."""
     f = tmp_path / "x.xaml"
-    f.write_text('<Property inout_Foo="bar"/>')
+    f.write_text('<Variable Name="inout_Foo" Value="bar"/>')
     spec = {"type": "rename_attribute", "from": "inout_Foo", "to": "io_Foo"}
     changed = apply_rename_attribute(f, spec, dry_run=False)
     assert changed
-    assert 'io_Foo="bar"' in f.read_text()
+    assert 'Name="io_Foo"' in f.read_text()
 
 
 def test_rename_attribute_case_insensitive_vb_refs(tmp_path):

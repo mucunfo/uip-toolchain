@@ -61,3 +61,19 @@ UiPath.UIAutomation.Activities:
       fix: 'Activity NWindowOperation não disponível no pin 25.10.8. Engine strip element + força CloseMode="Always" no NApplicationCard pai (cobre close lifecycle equivalente).'
       mechanical:
         type: strip_nwindow_operation
+
+# Removed APIs: attrs/elements REMOVIDOS em versão >= removed_in.
+# Caso típico: Activity Migrator UiPath upgrade pacote 1.x→3.x mas deixa
+# attrs obsoletos no XAML legacy migrado → Studio load-fail.
+UiPath.MicrosoftOffice365.Activities:
+  removed_apis:
+    # Office365ApplicationScope.Folder removida no upgrade 1.14.x → 3.x
+    # (Migrator pré-3.x deixa `Folder="{x:Null}"` órfão pós-upgrade).
+    # REF: contestacao-de-compras-coleta-anexos-performer (2026-05-25).
+    - pattern: '<uma:Office365ApplicationScope\b[^>]*\bFolder\s*='
+      removed_in: '3.0.0'
+      where: xaml_attribute
+      fix: 'Remover atributo Folder (não existe em UiPath.MicrosoftOffice365.Activities >= 3.0.0). Usar MailFolder na child GetMail/MoveMail.'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: Folder

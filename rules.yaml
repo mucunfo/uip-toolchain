@@ -827,6 +827,131 @@ rules:
         do bloco refs — WinRT bridge não existe em .NET 6. Strip persistente
         elimina XamlMigration warn cycle.
 
+  - id: W-30
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Unicode chars hostis VB Roslyn .NET 6 (smart-quote, NBSP, zero-width)"
+    description: |
+      Chars Unicode hostis em XAML body causam runtime fail em Windows
+      target Studio v25.10+ (Roslyn .NET 6 strict). Legacy VB .NET
+      Framework 4.6.1 era tolerante.
+
+      HARD chars (auto-fix mecânico, sempre wrong):
+
+        U+201C “  LEFT DOUBLE QUOTATION MARK  → &quot;
+        U+201D ”  RIGHT DOUBLE QUOTATION MARK → &quot;
+        U+2018 ‘  LEFT SINGLE QUOTATION MARK  → &apos;
+        U+2019 ’  RIGHT SINGLE QUOTATION MARK → &apos;
+        U+00A0    NBSP (non-breaking space)   → space (em VB expression,
+                                                  vira whitespace inválido)
+        U+200B    ZERO WIDTH SPACE            → strip
+        U+200C    ZERO WIDTH NON-JOINER       → strip
+        U+200D    ZERO WIDTH JOINER           → strip
+        U+FEFF    ZERO WIDTH NO-BREAK SPACE   → strip (BOM mid-file)
+
+      Sintoma típico runtime:
+        "O tipo de Atividade de Expressão 'VisualBasicValue`1' requer
+         compilação para ser executado."
+
+      Caso REF (2026-05-25): `contestacao-de-compras-ajuste-na-reserva-de-fraude-performer`
+      `Sipag_Net/ColetaDados.xaml:125` —
+      `Default="[vStContaCartao.Substring(3,4).ToString.TrimStart(“0”c)]"`
+      Sweep workspace revelou 24 ocorrências em 13 XAMLs distintos.
+
+      Origem: paste de Word/Outlook/Office com autocorrect, copy de
+      tabela web, teclado IME asiático/internacional.
+
+      Fix mecânico: replace por equivalente ASCII XML-safe. Safe sempre —
+      esses chars NUNCA são válidos VB Roslyn em código/expression.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '[“”‘’ ​‌‍﻿]'
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: replace_hostile_unicode_chars
+      prose: |
+        Replace HARD Unicode chars por ASCII equivalent:
+          “”→&quot;  ‘’→&apos;  NBSP→space  zero-widths→strip
+
+  - id: W-30b
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "Unicode chars soft (en/em dash, fullwidth) — context-dependent"
+    description: |
+      Chars Unicode SOFT em XAML body. Não always wrong, mas suspect:
+
+        U+2013 –  EN DASH    → suspect em VB (operador subtração)
+        U+2014 —  EM DASH    → mesmo
+        U+FF0C ，  FULLWIDTH COMMA (Asian keyboard) → tipicamente wrong
+        U+30FB ・  KATAKANA MIDDLE DOT → tipicamente wrong em código
+
+      Em DisplayName, Annotation, Message string content esses chars
+      podem ser legítimos (UI text). Em VB expression [...] quase sempre
+      typo Word autocorrect.
+
+      WARN-only — não auto-fix. Engineer decide.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '[–—，・]'
+    fix:
+      apply_class: contextual
+      prose: |
+        Revisar manualmente. Se char em VB expression [...] → replace ASCII.
+        Se em DisplayName/Annotation/Message texto user-facing → manter
+        OR replace conforme padrão Sicoob i18n.
+
+  - id: W-33
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "VB legacy syntax incompat Roslyn .NET 6"
+    description: |
+      VB.NET Roslyn (.NET 6 Windows target Studio v25.10+) rejeita
+      construtos legacy aceitos por compiler .NET Framework 4.6.1.
+
+      Catalog patterns detectados em VB expression `[...]` XAML:
+
+        - `On Error Resume Next`   — error handling VB6-style obsoleto
+        - `Set <var> =`            — keyword pre-Option-Strict deprecated
+        - `IIf(c,t,f)`             — replace por `If(c,t,f)` (Roslyn-friendly)
+        - `Variant`/`Currency`     — types VB6 não existem em .NET 6
+        - `GoTo` em expression     — Roslyn parser strict
+        - VB Comment `'` em meio   — XAML attr value não tolera (quebra parse)
+        - `Eval(` / `Execute(`     — runtime-only legacy
+        - `MsgBox(` em workflow    — deprecated, use ui:MessageBox
+
+      Causa típica: copy de macro VBA Office, código legacy VB6, projeto
+      Sicoob antigo migrado sem cleanup.
+
+      WARN-only por enquanto (alguns padrões podem ser intentional ou false
+      positive em string literals). Engineer revisa por finding.
+
+      Expansão futura: Roslyn full pre-flight via subprocess `dotnet vb`
+      compile dry-run (precisa SDK instalado). MVP regex catalog.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.vb_legacy_syntax
+        function: detect_w33_vb_legacy_patterns
+    fix:
+      apply_class: contextual
+      prose: |
+        Revisar VB expression. Padrões legacy → equivalent moderno:
+          On Error Resume Next → Try/Catch
+          IIf(c,t,f)           → If(c,t,f)
+          Set v = x            → v = x
+          Variant              → Object
+          MsgBox(...)          → <ui:MessageBox/>
+
   - id: ENV-2
     severity: ERROR
     category: breaking
@@ -1641,6 +1766,44 @@ rules:
         Renomear IdRefs duplicados: manter primeira ocorrência, sufixar
         subsequentes com `_dedup_<n>`. ViewState dict references de IdRef
         antigo são tolerados (rendering hint).
+
+  - id: X-2
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Property element c/ attribute (XAML inválido — Migrator regression)"
+    description: |
+      `<Foo.Bar Attr="val">...</Foo.Bar>` é XAML inválido — property element
+      não aceita attributes na tag de abertura. Studio falha com
+      `XamlUnexpectedParseException: 'ATTRIBUTE' inesperado na regra de
+      análise 'NonemptyPropertyElement ::= . PROPERTYELEMENT Content? ENDTAG.'`.
+
+      Caso típico (2026-05-25): Activity Migrator UiPath converte
+      `<ui:LogMessage Level="Trace" .../>` (inline) para forma híbrida
+      `<ui:LogMessage Level="Trace"><ui:LogMessage.Level Level="Trace">...
+      </ui:LogMessage.Level></ui:LogMessage>` — mantém inline E gera
+      property element MAL-formado (com attribute). Regressão pós-Migrator
+      v25.10 (REF: monitorar-transacoes-pendentes-performer,
+      contestacao-de-compras-coleta-anexos-performer).
+
+      Fix mecânico: detecta `<NS:Activity.Prop Attr=...>...</NS:Activity.Prop>`
+      e remove o bloco inteiro QUANDO parent já tem `Attr=` inline equivalente.
+      Senão, strip apenas a attribute da tag do property element.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.migrator_regress
+        function: detect_x2_property_element_with_attribute
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_property_element_with_attribute
+      prose: |
+        Property element `<X.Y Attr="v">` é XAML inválido. Se parent activity
+        já tem `Attr="v"` inline, remover o bloco property element inteiro
+        (redundante). Senão, strip apenas o attribute do property element.
 
 # ============================================================
 # Batch 2 — Architectural (Sicoob standards)
@@ -2801,7 +2964,12 @@ rules:
       em params.type_prefix. Bare-special e REFramework vars em params.
     applies_to:
       include: ["**/*.xaml"]
-      exclude: ["Framework/**", "Tests/**"]
+      # 2026-05-25: Framework/Tests excludes removidos. Sicoob customiza
+      # files dentro Framework/ (InitAllApplications, Process, etc) — exclude
+      # genérico mascarava violações reais (ex: `vBolLoginSipagNet` em
+      # InitAllApplications.xaml, prefix `Bol` → wrong_prefix_map mapeia
+      # pra `Bl`). REFramework canonical vars (TransactionItem, Config,
+      # RetryNumber, etc.) cobertas pelo `reframework_main_vars` whitelist.
     detect:
       type: python
       params:
@@ -2826,6 +2994,9 @@ rules:
         wrong_prefix_map: &wrong_prefix_map
           Bool: Bl
           Boolean: Bl
+          # `Bol` Hungarian-legacy Sicoob (3 chars, ex: `vBolLoginSipagNet`).
+          # Sem este mapping, detector prependa `Bl` sem strip → vBlBolLogin.
+          Bol: Bl
           DTime: Dt
           DateTime: Dt
           Decimal: Dbl
@@ -2850,6 +3021,8 @@ rules:
           Ar: Arr
           # SecureString legado
           SS: SSt
+          # `Ss` Hungarian-legacy Sicoob mixed-case (ex: `vSsSenhaSipag`).
+          Ss: SSt
           SecureStr: SSt
           # DataRow legado
           DRow: Row
@@ -2926,7 +3099,9 @@ rules:
       Bare permitido em params.bare_arg_names.
     applies_to:
       include: ["**/*.xaml"]
-      exclude: ["Framework/**"]
+      # 2026-05-25: Framework exclude removido. Args REFramework canonical
+      # (in_Config, in_TransactionItem, io_RetryNumber, in_OrchestratorQueueName)
+      # cobertos pelo `bare_arg_names` whitelist.
     detect:
       type: python
       params:
@@ -2945,6 +3120,31 @@ rules:
           - in_TransactionItem
           - io_TransactionItem
           - out_TransactionItem
+          # REFramework canonical args extras (SetTransactionStatus,
+          # RetryCurrentTransaction, TakeScreenshot, GetTransactionData)
+          # — convencionalmente bare. 2026-05-25: Framework exclude removido,
+          # whitelist amplia pra evitar falsos positivos REFramework canonical.
+          - in_TransactionNumber
+          - io_TransactionNumber
+          - out_TransactionNumber
+          - in_RetryNumber
+          - io_RetryNumber
+          - in_BusinessException
+          - in_SystemException
+          - in_Exception
+          - out_TransactionField1
+          - out_TransactionField2
+          - out_TransactionField3
+          - in_TransactionField1
+          - in_TransactionField2
+          - in_TransactionField3
+          - out_TransactionID
+          - in_OrchestratorQueueName
+          - in_OrchestratorQueueFolder
+          - in_Folder
+          - io_FilePath
+          - in_FilePath
+          - out_FilePath
     fix:
       apply_class: deterministic
       # 2026-05-01: Audit dos 13 repos Sicoob: dispatcher↔performer comunicam
@@ -3319,6 +3519,31 @@ rules:
           - in_TransactionItem
           - io_TransactionItem
           - out_TransactionItem
+          # REFramework canonical args extras (SetTransactionStatus,
+          # RetryCurrentTransaction, TakeScreenshot, GetTransactionData)
+          # — convencionalmente bare. 2026-05-25: Framework exclude removido,
+          # whitelist amplia pra evitar falsos positivos REFramework canonical.
+          - in_TransactionNumber
+          - io_TransactionNumber
+          - out_TransactionNumber
+          - in_RetryNumber
+          - io_RetryNumber
+          - in_BusinessException
+          - in_SystemException
+          - in_Exception
+          - out_TransactionField1
+          - out_TransactionField2
+          - out_TransactionField3
+          - in_TransactionField1
+          - in_TransactionField2
+          - in_TransactionField3
+          - out_TransactionID
+          - in_OrchestratorQueueName
+          - in_OrchestratorQueueFolder
+          - in_Folder
+          - io_FilePath
+          - in_FilePath
+          - out_FilePath
           - Config
           - TransactionItem
           - Credentials
@@ -6674,3 +6899,155 @@ rules:
       prose: |
         Adicionar TCs por variação de input significativa. Ou usar
         Data Service / Test Data Queues p/ parametrizar (TEST-6).
+
+# ============================================================
+# Batch — Selector audit (Stream E — sicoob-studio-research §02-03)
+# ============================================================
+
+  - id: S-HEALCHAIN
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "TargetAnchorable.SearchSteps com fallback brittle (Image/OCR/CV)"
+    description: |
+      Selector usa SearchSteps fallback ladder
+      (Image|TextOcr|TextNative|CV) = brittleness risk. Modern UI activities
+      com Image|CV|OCR habilitados pagam healing cost runtime + falham de
+      modo silencioso em UI changes pequenas.
+
+      Stream E dossier sicoob-studio-research/02-healing-agent.md §22:
+      SearchSteps bitflag controla fallback. Safe = Selector|FuzzySelector.
+      Brittle = qualquer step além.
+
+      Bitflag values:
+        None=0, Selector=1, FuzzySelector=2, Image=4,
+        TextFindAll=8 (obsolete), TextOcr=0x10, TextNative=0x20,
+        CV=0x40, Semantic=0x80, SemanticSelector=0x100.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/Framework/**"
+        - "**/Tests/**"
+        - "**/Mocks/**"
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.selector_audit
+        function: detect_healchain
+    fix:
+      apply_class: contextual
+      prose: |
+        Refatorar selector pra eliminar dependência de Image/OCR/CV. Estratégias:
+        1. Adicionar anchor estável próximo (label, ID parent) — Modern UI
+           infere selectors em torno.
+        2. Substituir activity por variant Classic ou native API quando aplicável.
+        3. Se Image/OCR é única opção (ex: aplicação canvas-only), document
+           expressly em annotation + accept risk.
+
+  - id: S-SEMANTIC_LEAK
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "TargetAnchorable.SearchSteps inclui Semantic/SemanticSelector (cloud LLM leak)"
+    description: |
+      Selector usa SearchSteps.Semantic OR SearchSteps.SemanticSelector. Esses
+      steps chamam UiPath cloud LLM com selector text + screenshot. Compliance
+      Sicoob: dados internos NÃO devem sair pra fora UiPath cloud.
+
+      Stream E dossier sicoob-studio-research/02-healing-agent.md linha 118:
+      "Semantic/SemanticSelector steps phone home to UiPath cloud."
+
+      Bitflag mask alvo: Semantic (0x80) e SemanticSelector (0x100).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: scripts.rule_engine.heuristics.selector_audit
+        function: detect_semantic_leak
+    fix:
+      apply_class: contextual
+      prose: |
+        Remover Semantic + SemanticSelector dos SearchSteps. Bitflag mask: clear
+        0x80 (Semantic) e 0x100 (SemanticSelector). Fallback selector + image
+        gates internamente (S-HEALCHAIN warning aceita se necessário).
+
+# ============================================================
+# Phase 9E (2026-05-26) — Missing arg declaration auto-inject
+# ============================================================
+#
+# Findings RT-LOAD-* não vêm de detector YAML — são emitidos programaticamente
+# pelo gate runtime_loadtest.py após .NET subprocess parse. As regras abaixo
+# registram metadata (severity, category, apply_class, fix prose) pro engine
+# router consumir; o detect.type=agent_only é placeholder schema-valid (mesmo
+# pattern de W-6/W-7/W-8/W-9 que documentam comportamento mas não detectam
+# via grep).
+
+  - id: RT-LOAD-INVALID_WORKFLOW
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "XAML fails ActivityXamlServices.Load (missing arg / VB compile)"
+    description: |
+      runtime_loadtest gate detectou falha em carregar XAML via UiPath SDK
+      ActivityXamlServices.Load + CacheMetadata. Causas típicas:
+
+        - Identifier não declarado em <x:Members> (BC30451 — `'X' is not declared`)
+        - VB compile error em Variable.Default (smart-quote, parens unbalanced)
+        - Type resolution failure (assembly ref missing em project.json deps)
+        - Malformed Activity tree
+        - Required arg sem binding em InvokeWorkflowFile caller
+
+      Phase 9E (2026-05-26): pra subset "missing arg declaration", engine roda
+      3-layer inference inline (canonical Sicoob table → invocation xref →
+      Hungarian convention). Se ≥1 layer resolve, finding recebe
+      `fix_mechanical=inject_missing_args` pra auto-inject `<x:Property/>`.
+      Se TODAS as layers falham, gate emite finding paralelo
+      RT-LOAD-AMBIGUOUS-ARG severity HALT.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: agent_only  # emitido programaticamente por runtime_loadtest.py
+    fix:
+      apply_class: deterministic
+      prose: |
+        Abrir XAML em Studio e investigar underline vermelho na linha indicada.
+        Pra missing-arg case, engine tenta auto-inject (Phase 9E). Outros
+        casos (VB compile, type resolution, malformed tree) requerem fix
+        manual: declarar variável faltando, corrigir expressão VB, adicionar
+        AssemblyReference em project.json, etc.
+
+  - id: RT-LOAD-AMBIGUOUS-ARG
+    severity: HALT
+    category: breaking
+    target: all
+    title: "Missing arg sem type inference possível (HALT pipeline)"
+    description: |
+      Engine detectou identifier não declarado em XAML, mas type não inferível
+      via nenhuma das 3 layers:
+
+        L1 — Canonical Sicoob/REFramework table (corpus-mined 1254 args,
+             .uipath-rules/scripts/rule_engine/_canonical_args.py)
+        L2 — Invocation cross-reference (caller InvokeWorkflowFile.Arguments
+             majority vote)
+        L3 — Hungarian prefix convention (Sicoob naming: St, Int, Bol, Dt,
+             Dtb, Dict, Lst, etc.)
+
+      HALT severity bloqueia pipeline — sem auto-fix possível sem decisão
+      manual sobre type.
+
+      Phase 9E (2026-05-26) — Stream E dossier §04 arg declaration mandatory.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: agent_only  # emitido programaticamente por runtime_loadtest.py
+    fix:
+      apply_class: contextual
+      prose: |
+        Adicionar manualmente <x:Property Name="<arg>" Type="<Type>"/> em
+        <x:Members> block do XAML. Type deve match com:
+          - Caller InvokeWorkflowFile.Arguments declaration, OU
+          - REFramework standard, OU
+          - Sicoob Hungarian convention (St=String, Int=Int32, Bol=Boolean,
+            Dt=DateTime, Dtb=DataTable, Dict=Dictionary(string,object), etc.)
+        Após fix manual, re-run `uip <project>` pra confirmar gate verde.

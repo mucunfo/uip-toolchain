@@ -219,6 +219,36 @@ def _is_element_name_context(content: str, s: int) -> bool:
     return bool(_RE_ELEMENT_NAME_CTX.match(fragment))
 
 
+def _is_attribute_name_context(content: str, s: int, name_len: int) -> bool:
+    """True se posição `s` é nome de attribute XML dentro de tag aberta
+    (ex.: `<ui:RemoveDataColumn ColumnIndex="...">` — `ColumnIndex` aqui é
+    PROPERTY da activity, NÃO ref de variable).
+
+    Critério:
+      1. Há `<` sem `>` fechando antes de `s` (estamos dentro de open-tag).
+      2. Char(s) imediatamente após `s+name_len` é `=` (com optional `:` antes
+         pra namespace, ex.: `xmlns:`).
+      3. Precedido por whitespace (delimita attribute name).
+
+    Bug histórico (2026-05-25): rename N-1 de var `ColumnIndex` →
+    `vIntColumnIndex` cascateava p/ property name de RemoveDataColumn,
+    quebrando Studio load (`Não é possível definir o associado
+    desconhecido 'UiPath.Core.Activities.RemoveDataColumn.vIntColumnIndex'`).
+    """
+    # Boundary: open-tag detection (mesmo critério de _is_element_name_context
+    # mas precisa estar APÓS o nome do element, não no início).
+    lt = content.rfind("<", 0, s)
+    gt = content.rfind(">", 0, s)
+    if lt < 0 or lt < gt:
+        return False  # fora de tag
+    # Preceded by whitespace (attribute name delimiter).
+    if s == 0 or not content[s - 1].isspace():
+        return False
+    # Followed by `=` (attribute assignment) — tolera `:` namespace separator.
+    after = content[s + name_len : s + name_len + 2]
+    return after.startswith("=") or after.startswith(":")
+
+
 def _whole_word_sub_skip_tags(
     content: str, from_name: str, to_name: str,
     case_insensitive: bool = True,
@@ -242,10 +272,13 @@ def _whole_word_sub_skip_tags(
     out_parts: list[str] = []
     last = 0
     count = 0
+    name_len = len(from_name)
     for m in pattern.finditer(content):
         s = m.start()
         if _is_element_name_context(content, s):
             continue  # skip — match é nome de element/tag
+        if _is_attribute_name_context(content, s, name_len):
+            continue  # skip — match é nome de attribute (property da activity)
         out_parts.append(content[last:s])
         out_parts.append(to_name)
         last = m.end()
@@ -265,10 +298,13 @@ def _has_orphan_ref(content: str, name: str, exclude: str | None = None) -> bool
     igual ao old name — sem `exclude` daria false positive.
     """
     pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
+    name_len = len(name)
     for m in pattern.finditer(content):
         s = m.start()
         if _is_element_name_context(content, s):
             continue
+        if _is_attribute_name_context(content, s, name_len):
+            continue  # attribute name (activity property) ≠ orphan ref
         if exclude is not None and m.group(0) == exclude:
             continue
         return True
@@ -1376,6 +1412,20 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
                     f'\n        <ui:InvokeWorkflowFile.Arguments>'
                     f'{new_in_arg}\n        </ui:InvokeWorkflowFile.Arguments>\n      '
                 )
+            # Defesa pós-insert: se key apareceu >1× na args block resultante,
+            # rollback. Cobre race/regex-miss (Studio load-fail: dict bind
+            # exception em Dictionary(String, Argument)).
+            check_re = re.compile(
+                r'<ui:InvokeWorkflowFile\.Arguments\s*>(.*?)</ui:InvokeWorkflowFile\.Arguments\s*>',
+                re.DOTALL,
+            )
+            check_m = check_re.search(new_body)
+            if check_m:
+                key_count = len(re.findall(
+                    rf'\bx:Key="{re.escape(arg_name)}"', check_m.group(1)
+                ))
+                if key_count > 1:
+                    return m.group(0)
             return opening + new_body + closing
 
         new_ctext = invoke_re.sub(_rewrite_invoke, new_ctext)
@@ -1888,6 +1938,19 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
                 f'\n        <ui:InvokeWorkflowFile.Arguments>'
                 f'{new_in_arg}\n        </ui:InvokeWorkflowFile.Arguments>\n      '
             )
+        # Defesa pós-insert: x:Key duplicado na args block → rollback
+        # (cobre race/regex-miss; Studio load-fails: dict bind exception).
+        check_re = re.compile(
+            r'<ui:InvokeWorkflowFile\.Arguments\s*>(.*?)</ui:InvokeWorkflowFile\.Arguments\s*>',
+            re.DOTALL,
+        )
+        check_m = check_re.search(new_body)
+        if check_m:
+            key_count = len(re.findall(
+                rf'\bx:Key="{re.escape(arg_name)}"', check_m.group(1)
+            ))
+            if key_count > 1:
+                return m.group(0)
         return opening + new_body + closing
 
     new_content = invoke_re.sub(_rewrite, content)
@@ -2947,8 +3010,10 @@ def apply_insert_assembly_reference(file: Path, spec: dict, dry_run: bool = True
     # do Studio:
     #   <sco:Collection x:TypeArguments="AssemblyReference">...</sco:Collection>
     #   <scg:List x:TypeArguments="AssemblyReference" Capacity="N">...</scg:List>
+    # Studio numera prefixes (sco, sco1, sco2, scg, scg1...) conforme ordem de
+    # namespace declaration — aceita qualquer sufixo numérico.
     block_pat = re.compile(
-        r'(<(scg:List|sco:Collection)\s+x:TypeArguments="AssemblyReference"[^>]*>.*?)(\n[ \t]*)(</\2>)',
+        r'(<((?:scg|sco)\d*:(?:List|Collection))\s+x:TypeArguments="AssemblyReference"[^>]*>.*?)(\n[ \t]*)(</\2>)',
         re.DOTALL,
     )
     m = block_pat.search(content)
@@ -3550,4 +3615,282 @@ def apply_replace_nothing_value_type(file: Path, spec: dict, dry_run: bool = Tru
     if not dry_run:
         out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
         file.write_bytes(out)
+    return True
+
+
+_PROPELEM_HYBRID_RE = re.compile(
+    r'<(?P<elem>[A-Za-z_][\w]*:[A-Za-z_][\w]*\.[A-Za-z_][\w]*)'
+    r'(?P<attrs>(?:\s+[A-Za-z_][\w:]*="[^"]*")+)\s*>'
+    r'(?P<inner>.*?)'
+    r'</(?P=elem)\s*>',
+    re.DOTALL,
+)
+
+
+_HOSTILE_UNICODE_MAP = {
+    "“": "&quot;",   # LEFT DOUBLE QUOTATION MARK
+    "”": "&quot;",   # RIGHT DOUBLE QUOTATION MARK
+    "‘": "&apos;",   # LEFT SINGLE QUOTATION MARK
+    "’": "&apos;",   # RIGHT SINGLE QUOTATION MARK
+    " ": " ",        # NBSP → space
+    "​": "",         # ZERO WIDTH SPACE
+    "‌": "",         # ZERO WIDTH NON-JOINER
+    "‍": "",         # ZERO WIDTH JOINER
+}
+
+
+@register("replace_hostile_unicode_chars")
+def apply_replace_hostile_unicode_chars(
+    file: Path, spec: dict, dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """W-30 fixer: replace HARD hostile Unicode chars por ASCII equivalent.
+
+    Catalog (sempre wrong em VB Roslyn .NET 6 runtime):
+      U+201C/U+201D smart-double-quote → &quot;
+      U+2018/U+2019 smart-single-quote → &apos;
+      U+00A0 NBSP → space
+      U+200B/C/D zero-width → strip
+      U+FEFF zero-width no-break (mid-file BOM) → strip
+
+    Preserva BOM original do file (pos 0). Strip apenas U+FEFF interno.
+
+    Idempotente: skip se nenhum char hostil.
+
+    Safety: XML well-formedness validada pós-write.
+    """
+    bom = _file_has_bom(file)
+    content = file.read_text(encoding="utf-8-sig")
+
+    new_content = content
+    for src, dst in _HOSTILE_UNICODE_MAP.items():
+        new_content = new_content.replace(src, dst)
+
+    # U+FEFF: strip apenas se aparecer mid-file (não tocar BOM pos 0, já
+    # consumido pelo encoding utf-8-sig).
+    new_content = new_content.replace("﻿", "")
+
+    if new_content == content:
+        return False
+    try:
+        import xml.etree.ElementTree as ET
+        ET.fromstring(new_content)
+    except ET.ParseError:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, bom)
+    return True
+
+
+# Backward-compat alias para chamadas antigas (rules.yaml history).
+@register("replace_smart_quotes")
+def apply_replace_smart_quotes(file: Path, spec: dict, dry_run: bool = True,
+                                project_root: Path | None = None) -> bool:
+    """Compat: delega para replace_hostile_unicode_chars (W-30 expandido)."""
+    return apply_replace_hostile_unicode_chars(file, spec, dry_run, project_root)
+
+
+@register("strip_property_element_with_attribute")
+def apply_strip_property_element_with_attribute(
+    file: Path, spec: dict, dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """X-2 fixer: cleanup pos-Migrator regression.
+
+    Pattern: `<NS:Activity.Prop Attr="v">...</NS:Activity.Prop>` (property
+    element c/ attribute = XAML invalido).
+
+    Estrategia:
+      A. Se parent activity (`<NS:Activity ... Attr="v" ...>` anterior)
+         ja tem `Attr="v"` inline => remove o bloco property element
+         inteiro (redundante).
+      B. Senao => strip apenas a(s) attribute(s) da tag de abertura do
+         property element. Preserva inner content.
+
+    Spec opcional: `{'elem': 'ui:LogMessage.Level'}` restringe target.
+    """
+    target_elem = (spec or {}).get("elem")
+    bom = _file_has_bom(file)
+    content = file.read_text(encoding="utf-8-sig")
+    changed = False
+    out_parts: list[str] = []
+    last = 0
+    for m in _PROPELEM_HYBRID_RE.finditer(content):
+        elem = m.group("elem")
+        if target_elem and elem != target_elem:
+            continue
+        inner = m.group("inner")
+        if "." not in elem:
+            continue
+        parent_act, prop = elem.rsplit(".", 1)
+        before = content[:m.start()]
+        parent_open_re = re.compile(rf'<{re.escape(parent_act)}\b[^>]*?>')
+        parent_opens = list(parent_open_re.finditer(before))
+        parent_has_inline = False
+        if parent_opens:
+            last_open = parent_opens[-1].group(0)
+            if re.search(rf'\b{re.escape(prop)}\s*=\s*"', last_open):
+                parent_has_inline = True
+        out_parts.append(content[last:m.start()])
+        if parent_has_inline:
+            tail_ws = re.search(r'[ \t]*\n?[ \t]*$', out_parts[-1])
+            if tail_ws and tail_ws.group(0):
+                out_parts[-1] = out_parts[-1][: -len(tail_ws.group(0))]
+        else:
+            out_parts.append(f'<{elem}>{inner}</{elem}>')
+        last = m.end()
+        changed = True
+    if not changed:
+        return False
+    out_parts.append(content[last:])
+    new_content = "".join(out_parts)
+    try:
+        import xml.etree.ElementTree as ET
+        ET.fromstring(new_content)
+    except ET.ParseError:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, bom)
+    return True
+
+
+# Phase 9E: inject missing arg declaration in <x:Members> block.
+# Pre-resolved type passed em spec; inference já feita upstream pelo
+# runtime_loadtest gate. Fixer = pure write-time mecânico.
+_MEMBERS_CLOSE_RE = re.compile(r"</x:Members>")
+_MEMBERS_OPEN_RE = re.compile(r"<x:Members\s*>")
+_ACTIVITY_OPEN_RE = re.compile(r"<Activity\b[^>]*?>", re.DOTALL)
+
+
+@register("inject_missing_args")
+def apply_inject_missing_args(file: Path, spec: dict[str, Any], dry_run: bool = True,
+                                project_root: Path | None = None) -> bool:
+    """Phase 9E fixer: inject missing `<x:Property Name="X" Type="Y"/>` em
+    <x:Members> block.
+
+    Spec (emitido por runtime_loadtest._parse_output após 3-layer inference):
+      arg_name      : nome do arg (ex: 'in_Config')
+      inferred_type : tipo wrapped (ex: 'InArgument(scg:Dictionary(...))')
+      source        : 'canonical' | 'invocation_xref' | 'hungarian' (debug)
+
+    Algoritmo (raw-string surgical edit pra preservar 100% format XAML
+    incluindo namespace prefixes — ET.write não preserva ns0/ns1):
+
+      1. Read file (preserve BOM).
+      2. Idempotência: se `<x:Property Name="<arg>"` já existe no Members,
+         skip silencioso (no-op).
+      3. Se <x:Members> tag existe: insert <x:Property/> antes do </x:Members>,
+         preservando indent.
+      4. Se <x:Members> ausente: cria block + property após root <Activity ...>
+         open tag. Raro pra workflows reais (Studio sempre emite block, mesmo
+         vazio — ver rule S-1 self-close `<x:Members/>`).
+
+    Safety:
+      - Idempotente: re-run não duplica property.
+      - Preserva BOM.
+      - Sanitiza arg_name/inferred_type contra XML injection (whitelist chars).
+      - Post-write é validado por apply_with_gate → XML well-form gate +
+        VB orphan gate. Se invalid, rollback automático.
+    """
+    if not isinstance(spec, dict):
+        return False
+    arg_name = (spec.get("arg_name") or "").strip()
+    inferred_type = (spec.get("inferred_type") or "").strip()
+    if not arg_name or not inferred_type:
+        return False
+    # Whitelist arg_name: identifier ASCII. UiPath Members aceita basicamente
+    # qualquer identifier VB válido, mas Sicoob padrão é ASCII puro.
+    if not re.fullmatch(r"[A-Za-z_][\w]*", arg_name):
+        return False
+    # inferred_type pode conter `(`, `)`, `:`, `,`, espaços, `[`, `]`, ponto.
+    # Bloqueia chars que quebram XML attribute (<, >, ", &, control chars).
+    if any(c in inferred_type for c in '"<>&\n\r\t'):
+        return False
+
+    if not file.exists():
+        return False
+
+    had_bom = _file_has_bom(file)
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Idempotência: já declarado?
+    # Match `<x:Property Name="<arg>"` em qualquer lugar (XAML pode ter Members
+    # ou outras Property declarations — Sicoob padrão é só em Members mas o
+    # check é defensivo).
+    if re.search(rf'<x:Property\s+Name="{re.escape(arg_name)}"\s', content):
+        return False
+    # Tolera ordem: `<x:Property Type="..." Name="...">`.
+    if re.search(rf'<x:Property\s+[^>]*\bName="{re.escape(arg_name)}"\b', content):
+        return False
+
+    # Build new property line. Single-line, self-closed.
+    new_prop = f'<x:Property Name="{arg_name}" Type="{inferred_type}" />'
+
+    # Path 1: <x:Members>...</x:Members> exists.
+    members_close = _MEMBERS_CLOSE_RE.search(content)
+    if members_close is not None:
+        # Find indent from existing property line se houver; senão, herda do
+        # bloco. Default 4-space indent (Sicoob padrão Studio).
+        # Look from <x:Members> open backwards/forwards pra encontrar indent.
+        members_open = _MEMBERS_OPEN_RE.search(content)
+        existing_prop = re.search(
+            r"(\n[ \t]*)<x:Property\b", content[:members_close.start()],
+        )
+        if existing_prop:
+            indent = existing_prop.group(1)
+        elif members_open:
+            # Indent do <x:Members> + 2 spaces
+            members_line_start = content.rfind("\n", 0, members_open.start()) + 1
+            members_indent = content[members_line_start:members_open.start()]
+            indent = "\n" + members_indent + "  "
+        else:
+            indent = "\n    "
+
+        # Insert antes do </x:Members>. Encontra linha-início da close tag pra
+        # preservar indent original da close.
+        close_line_start = content.rfind("\n", 0, members_close.start())
+        if close_line_start == -1:
+            insert_pos = members_close.start()
+            new_content = (
+                content[:insert_pos]
+                + indent.lstrip("\n") + new_prop + "\n"
+                + content[insert_pos:]
+            )
+        else:
+            # insert: <indent><new_prop> antes do `\n<close_indent></x:Members>`
+            insert_pos = close_line_start
+            new_content = (
+                content[:insert_pos]
+                + indent + new_prop
+                + content[insert_pos:]
+            )
+    else:
+        # Path 2: no <x:Members> block. Inject `<x:Members>...<Property/>...</x:Members>`
+        # após root <Activity ...> open tag.
+        activity_open = _ACTIVITY_OPEN_RE.search(content)
+        if activity_open is None:
+            return False
+        # Determine indent: 2 spaces após `\n` da root.
+        insert_pos = activity_open.end()
+        # Heuristic indent: 2 spaces (Sicoob/Studio default p/ Members)
+        block = (
+            "\n  <x:Members>"
+            f"\n    {new_prop}"
+            "\n  </x:Members>"
+        )
+        new_content = content[:insert_pos] + block + content[insert_pos:]
+
+    if new_content == content:
+        return False
+
+    # Pre-flight XML well-form gate antes de write. apply_with_gate faz outro
+    # check, mas validar local previne write inútil em casos malformados.
+    try:
+        import xml.etree.ElementTree as _ET
+        _ET.fromstring(new_content)
+    except _ET.ParseError:
+        return False
+
+    if not dry_run:
+        _write_preserving_bom(file, new_content, had_bom)
     return True

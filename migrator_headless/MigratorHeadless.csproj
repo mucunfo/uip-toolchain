@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <RootNamespace>SicoobUiPath.MigratorHeadless</RootNamespace>
+    <AssemblyName>migrator_headless</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>10</LangVersion>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <!-- Allow loading internal types via reflection without compile-time
+         reference checks. We never link against the internal classes; all
+         interop is reflective. -->
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Sicoob pin is 25.10.8 for runtime activities, but
+      UiPath.UIAutomationNext.Migration.dll only ships in 25.10.16+.
+      We pull 25.10.29 (newest known good) at build-time to populate the
+      NuGet cache; at runtime the host probes the cache and loads whichever
+      version is locally available (env override UIPATH_MIGRATOR_DLL).
+    -->
+    <PackageReference Include="UiPath.UIAutomation.Activities" Version="25.10.29" />
+    <PackageReference Include="UiPath.System.Activities" Version="25.4.4" />
+  </ItemGroup>
+</Project>
