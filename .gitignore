@@ -58,4 +58,12 @@ dist/
 models.conf
 
 # Analyzer baseline cache (machine-local)
-.uipath-rules-cache/
+.uip-toolchain-cache/
+
+# C# migrator build artifacts
+migrator/bin/
+migrator/obj/
+
+# Experiments (runtime load tests + spike research) — descartável
+experiments/**/*.log
+experiments/**/*.json

@@ -1,9 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
-    <Import Project="$(NuGetPackageRoot)system.text.json\6.0.10\buildTransitive\netcoreapp3.1\System.Text.Json.targets" Condition="Exists('$(NuGetPackageRoot)system.text.json\6.0.10\buildTransitive\netcoreapp3.1\System.Text.Json.targets')" />
-    <Import Project="$(NuGetPackageRoot)uipath.appsignatures\25.10.175.31749\build\UiPath.AppSignatures.targets" Condition="Exists('$(NuGetPackageRoot)uipath.appsignatures\25.10.175.31749\build\UiPath.AppSignatures.targets')" />
-    <Import Project="$(NuGetPackageRoot)uipath\25.10.175.31749\build\UiPath.targets" Condition="Exists('$(NuGetPackageRoot)uipath\25.10.175.31749\build\UiPath.targets')" />
-    <Import Project="$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\6.0.4\buildTransitive\netcoreapp3.1\Microsoft.Extensions.Logging.Abstractions.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\6.0.4\buildTransitive\netcoreapp3.1\Microsoft.Extensions.Logging.Abstractions.targets')" />
-  </ImportGroup>
-</Project>
