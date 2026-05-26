@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python3
-"""PostToolUse hook — runs rule_engine.cli review after Edit/Write on .xaml files.
+"""PostToolUse hook — runs uip_engine.cli review after Edit/Write on .xaml files.
 
 Silent when no violations. On violations, writes a compact report to stdout so
 Claude sees it and must fix before continuing.
@@ -62,7 +62,7 @@ def main() -> int:
             timeout=180,
         )
     except Exception as e:
-        print(f"[uipath-hook] rule_engine failed to run: {e}", file=sys.stderr)
+        print(f"[uipath-hook] uip_engine failed to run: {e}", file=sys.stderr)
         return 0
 
     try:
@@ -88,7 +88,7 @@ def main() -> int:
                 return t
         return None
 
-    print("[uipath-hook] rule_engine findings:")
+    print("[uipath-hook] uip_engine findings:")
     for f in file_findings:
         sev = f["severity"]
         rid = f["rule_id"]

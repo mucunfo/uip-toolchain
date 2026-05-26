@@ -21,8 +21,8 @@ DetectorFn = Callable[[Rule, FileContext, ProjectContext], list[Finding]]
 
 
 def _default_worker_cap() -> int:
-    """nproc/2, max 8. Override via env `RULE_ENGINE_WORKERS=N`."""
-    override = os.environ.get("RULE_ENGINE_WORKERS")
+    """nproc/2, max 8. Override via env `UIP_TOOLCHAIN_WORKERS=N`."""
+    override = os.environ.get("UIP_TOOLCHAIN_WORKERS")
     if override:
         try:
             n = int(override)
@@ -103,7 +103,7 @@ class Runner:
         # lxml libera GIL durante parse → threading dá CPU parallelism real
         # mesmo sem multiprocessing. ValidationResult.add() é list.append,
         # GIL-atomic em CPython.
-        # Cap: nproc/2 max 8 (override via RULE_ENGINE_WORKERS=N).
+        # Cap: nproc/2 max 8 (override via UIP_TOOLCHAIN_WORKERS=N).
         # Opt-out determinístico: UIP_TOOLCHAIN_NO_PARALLEL=1.
         if _parallel_enabled() and len(files) > 1:
             workers = min(_default_worker_cap(), len(files))

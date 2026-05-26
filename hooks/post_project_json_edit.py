@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 """PostToolUse hook — after Edit/Write on project.json, run
-rule_engine.cli review (J-/D-* rules naturalmente filtradas por applies_to).
+uip_engine.cli review (J-/D-* rules naturalmente filtradas por applies_to).
 
 Hook input (stdin, JSON):
     { "tool_name": "Edit", "tool_input": { "file_path": "...project.json" }, ... }
@@ -52,7 +52,7 @@ def main() -> int:
             timeout=180,
         )
     except Exception as e:
-        print(f"[uipath-hook] rule_engine failed: {e}", file=sys.stderr)
+        print(f"[uipath-hook] uip_engine failed: {e}", file=sys.stderr)
         return 0
 
     try:
@@ -78,7 +78,7 @@ def main() -> int:
                 return t
         return None
 
-    print("[uipath-hook] rule_engine project.json findings:")
+    print("[uipath-hook] uip_engine project.json findings:")
     for f in pj_findings:
         sev = f["severity"]
         rid = f["rule_id"]

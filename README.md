@@ -47,18 +47,18 @@ Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 
 ## Como Claude opera
 
-1. **Qualquer edição em `.xaml`** → hook `PostToolUse` roda `rule_engine.cli review`. Violações voltam — corrigir antes de continuar.
-2. **Edit em `project.json`** → hook chama `rule_engine.cli review` (J-/D-* validam pinning).
+1. **Qualquer edição em `.xaml`** → hook `PostToolUse` roda `uip_engine.cli review`. Violações voltam — corrigir antes de continuar.
+2. **Edit em `project.json`** → hook chama `uip_engine.cli review` (J-/D-* validam pinning).
 3. **Ler XAML grande (>500 linhas)** → hook `PreToolUse` sugere `xaml_summary.py`/`xaml_find.py` em vez de Read bruto.
 4. **Precisa de exemplo de activity** → `xaml_example.py --activity NOME` extrai do projeto modelo.
 5. **Adicionar/editar regra** → tocar SÓ `rules.yaml` (ver `ARCHITECTURE.md` decision tree).
 6. **Decisões arquiteturais** (regras `agent_only`) → consultar `rules.yaml` filtrando por categoria.
 
-## Scripts (`scripts/`)
+## Layout (`src/`, `tools/`, `hooks/`)
 
 | Script | Automação | Uso |
 |---|---|---|
-| `rule_engine` (pacote) | auto via hooks PostToolUse | review/validate/list/fix |
+| `uip_engine` (pacote, `src/uip_engine/`) | auto via hooks PostToolUse | review/validate/list/fix |
 | `xaml_summary.py` | auto via hook PreToolUse Read `.xaml >500` | resumo estrutural compacto |
 | `xaml_find.py` | manual | lookup por DisplayName/arg/var/invokes/linha |
 | `xaml_example.py` | manual | exemplo real de activity (fonte: `models.conf`) |
@@ -66,7 +66,7 @@ Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 | `resolve_nuget.py --add/--all` | manual | adicionar pacote nova dependência |
 | `inspect-ui-tree.ps1` | manual | inspecionar UI Automation (app em runtime) |
 
-## CLI rule_engine
+## CLI uip_engine
 
 ```bash
 # Validar schema rules.yaml
@@ -131,8 +131,8 @@ Pipeline de defesa (`fix --apply`):
 | Evento | Match | Ação |
 |---|---|---|
 | `PreToolUse` | `Read` em `.xaml >500 linhas` | roda `xaml_summary.py` e retorna resumo inline |
-| `PostToolUse` | `Edit/Write/MultiEdit` em `.xaml` | roda `rule_engine.cli review`; violações voltam pro Claude |
-| `PostToolUse` | `Edit/Write/MultiEdit` em `project.json` | roda `rule_engine.cli review`; J-/D-* validam pinning |
+| `PostToolUse` | `Edit/Write/MultiEdit` em `.xaml` | roda `uip_engine.cli review`; violações voltam pro Claude |
+| `PostToolUse` | `Edit/Write/MultiEdit` em `project.json` | roda `uip_engine.cli review`; J-/D-* validam pinning |
 
 Hooks silenciam quando nada a reportar — zero ruído em tarefas normais.
 

@@ -85,5 +85,5 @@ Tamanho ~600 KB.
 ## Versionamento
 
 Schema dump não é fonte primária — é gerado. Mudança em `activities-compact.json`
-sem commit equivalente em scripts/packages = stale. Documentar versão Studio +
+sem commit equivalente em tools/activities_meta = stale. Documentar versão Studio +
 data no commit message ao regenerar.

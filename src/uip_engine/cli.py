@@ -12,7 +12,7 @@ from pathlib import Path
 # Sem cache → impossível ler versão obsoleta.
 sys.dont_write_bytecode = True
 
-# Sweep existing __pycache__ DIRS dentro do pacote rule_engine — invalida
+# Sweep existing __pycache__ DIRS dentro do pacote uip_engine — invalida
 # caches escritos por runs anteriores ANTES desse flag entrar em vigor.
 def _sweep_pycache() -> None:
     import shutil
@@ -25,14 +25,13 @@ def _sweep_pycache() -> None:
 
 _sweep_pycache()
 
-# Compat path: rules.yaml refere python detectors como
-# `uip_engine.heuristics.<mod>` (legado de quando engine era
-# invocado via `python -m uip_engine.cli` de dentro de
-# `.uip-toolchain/`). Após `pip install -e` (2026-05), pacote instalado é
-# `rule_engine` direto — `uip_engine.*` quebra em invocação via
-# console_script `uip`. Add `.uip-toolchain/` ao sys.path: re-habilita
-# resolução do nome antigo (Python vê dir `scripts/` como package).
-# Não rename rules.yaml em massa pra preservar source-of-truth + git diff.
+# sys.path injection: ensures rules.yaml python detectors referenced as
+# `uip_engine.heuristics.<mod>` resolve in all invocation modes
+# (console_script `uip`, `python -m uip_engine.cli`, hooks subprocess).
+# After src/ reorg (2026-05-26), parents[2] = `.uip-toolchain/` and
+# the package lives at `src/uip_engine/`. Adding repo root to sys.path
+# is harmless and provides resilience for environments where the
+# editable install link is stale or missing.
 _engine_root_for_compat = Path(__file__).resolve().parents[2]
 if str(_engine_root_for_compat) not in sys.path:
     sys.path.insert(0, str(_engine_root_for_compat))
@@ -785,12 +784,12 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     # local (Studio install); CI Windows tem; se preflight falha = ambiente
     # quebrado, engine NÃO pode declarar PASS.
     #
-    # Override opt-in: RULE_ENGINE_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN
+    # Override opt-in: UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN
     # (usar só em CI degradado conhecido; documentar reason).
     pre = preflight(cli)
     if not pre.ok:
         allow_skip = os.environ.get(
-            "RULE_ENGINE_ALLOW_PREFLIGHT_SKIP", ""
+            "UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP", ""
         ).strip() in ("1", "true", "yes")
         sev = Severity.WARN if allow_skip else Severity.ERROR
         result.add(Finding(
@@ -1124,11 +1123,11 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
     # Pre-flight: cloud + uipcli responsive ANTES de pagar custo do spawn.
     # Severity = ERROR (mesma justificativa que analyzer-gate): sem uipcli
     # engine NÃO valida pack/build. Skip silencioso escondia regressões.
-    # Override opt-in via RULE_ENGINE_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN.
+    # Override opt-in via UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN.
     pre = preflight(cli)
     if not pre.ok:
         allow_skip = _os.environ.get(
-            "RULE_ENGINE_ALLOW_PREFLIGHT_SKIP", ""
+            "UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP", ""
         ).strip() in ("1", "true", "yes")
         sev = Severity.WARN if allow_skip else Severity.ERROR
         result.add(Finding(

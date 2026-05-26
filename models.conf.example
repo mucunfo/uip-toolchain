@@ -5,7 +5,7 @@
 #
 # Um path absoluto por linha. Ordem = prioridade (primeiro vence em caso de match).
 # Linhas começando com # são comentários, linhas vazias ignoradas.
-# Usado por scripts/xaml_example.py para extrair exemplos reais de activities.
+# Usado por tools/xaml_example.py para extrair exemplos reais de activities.
 
 # Exemplo (substitua por seus paths):
 # C:\path\to\projeto-performer

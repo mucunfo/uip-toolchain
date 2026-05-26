@@ -8,7 +8,7 @@
 
 ## Executive summary
 
-Engine rule_engine atualmente opera por **hipóteses + tentativa-erro** pra produzir fixes mecânicos em XAMLs UiPath migrados Legacy→Windows. Workflow real:
+Engine uip_engine atualmente opera por **hipóteses + tentativa-erro** pra produzir fixes mecânicos em XAMLs UiPath migrados Legacy→Windows. Workflow real:
 1. Engine roda regras (W-11g, W-19, ENV-2, ENV-3, ENV-4, W-31, W-32, etc)
 2. Usuário abre Studio
 3. Studio aponta BC errors restantes
@@ -248,7 +248,7 @@ def test_engine_matches_studio_oracle(incident):
 **Loader enforcement:**
 - `loader.py` valida `provenance` field obrigatório
 - Boot warn se rule sem `provenance.incident` link existente
-- `RULE_INDEX.md` auto-gerado por `scripts/gen_rule_index.py`
+- `RULE_INDEX.md` auto-gerado por `tools/gen_rule_index.py`
 
 **Deprecation policy `.docs/DEPRECATION_POLICY.md`:**
 - Rule wrong hypothesis (W-26 case): provenance `deprecated_at: <date>, reason: <empirical evidence>, replaced_by: <new-rule>`
