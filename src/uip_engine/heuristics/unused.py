@@ -1,4 +1,4 @@
-"""Heuristics for U-* rules — unused/undeclared identifiers in XAML.
+﻿"""Heuristics for U-* rules — unused/undeclared identifiers in XAML.
 
 U-1: variables declared in `<*.Variables>` never referenced in scope.
 U-2: arguments declared in `<x:Members>` never read in callee body and
@@ -15,7 +15,7 @@ from html import unescape as _xml_unescape
 from pathlib import Path
 from typing import Iterable
 
-from scripts.rule_engine._types import Finding, Severity
+from uip_engine._types import Finding, Severity
 
 
 # ---------- Common helpers ----------

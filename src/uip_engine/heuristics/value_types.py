@@ -1,4 +1,4 @@
-"""Heuristics V-* — value-type initialization checks.
+﻿"""Heuristics V-* — value-type initialization checks.
 
 V-1: `Default="[Nothing]"` em Variable/Property de value-type (Int32, Int64,
      Boolean, Double, Decimal, Single, Byte, Char, DateTime).
@@ -8,7 +8,7 @@ V-1: `Default="[Nothing]"` em Variable/Property de value-type (Int32, Int64,
 from __future__ import annotations
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _VALUE_TYPES = frozenset({

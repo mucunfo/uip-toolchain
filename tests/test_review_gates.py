@@ -1,4 +1,4 @@
-"""Tests p/ os 3 gates do review (analyzer + nuget restore + uipcli pack).
+﻿"""Tests p/ os 3 gates do review (analyzer + nuget restore + uipcli pack).
 
 review é canonical pre-publish gate: SEMPRE roda os 3. --no-analyzer-gate
 mantido como flag back-compat (warning + ignore).
@@ -18,11 +18,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Garante que tests podem importar scripts.rule_engine.* sem PYTHONPATH adhoc.
+# Garante que tests podem importar uip_engine.* sem PYTHONPATH adhoc.
 sys.path.insert(0, str(ROOT))
 
-from scripts.rule_engine import cli as cli_mod  # noqa: E402
-from scripts.rule_engine._types import Finding, Severity, ValidationResult  # noqa: E402
+from uip_engine import cli as cli_mod  # noqa: E402
+from uip_engine._types import Finding, Severity, ValidationResult  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ def test_nuget_gate_emits_finding_on_nu1605(tmp_path):
 
 def _fake_preflight_ok():
     """PreflightResult OK p/ mock — evita spawn real de uipcli."""
-    from scripts.rule_engine.uipcli_runner import PreflightResult
+    from uip_engine.uipcli_runner import PreflightResult
     return PreflightResult(
         ok=True, uipcli_responsive=True, uipcli_version="fake-26.0",
         cloud_reachable=True, cloud_host="fake.cloud", diagnose="",
@@ -115,7 +115,7 @@ def _fake_preflight_ok():
 
 def _fake_uipcli_result(stdout: str, returncode: int = 1):
     """UipcliResult OK p/ mock — evita spawn real Popen."""
-    from scripts.rule_engine.uipcli_runner import UipcliResult
+    from uip_engine.uipcli_runner import UipcliResult
     return UipcliResult(
         completed=True, returncode=returncode, stdout=stdout, stderr="",
         duration_sec=1.0, halt_reason=None, halt_detail="",
@@ -139,9 +139,9 @@ def test_pack_gate_emits_finding_on_bc_error(tmp_path):
     fake_cli.is_file.return_value = True
     fake_cli.__str__ = lambda self: "fake-uipcli.exe"
 
-    with patch("scripts.rule_engine.analyzer.discover_uipcli", return_value=fake_cli), \
-         patch("scripts.rule_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
-         patch("scripts.rule_engine.uipcli_runner.run_uipcli_guarded",
+    with patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
+         patch("uip_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
+         patch("uip_engine.uipcli_runner.run_uipcli_guarded",
                return_value=_fake_uipcli_result(pack_output, returncode=1)):
         cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
 
@@ -167,9 +167,9 @@ def test_pack_gate_fallback_on_unparseable_error(tmp_path):
     fake_cli = MagicMock()
     fake_cli.is_file.return_value = True
 
-    with patch("scripts.rule_engine.analyzer.discover_uipcli", return_value=fake_cli), \
-         patch("scripts.rule_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
-         patch("scripts.rule_engine.uipcli_runner.run_uipcli_guarded",
+    with patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
+         patch("uip_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
+         patch("uip_engine.uipcli_runner.run_uipcli_guarded",
                return_value=_fake_uipcli_result(pack_output, returncode=1)):
         cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
 
@@ -202,7 +202,7 @@ def test_pack_gate_graceful_skip_when_uipcli_absent(tmp_path, capsys):
     proj = _make_project(tmp_path)
     result = ValidationResult()
 
-    with patch("scripts.rule_engine.analyzer.discover_uipcli", return_value=None):
+    with patch("uip_engine.analyzer.discover_uipcli", return_value=None):
         cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
 
     pack_findings = [f for f in result.findings if f.rule_id == "UIPATH:PACK"]
@@ -241,7 +241,7 @@ def test_review_no_analyzer_gate_flag_deprecated_warning(tmp_path):
     rules_file.write_text("version: 1\nrules: []\n", encoding="utf-8")
 
     proc = subprocess.run(
-        [sys.executable, "-m", "scripts.rule_engine.cli", "review",
+        [sys.executable, "-m", "uip_engine.cli", "review",
          str(proj), "--rules-file", str(rules_file),
          "--no-analyzer-gate", "--format", "json"],
         cwd=str(ROOT), capture_output=True, text=True,
@@ -272,10 +272,10 @@ def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, mo
     """Sem --no-analyzer-gate, review chama _inject_analyzer_findings.
 
     Verifica que a função é INVOCADA (mesmo se uipcli ausente skipa).
-    Conftest seta UIPATH_RULES_DISABLE_EXTERNAL_GATES=1 — aqui deletamos p/
+    Conftest seta UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 — aqui deletamos p/
     testar o caminho real (com stubs).
     """
-    monkeypatch.delenv("UIPATH_RULES_DISABLE_EXTERNAL_GATES", raising=False)
+    monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
 
     proj = _make_project(tmp_path)
     rf = tmp_path / "empty_rules.yaml"
@@ -311,7 +311,7 @@ def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, mo
 
 
 def test_review_exit_error_when_pack_gate_adds_error(tmp_path, monkeypatch):
-    monkeypatch.delenv("UIPATH_RULES_DISABLE_EXTERNAL_GATES", raising=False)
+    monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
 
     proj = _make_project(tmp_path)
     rf = tmp_path / "empty_rules.yaml"

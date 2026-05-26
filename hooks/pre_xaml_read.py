@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """PreToolUse hook — when Claude is about to Read a .xaml file:
 
 1. Always: emit schema refs for activities used (compact list of args/required/
@@ -25,12 +25,12 @@ enforce_utf8()
 BIG_FILE_THRESHOLD_LINES = 500
 MAX_SCHEMA_REFS = 12  # cap to avoid blowing context
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent
-_RULES_DIR = _SCRIPTS_DIR.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SRC_DIR = _REPO_ROOT / "src"
 
-# Allow importing rule_engine helpers without requiring engine install.
-if str(_RULES_DIR) not in sys.path:
-    sys.path.insert(0, str(_RULES_DIR))
+# Allow importing uip_engine helpers without requiring engine install.
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 
 def _emit_schema_refs(xaml_path: Path) -> str | None:
@@ -40,7 +40,7 @@ def _emit_schema_refs(xaml_path: Path) -> str | None:
     or schema unavailable.
     """
     try:
-        from scripts.rule_engine.heuristics.activity_meta import (  # noqa: E402
+        from uip_engine.heuristics.activity_meta import (  # noqa: E402
             get_schema, parse_activities,
         )
     except Exception:
@@ -112,7 +112,7 @@ def _emit_schema_refs(xaml_path: Path) -> str | None:
     out = "[uipath-hook] activities used (schema-derived):\n" + "\n".join(lines)
     if extra:
         out += "\n" + extra
-    out += "\n  Use 'python -m scripts.activities_meta.lookup --activity NAME' for full args."
+    out += "\n  Use 'python -m tools.activities_meta.lookup --activity NAME' for full args."
     return out
 
 

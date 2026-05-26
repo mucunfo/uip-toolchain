@@ -1,4 +1,4 @@
-"""Heuristic W-3: Default value de argumento via attribute form on root.
+﻿"""Heuristic W-3: Default value de argumento via attribute form on root.
 
 Detecta `<Activity ... this:Class.<arg>="value" ...>` e emite finding com
 mechanical p/ converter em element form.
@@ -6,7 +6,7 @@ mechanical p/ converter em element form.
 from __future__ import annotations
 
 import re
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_ACTIVITY_ROOT = re.compile(r'<Activity\b[^>]*?>', re.DOTALL)

@@ -1,11 +1,11 @@
-"""Tests for heuristics/activity_meta.py — M-1, M-2."""
+﻿"""Tests for heuristics/activity_meta.py — M-1, M-2."""
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity, Category
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.heuristics.activity_meta import (
+from uip_engine._types import Rule, Severity, Category
+from uip_engine.context import FileContext
+from uip_engine.heuristics.activity_meta import (
     detect_m1_activity_unknown,
     detect_m2_required_missing,
     detect_m3_unknown_arg,
@@ -33,7 +33,7 @@ def _rule(rid: str, fn_name: str) -> Rule:
         detect={
             "type": "python",
             "params": {
-                "module": "scripts.rule_engine.heuristics.activity_meta",
+                "module": "uip_engine.heuristics.activity_meta",
                 "function": fn_name,
             },
         },

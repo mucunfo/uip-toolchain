@@ -1,8 +1,8 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.detectors import detect_cross_file_args
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
+from uip_engine.detectors import detect_cross_file_args
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
 
 
 def setup_project(tmp_path):

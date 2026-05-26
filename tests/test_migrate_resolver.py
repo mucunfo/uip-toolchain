@@ -1,4 +1,4 @@
-"""Tests para migrate_resolver — offline clone do MigratedPackageVersionResolver.
+﻿"""Tests para migrate_resolver — offline clone do MigratedPackageVersionResolver.
 
 Cobre:
   - NuGetVersion.parse + comparisons
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.migrate_resolver import (
+from uip_engine.migrate_resolver import (
     NuGetVersion,
     ResolutionAction,
     ResolutionResult,

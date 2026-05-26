@@ -1,4 +1,4 @@
-"""Smoke tests — engine em projetos reais. Não deve crashar."""
+﻿"""Smoke tests — engine em projetos reais. Não deve crashar."""
 from pathlib import Path
 import subprocess
 import sys
@@ -26,7 +26,7 @@ PERFORMER_PATH = Path(
 
 
 def _run_review(project_path: Path, rules_file: Path | None = None):
-    cmd = [sys.executable, "-m", "scripts.rule_engine.cli", "review",
+    cmd = [sys.executable, "-m", "uip_engine.cli", "review",
            str(project_path), "--format", "json"]
     if rules_file is not None:
         cmd += ["--rules-file", str(rules_file)]

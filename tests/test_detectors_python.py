@@ -1,8 +1,8 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.detectors import detect_python, REGISTRY
-from scripts.rule_engine._types import Rule, Severity, Finding
-from scripts.rule_engine.context import FileContext
+from uip_engine.detectors import detect_python, REGISTRY
+from uip_engine._types import Rule, Severity, Finding
+from uip_engine.context import FileContext
 
 
 def make_rule(detect_params, **kwargs):
@@ -24,7 +24,7 @@ def test_python_calls_registered_function(tmp_path):
     rule = make_rule({
         "type": "python",
         "params": {
-            "module": "scripts.rule_engine.heuristics.refrwk_variant",
+            "module": "uip_engine.heuristics.refrwk_variant",
             "function": "is_dispatcher",
             "markers": ["BulkAddQueueItems"],
         }

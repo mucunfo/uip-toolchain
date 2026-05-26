@@ -1,4 +1,4 @@
-"""Heuristics for naming rules (S-4 acronyms, S-6 x:Class, S-9 PT-BR).
+﻿"""Heuristics for naming rules (S-4 acronyms, S-6 x:Class, S-9 PT-BR).
 
 All lists/thresholds vinem de rules.yaml params. Sem hardcoded.
 """
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _NAME_ATTR = re.compile(r'<x:Property[^>]*Name="([^"]+)"|<Variable[^>]*Name="([^"]+)"')

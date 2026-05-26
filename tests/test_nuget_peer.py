@@ -1,4 +1,4 @@
-"""Tests for D-2 — NuGet peer dependency conflict (NU1605 prevention).
+﻿"""Tests for D-2 — NuGet peer dependency conflict (NU1605 prevention).
 
 Detector lê `.nuspec` do cache local de packages e cruza peer requirements
 com pins do project.json. Fixtures criam .nuspec sintéticos numa tmp dir
@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.nuget_peer import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.nuget_peer import (
     detect_nuget_peer_conflict,
     _parse_version,
     _range_satisfies,
@@ -376,8 +376,8 @@ def test_d2_multiple_conflicts_multiple_findings(tmp_path):
 def test_d2_loader_validates_apply_class():
     """D-2 em rules.yaml deve declarar apply_class explícito (python
     detector). Loader rejeita silente default contextual."""
-    from scripts.rule_engine.loader import load_rules
-    from scripts.rule_engine import detectors, fixers
+    from uip_engine.loader import load_rules
+    from uip_engine import detectors, fixers
 
     rules_path = Path(__file__).resolve().parents[1] / "rules.yaml"
     rules = load_rules(

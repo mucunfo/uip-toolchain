@@ -1,4 +1,4 @@
-"""Spike: invoke Studio's XamlMigrationProjectEndpoint.ApplyMigration on a XAML.
+﻿"""Spike: invoke Studio's XamlMigrationProjectEndpoint.ApplyMigration on a XAML.
 
 Approach:
   1. Construct XamlMigrationProjectEndpoint(null, null) -- T1 confirmed PASS.
@@ -17,7 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO = Path(r"C:\Users\lisan\OneDrive - Sicoob\Projects\.uipath-rules")
+REPO = Path(r"C:\Users\lisan\OneDrive - Sicoob\Projects\.uip-toolchain")
 _DEFAULT_STUDIO = r"C:\Users\lisan\AppData\Local\Programs\UiPathPlatform\Studio\26.0.193-cloud.23060"
 STUDIO_DIR = Path(os.environ.get("UIPATH_STUDIO_DIR", _DEFAULT_STUDIO))
 RUNTIME_CONFIG = STUDIO_DIR / "UiPath.Studio.runtimeconfig.json"

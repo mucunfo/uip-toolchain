@@ -1,10 +1,10 @@
-// migrator_headless — UiPath Activity Migrator reflection-driven headless host.
+﻿// migrator_headless — UiPath Activity Migrator reflection-driven headless host.
 //
 // Stream E dossier §04: MigrationService.Migrate(modelTreeManager, options) é
 // internal API mas reflexivamente invocável. Replicates GA Studio's "Migrate
 // to Windows" behavior sem precisar UiPath.Activities.Migrator.exe (GUI).
 //
-// Reflection target (see .uipath-rules/.tmp/phase_5_reflection_sig.md):
+// Reflection target (see .uip-toolchain/.tmp/phase_5_reflection_sig.md):
 //   - Assembly: UiPath.UIAutomationNext.Migration.dll (ships 25.10.16+)
 //   - Sicoob pin: 25.10.8 (NO Migration.dll there → we probe 25.10.29 first)
 //

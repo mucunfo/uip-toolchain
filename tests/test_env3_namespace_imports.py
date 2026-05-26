@@ -1,4 +1,4 @@
-"""Tests for ENV-3: ensure namespace imports em NamespacesForImplementation.
+﻿"""Tests for ENV-3: ensure namespace imports em NamespacesForImplementation.
 
 Cobre:
   - Detector `detect_env3_ensure_namespace_imports` (finding per missing import
@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.fixers import apply_insert_namespace_import
-from scripts.rule_engine.heuristics.legacy_refs import (
+from uip_engine.context import FileContext
+from uip_engine.fixers import apply_insert_namespace_import
+from uip_engine.heuristics.legacy_refs import (
     detect_env3_ensure_namespace_imports,
     _ENV3_NAMESPACE_PATTERNS,
 )

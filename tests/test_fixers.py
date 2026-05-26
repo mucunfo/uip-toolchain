@@ -1,6 +1,6 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.fixers import (
+from uip_engine.fixers import (
     apply_regex_replace, apply_rename_attribute, apply_rename_argument,
     apply_set_attribute, apply_delete_element,
     apply_rename_xclass,
@@ -228,7 +228,7 @@ def test_rename_argument_idempotent_propertyelement(tmp_path):
 
 def test_force_attribute_replaces(tmp_path):
     """force_attribute substitui valor existente diferente do canonical."""
-    from scripts.rule_engine.fixers import apply_force_attribute
+    from uip_engine.fixers import apply_force_attribute
     f = tmp_path / "x.xaml"
     f.write_text('<root xmlns:ui="urn:ui"><ui:LogMessage Level="Info" Message="x"/></root>')
     spec = {"type": "force_attribute", "tag": "ui:LogMessage",
@@ -240,7 +240,7 @@ def test_force_attribute_replaces(tmp_path):
 
 
 def test_force_attribute_adds(tmp_path):
-    from scripts.rule_engine.fixers import apply_force_attribute
+    from uip_engine.fixers import apply_force_attribute
     f = tmp_path / "x.xaml"
     f.write_text('<root xmlns:ui="urn:ui"><ui:LogMessage Message="x"/></root>')
     spec = {"type": "force_attribute", "tag": "ui:LogMessage",
@@ -252,7 +252,7 @@ def test_force_attribute_adds(tmp_path):
 
 
 def test_force_attribute_idempotent(tmp_path):
-    from scripts.rule_engine.fixers import apply_force_attribute
+    from uip_engine.fixers import apply_force_attribute
     f = tmp_path / "x.xaml"
     f.write_text('<root xmlns:ui="urn:ui"><ui:LogMessage Level="Trace" Message="x"/></root>')
     spec = {"type": "force_attribute", "tag": "ui:LogMessage",
@@ -262,7 +262,7 @@ def test_force_attribute_idempotent(tmp_path):
 
 
 def test_set_json_field(tmp_path):
-    from scripts.rule_engine.fixers import apply_set_json_field
+    from uip_engine.fixers import apply_set_json_field
     f = tmp_path / "project.json"
     f.write_text('{"name":"test","studioVersion":"24.10.0"}')
     spec = {"type": "set_json_field", "path": "studioVersion", "value": "23.10.13"}
@@ -275,7 +275,7 @@ def test_set_json_field(tmp_path):
 
 
 def test_set_json_field_idempotent(tmp_path):
-    from scripts.rule_engine.fixers import apply_set_json_field
+    from uip_engine.fixers import apply_set_json_field
     f = tmp_path / "project.json"
     f.write_text('{"studioVersion":"23.10.13"}')
     spec = {"type": "set_json_field", "path": "studioVersion", "value": "23.10.13"}
@@ -284,7 +284,7 @@ def test_set_json_field_idempotent(tmp_path):
 
 
 def test_delete_variable_self_close(tmp_path):
-    from scripts.rule_engine.fixers import apply_delete_variable
+    from uip_engine.fixers import apply_delete_variable
     f = tmp_path / "x.xaml"
     f.write_text(
         '<root xmlns:x="urn:x">'
@@ -303,7 +303,7 @@ def test_delete_variable_self_close(tmp_path):
 
 
 def test_delete_variable_idempotent(tmp_path):
-    from scripts.rule_engine.fixers import apply_delete_variable
+    from uip_engine.fixers import apply_delete_variable
     f = tmp_path / "x.xaml"
     f.write_text('<root><Variable Name="vKept" /></root>')
     spec = {"type": "delete_variable", "name": "vNotPresent"}
@@ -312,7 +312,7 @@ def test_delete_variable_idempotent(tmp_path):
 
 
 def test_delete_empty_element_open_close(tmp_path):
-    from scripts.rule_engine.fixers import apply_delete_empty_element
+    from uip_engine.fixers import apply_delete_empty_element
     f = tmp_path / "x.xaml"
     f.write_text(
         '<root xmlns:x="urn:x">'
@@ -331,7 +331,7 @@ def test_delete_empty_element_open_close(tmp_path):
 
 
 def test_delete_empty_element_self_close(tmp_path):
-    from scripts.rule_engine.fixers import apply_delete_empty_element
+    from uip_engine.fixers import apply_delete_empty_element
     f = tmp_path / "x.xaml"
     f.write_text('<root><Sequence.Variables /></root>')
     spec = {"type": "delete_empty_element", "tag": "Sequence.Variables"}
@@ -341,7 +341,7 @@ def test_delete_empty_element_self_close(tmp_path):
 
 
 def test_delete_empty_element_idempotent(tmp_path):
-    from scripts.rule_engine.fixers import apply_delete_empty_element
+    from uip_engine.fixers import apply_delete_empty_element
     f = tmp_path / "x.xaml"
     f.write_text('<root><X/></root>')
     spec = {"type": "delete_empty_element", "tag": "Sequence.Variables"}
@@ -350,7 +350,7 @@ def test_delete_empty_element_idempotent(tmp_path):
 
 def test_delete_empty_element_preserves_non_empty(tmp_path):
     """Não remove se tem content real."""
-    from scripts.rule_engine.fixers import apply_delete_empty_element
+    from uip_engine.fixers import apply_delete_empty_element
     f = tmp_path / "x.xaml"
     f.write_text(
         '<root xmlns:x="urn:x">'
@@ -657,7 +657,7 @@ def test_strip_idempotent(tmp_path):
 
 # ---- rename_element (CRY-5, IOCR-4) ----
 
-from scripts.rule_engine.fixers import apply_rename_element
+from uip_engine.fixers import apply_rename_element
 
 
 def _rn_spec(prefix="ui", old_local="HashText", new_local="KeyedHashText"):
@@ -732,7 +732,7 @@ def test_rename_element_registered():
 
 # ---- UI-7: force_attribute_in_activity_with_guard ----
 
-from scripts.rule_engine.fixers import apply_force_attribute_in_activity_with_guard
+from uip_engine.fixers import apply_force_attribute_in_activity_with_guard
 
 
 def _ui7_spec(prefix="uix", local="NTypeInto", guard_attr="InteractionMode",
@@ -823,7 +823,7 @@ def test_ui7_fixer_registered():
 
 # ---- M-6: xmlns_declare ----
 
-from scripts.rule_engine.fixers import apply_xmlns_declare
+from uip_engine.fixers import apply_xmlns_declare
 
 _M6_URI = "http://schemas.uipath.com/workflow/activities"
 
@@ -893,7 +893,7 @@ def test_m6_fixer_registered():
 
 # ---- M-7: strip_redundant_default ----
 
-from scripts.rule_engine.fixers import apply_strip_redundant_default
+from uip_engine.fixers import apply_strip_redundant_default
 
 
 def _m7_spec(prefix="ui", local="WriteRange", attr="StartingCell",
@@ -984,7 +984,7 @@ def test_m7_fixer_registered():
 
 # ---- M-8: replace_nothing_value_type ----
 
-from scripts.rule_engine.fixers import apply_replace_nothing_value_type
+from uip_engine.fixers import apply_replace_nothing_value_type
 
 
 def _m8_spec(prefix="ui", local="WriteRange", attr="AddHeaders",

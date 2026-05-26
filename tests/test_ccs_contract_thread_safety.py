@@ -1,8 +1,8 @@
-"""Thread-safety tests for `_load_ccs_contracts`.
+﻿"""Thread-safety tests for `_load_ccs_contracts`.
 
 Regression: assignment de `_CCS_CONTRACTS = {}` ANTES de population permitia
 thread B ler dict vazio durante population em thread A. Resultado: detector
-CCS-1 perdia findings em parallel mode (`RULE_ENGINE_NO_PARALLEL=0` default).
+CCS-1 perdia findings em parallel mode (`UIP_TOOLCHAIN_NO_PARALLEL=0` default).
 Sintoma observado em projeto real: 2 CCS-1 findings em serial, 0 em parallel
 — silent FAIL no engine pipeline.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.heuristics import ccs_contract as cc
+from uip_engine.heuristics import ccs_contract as cc
 
 
 def _build_fake_nupkg(out_dir: Path, name: str, workflows: dict[str, list[str]]) -> Path:

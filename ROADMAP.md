@@ -1,4 +1,4 @@
-# ROADMAP — UiPath Schema Validator
+﻿# ROADMAP — UiPath Schema Validator
 
 Plano persistente entre sessões. Atualizado a cada fase concluída.
 **Audience**: agente Claude retomando trabalho + dev humano.
@@ -10,10 +10,10 @@ Plano persistente entre sessões. Atualizado a cada fase concluída.
 **Métricas vivas** (rodar para confirmar antes de retomar):
 
 ```bash
-cd .uipath-rules
-python -m scripts.rule_engine.cli validate    # esperar "227 regras"
+cd .uip-toolchain
+python -m uip_engine.cli validate    # esperar "227 regras"
 python -m pytest -q                            # esperar "237 passed"
-python -m scripts.rule_engine.cli review "../importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer" --format json > .tmp/m_review_check.json
+python -m uip_engine.cli review "../importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer" --format json > .tmp/m_review_check.json
 python -c "import json; from collections import Counter; d=json.load(open('.tmp/m_review_check.json',encoding='utf-8')); m=[f for f in d['findings'] if f['rule_id'].startswith('M-')]; print('M-* REF:', len(m), dict(Counter(f['rule_id'] for f in m)))"  # esperar "M-* REF: 0 {}"
 ```
 
@@ -35,7 +35,7 @@ Se métricas divergem → investigar antes de avançar.
 - Status: production
 
 ### F6 — Plug schema nos agentes (concluído)
-- `scripts/activities_meta/lookup.py` CLI (--activity, --search, --package, --list-packages)
+- `tools/activities_meta/lookup.py` CLI (--activity, --search, --package, --list-packages)
 - uipath-creator.md: workflow obrigatório consultar schema antes emitir
 - uipath-reviewer.md: relata M-* enriched
 - Status: production
@@ -70,7 +70,7 @@ Se métricas divergem → investigar antes de avançar.
 - Status: production
 
 ### F12 — Fixers mecânicos M-2 + M-3 hints (concluído)
-- F12.1: fixer `add_property_element` em `scripts/rule_engine/fixers.py`
+- F12.1: fixer `add_property_element` em `src/uip_engine/fixers.py`
 - F12.2: M-3 Levenshtein suggestion
 - F12.4 (M-4 mecânico): SKIPPED — judgment humano
 - Status: production
@@ -83,7 +83,7 @@ Se métricas divergem → investigar antes de avançar.
 - Status: production
 
 ### F16 — Performance bench + cache invalidation (concluído)
-- `scripts/perf_bench.py` timer per-file via Runner monkey-patch
+- `tools/perf_bench.py` timer per-file via Runner monkey-patch
 - Schema mtime check em `get_schema()` → reload se file mais novo
 - REF baseline: schema 36ms load, p50 22ms/file, p95 77ms, max 321ms (Dispatcher.xaml outlier)
 - Status: production
@@ -180,7 +180,7 @@ Validação args para libraries proprietárias.
 **Trigger**: user reportar review lento ou hook bloqueante.
 
 **Implementação**:
-1. `scripts/perf_bench.py`: timer por XAML em REF (15+ files)
+1. `tools/perf_bench.py`: timer por XAML em REF (15+ files)
 2. cProfile schema lookup, regex parse, hook overhead
 3. Cache invalidation: schema reload se `activities-compact.json` mtime > singleton load time
 4. Hook pre_xaml_read: timeout 2s; skip se overrun

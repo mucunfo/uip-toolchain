@@ -1,4 +1,4 @@
-# Snapshot Regression Suite
+﻿# Snapshot Regression Suite
 
 Engine output stability gate. Pega regressões silenciosas (rule mudou, detector quebrou, fixer over-reach mascarando findings que antes apareciam).
 
@@ -7,8 +7,8 @@ Engine output stability gate. Pega regressões silenciosas (rule mudou, detector
 ### 1. Capture baseline (uma vez por projeto canonical)
 
 ```bash
-cd C:/Users/lisan/OneDrive - Sicoob/Projects/.uipath-rules
-python -m scripts.snapshot_regression --capture
+cd C:/Users/lisan/OneDrive - Sicoob/Projects/.uip-toolchain
+python -m tools.snapshot_regression --capture
 ```
 
 Grava `tests/snapshots/<project_slug>.json` com normalized findings count + per-rule breakdown.
@@ -16,7 +16,7 @@ Grava `tests/snapshots/<project_slug>.json` com normalized findings count + per-
 ### 2. Validar (após qualquer mudança engine)
 
 ```bash
-python -m scripts.snapshot_regression
+python -m tools.snapshot_regression
 ```
 
 - Exit `0` = match baseline (no drift)
@@ -30,14 +30,14 @@ Diff mostra `+ findings` (cobertura nova OR detector quebrou) e `- findings` (in
 Após drift legítimo (ex: nova rule add findings esperados):
 
 ```bash
-python -m scripts.snapshot_regression --capture --force
+python -m tools.snapshot_regression --capture --force
 ```
 
 Commit novo baseline JSON.
 
 ## Canonical catalog
 
-Projetos canonical = estáveis, Windows-target migrados, conhecidamente PASS engine. Lista em `scripts/snapshot_regression.py::CANONICAL`.
+Projetos canonical = estáveis, Windows-target migrados, conhecidamente PASS engine. Lista em `tools/snapshot_regression.py::CANONICAL`.
 
 Critério inclusão:
 - targetFramework: Windows
@@ -62,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-      - run: python -m scripts.snapshot_regression
+      - run: python -m tools.snapshot_regression
 ```
 
 Bloqueia merge em drift inesperado.

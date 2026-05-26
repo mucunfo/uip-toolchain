@@ -1,4 +1,4 @@
-"""CLI entry point — review, fix, list, validate, render-md."""
+﻿"""CLI entry point — review, fix, list, validate, render-md."""
 from __future__ import annotations
 
 import argparse
@@ -26,11 +26,11 @@ def _sweep_pycache() -> None:
 _sweep_pycache()
 
 # Compat path: rules.yaml refere python detectors como
-# `scripts.rule_engine.heuristics.<mod>` (legado de quando engine era
-# invocado via `python -m scripts.rule_engine.cli` de dentro de
-# `.uipath-rules/`). Após `pip install -e` (2026-05), pacote instalado é
-# `rule_engine` direto — `scripts.rule_engine.*` quebra em invocação via
-# console_script `uip`. Add `.uipath-rules/` ao sys.path: re-habilita
+# `uip_engine.heuristics.<mod>` (legado de quando engine era
+# invocado via `python -m uip_engine.cli` de dentro de
+# `.uip-toolchain/`). Após `pip install -e` (2026-05), pacote instalado é
+# `rule_engine` direto — `uip_engine.*` quebra em invocação via
+# console_script `uip`. Add `.uip-toolchain/` ao sys.path: re-habilita
 # resolução do nome antigo (Python vê dir `scripts/` como package).
 # Não rename rules.yaml em massa pra preservar source-of-truth + git diff.
 _engine_root_for_compat = Path(__file__).resolve().parents[2]
@@ -65,7 +65,7 @@ DEFAULT_RULES_FILE = Path(__file__).resolve().parents[2] / "rules.yaml"
 # encontra NuGet.config com esse marker no projeto, sabe que foi engine-temp
 # e pode remover safely. Config pré-existente de dev NUNCA carrega marker
 # (idempotência preserva config committed).
-_TEMP_NUGET_CONFIG_SENTINEL = "engine-temp-nuget-config (.uipath-rules)"
+_TEMP_NUGET_CONFIG_SENTINEL = "engine-temp-nuget-config (.uip-toolchain)"
 
 
 # Exit codes
@@ -87,7 +87,7 @@ def _cleanup_pre_migration_backups(project_root: Path) -> list[Path]:
     Auto-clean DISPARA somente em PASS final (não em FAIL/PENDING_REVIEW —
     user pode querer rollback nesses casos).
 
-    Opt-out via env `UIPATH_RULES_KEEP_BACKUP=1` (debug / paranoid mode).
+    Opt-out via env `UIP_TOOLCHAIN_KEEP_BACKUP=1` (debug / paranoid mode).
 
     Returns lista de paths removidos.
 
@@ -95,7 +95,7 @@ def _cleanup_pre_migration_backups(project_root: Path) -> list[Path]:
     falha. Handler chmod +w + retry (mesma técnica de migrate.py).
     """
     import os as _os_cl
-    if _os_cl.environ.get("UIPATH_RULES_KEEP_BACKUP", "").strip() in ("1", "true", "yes"):
+    if _os_cl.environ.get("UIP_TOOLCHAIN_KEEP_BACKUP", "").strip() in ("1", "true", "yes"):
         return []
 
     import re as _re_cl
@@ -293,11 +293,11 @@ def build_parser() -> argparse.ArgumentParser:
                           "compile errors em Variable.Default / InArgument / "
                           "OutArgument que escapam ao analyzer estático.")
     # Phase 6 (2026-05): executor-validate gate (opt-in via env
-    # UIPATH_RULES_EXECUTOR_GATE=1). Per-XAML invocation via UiRobot wrapper.
+    # UIP_TOOLCHAIN_EXECUTOR_GATE=1). Per-XAML invocation via UiRobot wrapper.
     # Caro — só ativado por env, NÃO default.
     rev.add_argument("--executor-timeout", type=int, default=300,
                      help="Per-XAML timeout (s) para executor-validate gate "
-                          "(opt-in via UIPATH_RULES_EXECUTOR_GATE=1). "
+                          "(opt-in via UIP_TOOLCHAIN_EXECUTOR_GATE=1). "
                           "Default 300.")
 
     st = sub.add_parser("stats", help="Aggregate telemetry: top rules + trends")
@@ -392,7 +392,7 @@ def build_parser() -> argparse.ArgumentParser:
     pmc.add_argument(
         "--cache-dir",
         default=str(Path(__file__).resolve().parents[2] / ".tmp" / "nuget_cache"),
-        help="NuGet response cache dir (default .uipath-rules/.tmp/nuget_cache/).",
+        help="NuGet response cache dir (default .uip-toolchain/.tmp/nuget_cache/).",
     )
     pmc.add_argument(
         "--format",
@@ -471,12 +471,12 @@ def build_parser() -> argparse.ArgumentParser:
     # pública. Interface pública = `uip <path> [--apply-contextual]` só.
     #
     # Configuração runtime via env:
-    #   UIPATH_RULES_SKIP_MIGRATION=1   → pula PHASE 0 (Migrator)
-    #   UIPATH_RULES_NO_SWAP=1          → não swap após Migrator success
-    #   UIPATH_RULES_WATCH=1            → loop interativo aguardando mtime
-    #   UIPATH_RULES_WATCH_INTERVAL=<f> → cadence poll watch (segundos)
-    #   UIPATH_RULES_MAX_ITERS=<n>      → limite iters loop (0 = ilimitado)
-    #   UIPATH_RULES_FILE=<path>        → override rules.yaml
+    #   UIP_TOOLCHAIN_SKIP_MIGRATION=1   → pula PHASE 0 (Migrator)
+    #   UIP_TOOLCHAIN_NO_SWAP=1          → não swap após Migrator success
+    #   UIP_TOOLCHAIN_WATCH=1            → loop interativo aguardando mtime
+    #   UIP_TOOLCHAIN_WATCH_INTERVAL=<f> → cadence poll watch (segundos)
+    #   UIP_TOOLCHAIN_MAX_ITERS=<n>      → limite iters loop (0 = ilimitado)
+    #   UIP_TOOLCHAIN_RULES_FILE=<path>        → override rules.yaml
 
     return p
 
@@ -510,7 +510,7 @@ def _cmd_review(args) -> int:
     Sem opt-out CLI. Se review passa, projeto é publish-safe.
 
     Env opt-out (tests apenas):
-      UIPATH_RULES_DISABLE_EXTERNAL_GATES=1 → pula gates 3/4/5 (não usa
+      UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 → pula gates 3/4/5 (não usa
       subprocess externo). Não é meant for production — apenas test harness.
     """
     import os as _os
@@ -528,7 +528,7 @@ def _cmd_review(args) -> int:
               "review always runs analyzer gate.", file=sys.stderr)
 
     external_gates_disabled = (
-        _os.environ.get("UIPATH_RULES_DISABLE_EXTERNAL_GATES", "").strip()
+        _os.environ.get("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", "").strip()
         in ("1", "true", "yes")
     )
 
@@ -590,7 +590,7 @@ def _cmd_review(args) -> int:
         # Phase 6 (2026-05): executor-validate gate é OPT-IN via env var.
         # Caro (15-300s/XAML), em projetos Windows target emite só INFRA.
         # Habilita só quando há caso real de drift pack-gate-only não pega.
-        if _os.environ.get("UIPATH_RULES_EXECUTOR_GATE", "").strip() in ("1", "true", "yes"):
+        if _os.environ.get("UIP_TOOLCHAIN_EXECUTOR_GATE", "").strip() in ("1", "true", "yes"):
             gates.append((
                 "executor-validate",
                 lambda: _run_executor_validate_gate(
@@ -615,7 +615,7 @@ def _cmd_review(args) -> int:
                     print(f"[{name}] FAILED: {type(e).__name__}: {e}",
                           file=sys.stderr)
     elif getattr(args, "verbose", False):
-        print("[review] UIPATH_RULES_DISABLE_EXTERNAL_GATES set — "
+        print("[review] UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES set — "
               "skipping analyzer/nuget/pack gates.", file=sys.stderr)
 
     rule_index = {r.id: r for r in rules}
@@ -1096,9 +1096,9 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
 
     # Fix #5 (2026-05): cache pack-gate. Re-runs consecutivos sem mudança em
     # project.json/xamls (mesma signature) re-emitem findings cached sem pagar
-    # custo uipcli publish (3-10min). Opt-out: UIPATH_RULES_NO_CACHE=1.
+    # custo uipcli publish (3-10min). Opt-out: UIP_TOOLCHAIN_NO_CACHE=1.
     cache_disabled = (
-        _os.environ.get("UIPATH_RULES_NO_CACHE", "").strip() in ("1", "true", "yes")
+        _os.environ.get("UIP_TOOLCHAIN_NO_CACHE", "").strip() in ("1", "true", "yes")
     )
     if not cache_disabled:
         cached = load_cached_pack_findings(project_root)
@@ -1142,7 +1142,7 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
         print(f"[PACK-GATE] {pre.as_message()}", file=sys.stderr)
         return
 
-    # tmpdir em .uipath-rules/.tmp/pack_dryrun/<pid>/ (gitignored). NÃO usar
+    # tmpdir em .uip-toolchain/.tmp/pack_dryrun/<pid>/ (gitignored). NÃO usar
     # tempfile.gettempdir() — fica fora do controle, e Windows AV pode
     # gerar permission errors. tempfile.mkdtemp() em diretório nosso.
     engine_root = Path(__file__).resolve().parents[2]
@@ -1311,7 +1311,7 @@ def _run_runtime_loadtest_gate(result, project_path: str, timeout: int = 180,
     Graceful degradation: se binary `runtime_loadtest.exe` não built,
     wrapper emite finding diagnóstico RT-LOAD-INFRA (severity WARN, não
     bloqueia engine PASS) + retorna. Build instructions em
-    `.uipath-rules/runtime_loadtest/README.md`.
+    `.uip-toolchain/experiments/runtime_loadtest/README.md`.
     """
     from pathlib import Path as _Path
     from .runtime_loadtest import run_loadtest
@@ -1372,7 +1372,7 @@ def _run_executor_validate_gate(result, project_path: str, timeout: int = 300,
     analyze não pegam em legacy targets ou Tests/Test_*.xaml pre-pack.
 
     Caro: 15-60s por XAML, projetos têm 5-30 tests → adiciona 2-15min ao
-    pipeline. Por isso **opt-in** via `UIPATH_RULES_EXECUTOR_GATE=1`.
+    pipeline. Por isso **opt-in** via `UIP_TOOLCHAIN_EXECUTOR_GATE=1`.
 
     Em projetos Sicoob modernos (Windows target), UiRobot CLI rejeita raw
     XAML — gate emite só RB-EXEC-INFRA (INFO). Use seletivamente em legacy.
@@ -2323,7 +2323,7 @@ def _run_review_quiet(project: Path, rules_file: str) -> tuple[int, "ValidationR
 
     import os as _os
     external_gates_disabled = (
-        _os.environ.get("UIPATH_RULES_DISABLE_EXTERNAL_GATES", "").strip()
+        _os.environ.get("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", "").strip()
         in ("1", "true", "yes")
     )
     if not external_gates_disabled:
@@ -2362,7 +2362,7 @@ def _phase0_migration(project: Path, rules_file: str,
     from .migrate import cmd_migrate_windows
     import os as _os_mig
     no_swap = no_swap_after_migration or (
-        _os_mig.environ.get("UIPATH_RULES_NO_SWAP", "").strip()
+        _os_mig.environ.get("UIP_TOOLCHAIN_NO_SWAP", "").strip()
         in ("1", "true", "yes")
     )
     mw_args = _ns(
@@ -2573,26 +2573,26 @@ def _cmd_all(args) -> int:
     import os as _os_all
     rules_file = (
         getattr(args, "rules_file", None)
-        or _os_all.environ.get("UIPATH_RULES_FILE")
+        or _os_all.environ.get("UIP_TOOLCHAIN_RULES_FILE")
         or str(DEFAULT_RULES_FILE)
     )
     rules = _load_rules_or_die(rules_file)
     rule_index = {r.id: r for r in rules}
     apply_ctx = bool(getattr(args, "apply_contextual", False))
     # Default = no_watch (modo CI/agentic). Opt-in interativo via env
-    # UIPATH_RULES_WATCH=1 ou kwarg `watch=True` em `_ns(...)` (tests).
+    # UIP_TOOLCHAIN_WATCH=1 ou kwarg `watch=True` em `_ns(...)` (tests).
     watch_enabled = bool(getattr(args, "watch", False)) or (
-        _os_all.environ.get("UIPATH_RULES_WATCH", "").strip()
+        _os_all.environ.get("UIP_TOOLCHAIN_WATCH", "").strip()
         in ("1", "true", "yes")
     )
     no_watch = not watch_enabled
     interval = float(
         getattr(args, "watch_interval", None)
-        or _os_all.environ.get("UIPATH_RULES_WATCH_INTERVAL", 2.0)
+        or _os_all.environ.get("UIP_TOOLCHAIN_WATCH_INTERVAL", 2.0)
     )
     max_iters_raw = (
         getattr(args, "max_iters", None)
-        or _os_all.environ.get("UIPATH_RULES_MAX_ITERS", 0)
+        or _os_all.environ.get("UIP_TOOLCHAIN_MAX_ITERS", 0)
     )
     max_iters = int(max_iters_raw) if max_iters_raw else 0
 
@@ -2612,7 +2612,7 @@ def _cmd_all(args) -> int:
         # ---- PHASE 0: migration probe ----
         import os as _os
         skip_mig = bool(getattr(args, "skip_migration", False)) or (
-            _os.environ.get("UIPATH_RULES_SKIP_MIGRATION", "").strip()
+            _os.environ.get("UIP_TOOLCHAIN_SKIP_MIGRATION", "").strip()
             in ("1", "true", "yes")
         )
         estatus.begin_phase("phase0_migration")
@@ -2707,7 +2707,7 @@ def _cmd_all(args) -> int:
             # Auto-clean `_BeforeMigration_*` backups quando engine completou
             # com PASS. Backup serve só como rollback manual; engine concluiu
             # pipeline com sucesso → backup é dead weight (50-200MB).
-            # Opt-out: UIPATH_RULES_KEEP_BACKUP=1.
+            # Opt-out: UIP_TOOLCHAIN_KEEP_BACKUP=1.
             removed_backups = _cleanup_pre_migration_backups(project)
             for b in removed_backups:
                 print(f"[BACKUP-CLEAN] removed {b.name}", file=sys.stderr)

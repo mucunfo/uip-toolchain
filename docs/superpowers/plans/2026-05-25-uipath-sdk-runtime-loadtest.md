@@ -1,4 +1,4 @@
-# UiPath SDK Runtime LoadTest — Implementation Plan
+﻿# UiPath SDK Runtime LoadTest — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -49,13 +49,13 @@ Expected: UiPath-Official aparece em list.
 ### Task 1: Scaffold runtime_loadtest project
 
 **Files:**
-- Create: `.uipath-rules/runtime_loadtest/RuntimeLoadTest.csproj`
-- Create: `.uipath-rules/runtime_loadtest/Program.cs`
-- Create: `.uipath-rules/runtime_loadtest/.gitignore`
+- Create: `.uip-toolchain/runtime_loadtest/RuntimeLoadTest.csproj`
+- Create: `.uip-toolchain/runtime_loadtest/Program.cs`
+- Create: `.uip-toolchain/runtime_loadtest/.gitignore`
 
 - [ ] **Step 1: Create project directory + csproj**
 
-Create `.uipath-rules/runtime_loadtest/RuntimeLoadTest.csproj`:
+Create `.uip-toolchain/runtime_loadtest/RuntimeLoadTest.csproj`:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -80,7 +80,7 @@ Note: versões UiPath.Workflow/Activities.Api refletem pin Sicoob CCS libs. Conf
 
 - [ ] **Step 2: Bootstrap minimal Program.cs**
 
-Create `.uipath-rules/runtime_loadtest/Program.cs`:
+Create `.uip-toolchain/runtime_loadtest/Program.cs`:
 
 ```csharp
 using System;
@@ -125,7 +125,7 @@ public class LoadResult
 
 - [ ] **Step 3: Create .gitignore**
 
-Create `.uipath-rules/runtime_loadtest/.gitignore`:
+Create `.uip-toolchain/runtime_loadtest/.gitignore`:
 ```
 bin/
 obj/
@@ -136,7 +136,7 @@ obj/
 
 Run:
 ```bash
-cd .uipath-rules/runtime_loadtest
+cd .uip-toolchain/runtime_loadtest
 dotnet restore
 dotnet build -c Release
 ```
@@ -146,14 +146,14 @@ Expected: Build succeeded, 0 Errors. Binary em `bin/Release/net6.0-windows/runti
 
 Run:
 ```bash
-.uipath-rules/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe foo.xaml
+.uip-toolchain/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe foo.xaml
 ```
 Expected: JSON output `{"results":[{"file":"foo.xaml","status":"STUB",...}]}` + exit 1.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add .uipath-rules/runtime_loadtest/
+git add .uip-toolchain/runtime_loadtest/
 git commit -m "feat(runtime): scaffold runtime_loadtest .NET 6 host"
 ```
 
@@ -162,7 +162,7 @@ git commit -m "feat(runtime): scaffold runtime_loadtest .NET 6 host"
 ### Task 2: Implement ActivityXamlServices.Load() integration
 
 **Files:**
-- Modify: `.uipath-rules/runtime_loadtest/Program.cs` (replace stub LoadXaml)
+- Modify: `.uip-toolchain/runtime_loadtest/Program.cs` (replace stub LoadXaml)
 
 - [ ] **Step 1: Replace LoadXaml stub com ActivityXamlServices.Load**
 
@@ -260,7 +260,7 @@ Expected: Build succeeded 0 Errors.
 
 Run:
 ```bash
-.uipath-rules/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe \
+.uip-toolchain/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe \
   "C:/Users/lisan/OneDrive - Sicoob/Projects/importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer/Main.xaml"
 ```
 Expected: Status `OK` em JSON output. Exit 0.
@@ -274,7 +274,7 @@ Skip se já fixado o source — usar `git show <commit-pre-fix>:Sipag_Net/Coleta
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .uipath-rules/runtime_loadtest/Program.cs
+git add .uip-toolchain/runtime_loadtest/Program.cs
 git commit -m "feat(runtime): implement ActivityXamlServices.Load + CacheMetadata walk"
 ```
 
@@ -283,7 +283,7 @@ git commit -m "feat(runtime): implement ActivityXamlServices.Load + CacheMetadat
 ### Task 3: Add stdin batch mode (avoid 8KB args limit Windows)
 
 **Files:**
-- Modify: `.uipath-rules/runtime_loadtest/Program.cs` (add `--stdin` flag)
+- Modify: `.uip-toolchain/runtime_loadtest/Program.cs` (add `--stdin` flag)
 
 - [ ] **Step 1: Add --stdin flag handling em Main**
 
@@ -323,14 +323,14 @@ public static int Main(string[] args)
 Run:
 ```bash
 dotnet build -c Release
-echo "C:/path/to/Main.xaml" | .uipath-rules/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe --stdin
+echo "C:/path/to/Main.xaml" | .uip-toolchain/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe --stdin
 ```
 Expected: JSON output com 1 result.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add .uipath-rules/runtime_loadtest/Program.cs
+git add .uip-toolchain/runtime_loadtest/Program.cs
 git commit -m "feat(runtime): add --stdin batch mode"
 ```
 
@@ -341,11 +341,11 @@ git commit -m "feat(runtime): add --stdin batch mode"
 ### Task 4: Create runtime_loadtest Python wrapper
 
 **Files:**
-- Create: `.uipath-rules/scripts/rule_engine/runtime_loadtest.py`
+- Create: `.uip-toolchain/src/uip_engine/runtime_loadtest.py`
 
 - [ ] **Step 1: Write Python wrapper module**
 
-Create `.uipath-rules/scripts/rule_engine/runtime_loadtest.py`:
+Create `.uip-toolchain/src/uip_engine/runtime_loadtest.py`:
 
 ```python
 """runtime_loadtest wrapper — invoca runtime_loadtest.exe subprocess.
@@ -366,7 +366,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _BINARY_NAME = "runtime_loadtest.exe"
@@ -374,7 +374,7 @@ _BINARY_NAME = "runtime_loadtest.exe"
 
 def _binary_path() -> Path | None:
     """Resolve runtime_loadtest binary path."""
-    here = Path(__file__).resolve().parents[2]  # .uipath-rules/
+    here = Path(__file__).resolve().parents[2]  # .uip-toolchain/
     candidate = here / "runtime_loadtest" / "bin" / "Release" / "net6.0-windows" / _BINARY_NAME
     return candidate if candidate.exists() else None
 
@@ -392,7 +392,7 @@ def run_loadtest(project_root: Path, timeout: int = 180) -> tuple[int, list[Find
             category="breaking",
             file=str(project_root / "project.json"),
             line=0,
-            message="runtime_loadtest binary not found. Run 'dotnet build -c Release' em .uipath-rules/runtime_loadtest/",
+            message="runtime_loadtest binary not found. Run 'dotnet build -c Release' em .uip-toolchain/runtime_loadtest/",
             fix_mechanical=None,
             fix_prose=None,
         )]
@@ -475,10 +475,10 @@ def _parse_output(stdout: str, project_root: Path) -> list[Finding]:
 
 Run:
 ```bash
-cd .uipath-rules
+cd .uip-toolchain
 python -c "
 from pathlib import Path
-from scripts.rule_engine.runtime_loadtest import run_loadtest
+from uip_engine.runtime_loadtest import run_loadtest
 code, findings = run_loadtest(Path('C:/Users/lisan/OneDrive - Sicoob/Projects/importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer'))
 print('exit:', code, 'findings:', len(findings))
 for f in findings[:5]: print(f' [{f.rule_id}] {f.file}:{f.line} {f.message[:100]}')
@@ -489,7 +489,7 @@ Expected: exit 0 ou 1, 0+ findings com rule_id `RT-LOAD-*`. Sem RT-LOAD-INFRA (b
 - [ ] **Step 3: Commit**
 
 ```bash
-git add .uipath-rules/scripts/rule_engine/runtime_loadtest.py
+git add .uip-toolchain/src/uip_engine/runtime_loadtest.py
 git commit -m "feat(engine): Python wrapper runtime_loadtest subprocess"
 ```
 
@@ -498,7 +498,7 @@ git commit -m "feat(engine): Python wrapper runtime_loadtest subprocess"
 ### Task 5: Wire runtime_loadtest como gate PHASE 2 paralelo
 
 **Files:**
-- Modify: `.uipath-rules/scripts/rule_engine/cli.py` (linha 442-457 — gates list)
+- Modify: `.uip-toolchain/src/uip_engine/cli.py` (linha 442-457 — gates list)
 
 - [ ] **Step 1: Add runtime-loadtest gate em PHASE 2**
 
@@ -556,8 +556,8 @@ rev.add_argument("--runtime-loadtest-timeout", type=int, default=180,
 
 Run:
 ```bash
-cd .uipath-rules
-python -m scripts.rule_engine.cli review \
+cd .uip-toolchain
+python -m uip_engine.cli review \
   "C:/Users/lisan/OneDrive - Sicoob/Projects/importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer" \
   --format json 2>&1 | grep -i "runtime-loadtest\|RT-LOAD"
 ```
@@ -566,7 +566,7 @@ Expected: Verbose logs `[runtime-loadtest] running...` + zero RT-LOAD findings (
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .uipath-rules/scripts/rule_engine/cli.py
+git add .uip-toolchain/src/uip_engine/cli.py
 git commit -m "feat(engine): wire runtime-loadtest como PHASE 2 gate paralelo"
 ```
 
@@ -577,14 +577,14 @@ git commit -m "feat(engine): wire runtime-loadtest como PHASE 2 gate paralelo"
 ### Task 6: pytest fixture XAML c/ known runtime fails
 
 **Files:**
-- Create: `.uipath-rules/tests/fixtures/runtime_loadtest/Main_smart_quote.xaml`
-- Create: `.uipath-rules/tests/fixtures/runtime_loadtest/Main_missing_assembly.xaml`
-- Create: `.uipath-rules/tests/fixtures/runtime_loadtest/Main_ok.xaml`
-- Create: `.uipath-rules/tests/test_runtime_loadtest.py`
+- Create: `.uip-toolchain/tests/fixtures/runtime_loadtest/Main_smart_quote.xaml`
+- Create: `.uip-toolchain/tests/fixtures/runtime_loadtest/Main_missing_assembly.xaml`
+- Create: `.uip-toolchain/tests/fixtures/runtime_loadtest/Main_ok.xaml`
+- Create: `.uip-toolchain/tests/test_runtime_loadtest.py`
 
 - [ ] **Step 1: Create Main_ok.xaml — minimal valid Sequence**
 
-Create `.uipath-rules/tests/fixtures/runtime_loadtest/Main_ok.xaml`:
+Create `.uip-toolchain/tests/fixtures/runtime_loadtest/Main_ok.xaml`:
 
 ```xml
 <Activity mc:Ignorable="sap sap2010" x:Class="MainOk"
@@ -601,7 +601,7 @@ Create `.uipath-rules/tests/fixtures/runtime_loadtest/Main_ok.xaml`:
 
 - [ ] **Step 2: Create Main_smart_quote.xaml — Variable.Default w/ smart-quote**
 
-Create `.uipath-rules/tests/fixtures/runtime_loadtest/Main_smart_quote.xaml`:
+Create `.uip-toolchain/tests/fixtures/runtime_loadtest/Main_smart_quote.xaml`:
 
 ```xml
 <Activity mc:Ignorable="sap sap2010" x:Class="MainSmartQuote"
@@ -620,7 +620,7 @@ Create `.uipath-rules/tests/fixtures/runtime_loadtest/Main_smart_quote.xaml`:
 
 - [ ] **Step 3: Create Main_missing_assembly.xaml — unresolved type**
 
-Create `.uipath-rules/tests/fixtures/runtime_loadtest/Main_missing_assembly.xaml`:
+Create `.uip-toolchain/tests/fixtures/runtime_loadtest/Main_missing_assembly.xaml`:
 
 ```xml
 <Activity mc:Ignorable="sap sap2010" x:Class="MainMissingAssembly"
@@ -637,13 +637,13 @@ Create `.uipath-rules/tests/fixtures/runtime_loadtest/Main_missing_assembly.xaml
 
 - [ ] **Step 4: Write test_runtime_loadtest.py**
 
-Create `.uipath-rules/tests/test_runtime_loadtest.py`:
+Create `.uip-toolchain/tests/test_runtime_loadtest.py`:
 
 ```python
 """Test runtime_loadtest wrapper detecta failures classes conhecidas."""
 from pathlib import Path
 import pytest
-from scripts.rule_engine.runtime_loadtest import run_loadtest
+from uip_engine.runtime_loadtest import run_loadtest
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "runtime_loadtest"
@@ -700,7 +700,7 @@ def test_missing_assembly_xaml_fails(fixture_project):
 
 Run:
 ```bash
-cd .uipath-rules
+cd .uip-toolchain
 pytest tests/test_runtime_loadtest.py -v
 ```
 Expected: 3 tests pass. Se runtime_loadtest.exe não built, test_ok ou similares poderão skipar/fail c/ RT-LOAD-INFRA.
@@ -708,7 +708,7 @@ Expected: 3 tests pass. Se runtime_loadtest.exe não built, test_ok ou similares
 - [ ] **Step 6: Commit**
 
 ```bash
-git add .uipath-rules/tests/fixtures/runtime_loadtest/ .uipath-rules/tests/test_runtime_loadtest.py
+git add .uip-toolchain/tests/fixtures/runtime_loadtest/ .uip-toolchain/tests/test_runtime_loadtest.py
 git commit -m "test(runtime): fixtures + pytest pra runtime_loadtest gate"
 ```
 
@@ -719,12 +719,12 @@ git commit -m "test(runtime): fixtures + pytest pra runtime_loadtest gate"
 ### Task 7: README + ARCHITECTURE update
 
 **Files:**
-- Create: `.uipath-rules/runtime_loadtest/README.md`
-- Modify: `.uipath-rules/ARCHITECTURE.md`
+- Create: `.uip-toolchain/runtime_loadtest/README.md`
+- Modify: `.uip-toolchain/ARCHITECTURE.md`
 
 - [ ] **Step 1: Write runtime_loadtest README**
 
-Create `.uipath-rules/runtime_loadtest/README.md`:
+Create `.uip-toolchain/runtime_loadtest/README.md`:
 
 ```markdown
 # runtime_loadtest — UiPath SDK XAML Load Test
@@ -741,7 +741,7 @@ Standalone .NET 6 host que invoca `ActivityXamlServices.Load()` em cada XAML do 
 Pré-requisito: dotnet SDK 6+ + UiPath NuGet feed configurado.
 
 ```bash
-cd .uipath-rules/runtime_loadtest
+cd .uip-toolchain/runtime_loadtest
 dotnet build -c Release
 ```
 
@@ -761,7 +761,7 @@ Output: JSON em stdout. Exit 0 se todos OK, 1 se algum failed.
 
 PHASE 2 gate paralelo a analyze/pack/nuget. Habilitado automaticamente se binary built. Findings emitidos como `RT-LOAD-<STATUS>` severity ERROR.
 
-Disable: env `UIPATH_RULES_NO_RUNTIME_LOADTEST=1` (TODO if needed).
+Disable: env `UIP_TOOLCHAIN_NO_RUNTIME_LOADTEST=1` (TODO if needed).
 
 ## Status codes
 
@@ -779,14 +779,14 @@ Disable: env `UIPATH_RULES_NO_RUNTIME_LOADTEST=1` (TODO if needed).
 
 - [ ] **Step 2: Add ARCHITECTURE entry**
 
-Append em `.uipath-rules/ARCHITECTURE.md`:
+Append em `.uip-toolchain/ARCHITECTURE.md`:
 
 ```markdown
 ## Runtime LoadTest gate (Tier 1 runtime simulation)
 
 `runtime_loadtest/` é .NET 6 console host que invoca `ActivityXamlServices.Load()` SDK UiPath em cada XAML do projeto. Roda em PHASE 2 paralelo a analyze/pack/nuget. Catches load-time errors que analyze não pega (Variable.Default VB compile, lazy type resolution).
 
-Findings emitidos como `RT-LOAD-<STATUS>` (ERROR severity, category=breaking). Wrapper Python `scripts/rule_engine/runtime_loadtest.py` traduz subprocess output em Finding objects.
+Findings emitidos como `RT-LOAD-<STATUS>` (ERROR severity, category=breaking). Wrapper Python `src/uip_engine/runtime_loadtest.py` traduz subprocess output em Finding objects.
 
 Custos:
 - Build inicial: ~30s (dotnet restore + build Release)
@@ -797,7 +797,7 @@ Custos:
 - [ ] **Step 3: Commit**
 
 ```bash
-git add .uipath-rules/runtime_loadtest/README.md .uipath-rules/ARCHITECTURE.md
+git add .uip-toolchain/runtime_loadtest/README.md .uip-toolchain/ARCHITECTURE.md
 git commit -m "docs(runtime): README + ARCHITECTURE entry pra runtime_loadtest"
 ```
 
@@ -827,7 +827,7 @@ Em `.github/workflows/ci.yml` (Windows runner), adicionar step ANTES dos pytest:
           dotnet-version: '6.0.x'
 
       - name: Build runtime_loadtest
-        working-directory: .uipath-rules/runtime_loadtest
+        working-directory: .uip-toolchain/runtime_loadtest
         run: |
           dotnet restore
           dotnet build -c Release
@@ -860,9 +860,9 @@ Verificar GitHub Actions execution. Esperado: green em <5min adicional vs baseli
 
 Run:
 ```bash
-cd .uipath-rules
+cd .uip-toolchain
 ls runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe
-python -c "from scripts.rule_engine.runtime_loadtest import _binary_path; print(_binary_path())"
+python -c "from uip_engine.runtime_loadtest import _binary_path; print(_binary_path())"
 ```
 Expected: ambos retornam path absoluto.
 
@@ -910,15 +910,15 @@ git commit -m "docs: batch 35 results pós-SDK runtime integration"
 
 Run:
 ```bash
-cd .uipath-rules
-python -m scripts.snapshot_regression --capture --force
+cd .uip-toolchain
+python -m tools.snapshot_regression --capture --force
 ```
 Expected: baseline regrava com RT-LOAD-* findings (provavelmente zero em canonical) + counts atualizados.
 
 - [ ] **Step 2: Commit snapshot diff**
 
 ```bash
-git add .uipath-rules/tests/snapshots/
+git add .uip-toolchain/tests/snapshots/
 git commit -m "test(snapshot): refresh baseline com SDK runtime_loadtest gate"
 ```
 

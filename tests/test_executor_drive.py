@@ -1,4 +1,4 @@
-"""Tests for executor_drive — Phase 6 Robot Executor gate wrapper.
+﻿"""Tests for executor_drive — Phase 6 Robot Executor gate wrapper.
 
 Phase 6 verdict: ultimate-fidelity validate is not available headless.
 UiPath.Executor.NetCore.exe is service-bound; UiRobot.exe execute --file
@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine import executor_drive as ed
-from scripts.rule_engine._types import Severity
+from uip_engine import executor_drive as ed
+from uip_engine._types import Severity
 
 
 # ---------------------------------------------------------------------------

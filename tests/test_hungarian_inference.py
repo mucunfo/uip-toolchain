@@ -1,9 +1,9 @@
-"""Tests for scripts.rule_engine.hungarian_inference."""
+﻿"""Tests for uip_engine.hungarian_inference."""
 from __future__ import annotations
 
 import pytest
 
-from scripts.rule_engine.hungarian_inference import (
+from uip_engine.hungarian_inference import (
     DIRECTION_WRAPPER,
     HUNGARIAN_PREFIXES,
     HungarianMatch,

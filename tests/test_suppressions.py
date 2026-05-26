@@ -1,4 +1,4 @@
-from scripts.rule_engine.suppressions import (
+﻿from uip_engine.suppressions import (
     parse_suppressions, is_suppressed_at, FILE_SCOPE
 )
 

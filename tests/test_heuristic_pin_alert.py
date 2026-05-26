@@ -1,4 +1,4 @@
-"""Tests for D-PINALERT — XAML APIs exclusivas de versão > pin."""
+﻿"""Tests for D-PINALERT — XAML APIs exclusivas de versão > pin."""
 from __future__ import annotations
 
 import json
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.pin_alert import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.pin_alert import (
     detect_pin_alert,
     _reset_cache_for_tests,
 )
@@ -200,8 +200,8 @@ def test_pin_alert_loader_validates_apply_class(tmp_path):
     """Regra D-PINALERT em rules.yaml deve declarar apply_class
     (loader rejeita python detector com fix dinâmico sem apply_class).
     Aqui validamos que a rule yaml carrega sem erro."""
-    from scripts.rule_engine.loader import load_rules
-    from scripts.rule_engine import detectors, fixers
+    from uip_engine.loader import load_rules
+    from uip_engine import detectors, fixers
 
     rules_path = Path(__file__).resolve().parents[1] / "rules.yaml"
     rules = load_rules(

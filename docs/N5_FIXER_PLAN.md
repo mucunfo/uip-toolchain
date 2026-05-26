@@ -1,4 +1,4 @@
-# N-5 Fixer — Plano de Implementação
+﻿# N-5 Fixer — Plano de Implementação
 
 **Status**: planejado, não-implementado. Cross-session work; commit messages dos sprints rastreiam progresso real.
 
@@ -95,7 +95,7 @@ Artifacts:
 - `.tmp/n5_proto.log` — full run log
 
 ### Sprint F38: lxml XAML DOM infrastructure
-**Novo arquivo**: `scripts/rule_engine/_helpers/xaml_dom.py`
+**Novo arquivo**: `src/uip_engine/_helpers/xaml_dom.py`
 
 API:
 ```python
@@ -128,7 +128,7 @@ Tests (`tests/test_xaml_dom_helpers.py`):
 Estimate: ~250 LOC novo + ~150 LOC tests.
 
 ### Sprint F39: Detector + template generator
-**Modificado**: `scripts/rule_engine/heuristics/logs.py`
+**Modificado**: `src/uip_engine/heuristics/logs.py`
 
 Novas functions:
 ```python
@@ -162,7 +162,7 @@ Tests (`tests/test_n5_template_generator.py`):
 Estimate: ~200 LOC novo + ~250 LOC tests.
 
 ### Sprint F40: fixer mechanical
-**Modificado**: `scripts/rule_engine/fixers.py`
+**Modificado**: `src/uip_engine/fixers.py`
 
 ```python
 N5_MARKER = "engine-trace:N-5"
@@ -213,7 +213,7 @@ Tests (`tests/test_fixer_insert_trace_log_n5.py`):
 Estimate: ~180 LOC novo + ~200 LOC tests.
 
 ### Sprint F41: LLM fallback integration
-**Modificado**: `scripts/rule_engine/llm_validator.py` (extend existing infra) + new `prompts/n5_trace_generator.md`.
+**Modificado**: `src/uip_engine/llm_validator.py` (extend existing infra) + new `prompts/n5_trace_generator.md`.
 
 ```python
 def llm_generate_trace_message(activity_xaml: str, vars: list[dict],

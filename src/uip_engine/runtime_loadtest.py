@@ -1,4 +1,4 @@
-"""runtime_loadtest wrapper — invoca .NET runtime_loadtest.exe subprocess.
+﻿"""runtime_loadtest wrapper — invoca .NET runtime_loadtest.exe subprocess.
 
 Coleta paths XAML do projeto, envia via stdin batch mode pra evitar 8KB args
 limit Windows, parse JSON output, retorna lista de Finding pra engine
@@ -61,18 +61,18 @@ def _binary_path() -> Path | None:
 
     Lookup order:
       1. env UIPATH_RUNTIME_LOADTEST_BIN (explicit override)
-      2. <.uipath-rules>/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe
+      2. <.uip-toolchain>/experiments/runtime_loadtest/bin/Release/net6.0-windows/runtime_loadtest.exe
       3. None (caller emite RT-LOAD-INFRA finding)
     """
     explicit = os.environ.get("UIPATH_RUNTIME_LOADTEST_BIN", "").strip()
     if explicit and Path(explicit).is_file():
         return Path(explicit)
 
-    # __file__ = .../.uipath-rules/scripts/rule_engine/runtime_loadtest.py
-    # parents[2] = .uipath-rules/
+    # __file__ = .../.uip-toolchain/src/uip_engine/runtime_loadtest.py
+    # parents[2] = .uip-toolchain/
     engine_root = Path(__file__).resolve().parents[2]
-    candidate = (engine_root / "runtime_loadtest" / "bin" / "Release"
-                 / _BINARY_TFM / _BINARY_NAME)
+    candidate = (engine_root / "experiments" / "runtime_loadtest"
+                 / "bin" / "Release" / _BINARY_TFM / _BINARY_NAME)
     return candidate if candidate.is_file() else None
 
 
@@ -93,7 +93,7 @@ def run_loadtest(project_root: Path, timeout: int = 180) -> tuple[int, list[Find
         return 2, [_infra_finding(
             project_root,
             "runtime_loadtest binary not found. Run 'dotnet build -c Release' "
-            f"em .uipath-rules/runtime_loadtest/ (expected: bin/Release/"
+            f"em .uip-toolchain/experiments/runtime_loadtest/ (expected: bin/Release/"
             f"{_BINARY_TFM}/{_BINARY_NAME}). Override via env "
             "UIPATH_RUNTIME_LOADTEST_BIN se binary em outro path."
         )]
@@ -161,7 +161,7 @@ def _infra_finding(project_root: Path, message: str) -> Finding:
         message=message,
         fix_prose=(
             "Gate runtime_loadtest skipa silenciosamente se binary não built. "
-            "Build host .NET via: cd .uipath-rules/runtime_loadtest && "
+            "Build host .NET via: cd .uip-toolchain/experiments/runtime_loadtest && "
             "dotnet build -c Release. Requer dotnet SDK 6+."
         ),
     )

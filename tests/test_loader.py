@@ -1,7 +1,7 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.loader import load_rules, SchemaError
-from scripts.rule_engine._types import Severity, Category, Target
+from uip_engine.loader import load_rules, SchemaError
+from uip_engine._types import Severity, Category, Target
 
 FIX = Path(__file__).parent / "fixtures"
 

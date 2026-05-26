@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """PostToolUse hook — after Edit/Write on project.json, run
 rule_engine.cli review (J-/D-* rules naturalmente filtradas por applies_to).
 
@@ -17,8 +17,8 @@ from _safe_encoding import enforce_utf8  # noqa: E402
 
 enforce_utf8()
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent
-ENGINE_PKG = SCRIPTS_DIR / "rule_engine"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ENGINE_PKG = REPO_ROOT / "src" / "uip_engine"
 
 
 def main() -> int:
@@ -45,10 +45,10 @@ def main() -> int:
 
     try:
         proc = subprocess.run(
-            [sys.executable, "-m", "scripts.rule_engine.cli", "review",
+            [sys.executable, "-m", "uip_engine.cli", "review",
              str(project_root), "--format", "json"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=str(SCRIPTS_DIR.parent),
+            cwd=str(REPO_ROOT.parent),
             timeout=180,
         )
     except Exception as e:

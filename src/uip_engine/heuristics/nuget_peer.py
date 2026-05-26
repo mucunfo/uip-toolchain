@@ -1,4 +1,4 @@
-"""D-2 heuristic — NuGet peer dependency conflict (NU1605 prevention).
+﻿"""D-2 heuristic — NuGet peer dependency conflict (NU1605 prevention).
 
 Background:
   Studio analyzer (uipcli analyze) NÃO valida peer dependencies declaradas
@@ -42,7 +42,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_NUSPEC_DEP = re.compile(

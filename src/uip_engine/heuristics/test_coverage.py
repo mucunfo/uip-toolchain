@@ -1,4 +1,4 @@
-"""Heuristics for test coverage rules (TC-COV-*).
+﻿"""Heuristics for test coverage rules (TC-COV-*).
 
 Convenção Sicoob:
   - Performer tem pasta `Tests/` no root.
@@ -23,8 +23,8 @@ from pathlib import Path
 
 from lxml import etree
 
-from scripts.rule_engine._types import Finding, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
+from uip_engine._types import Finding, Severity
+from uip_engine.context import FileContext, ProjectContext
 
 
 _EXCLUDED_DIRS = frozenset({"Framework", "Tests", "Data", ".local", ".tmp", ".objects", ".screens"})

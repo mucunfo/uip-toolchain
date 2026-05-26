@@ -1,4 +1,4 @@
-# Incident: BC30057 + BC31424 + BC30652 — contestacao-de-compras-ajuste-na-reserva-de-fraude-performer
+﻿# Incident: BC30057 + BC31424 + BC30652 — contestacao-de-compras-ajuste-na-reserva-de-fraude-performer
 
 **Status:** OPEN (BC31424 + BC30652 persistem após engine fix; BC30057 resolvido)
 **Projeto:** `C:\Users\lisan\Desktop\temp\contestacao-de-compras-ajuste-na-reserva-de-fraude-performer`
@@ -44,7 +44,7 @@
 
 **Hipótese (oposta à 1):** Studio 23.10 USA mscorlib/System/System.Core como forwarder bridge pra .NET 6 modern refs. Sem esses 3 refs, Studio não resolve type forwarders → BC30652/BC31424. Activity Migrator do Studio 25.x strip — engine deve RE-INSERIR pra deploy Sicoob.
 
-**Evidência empírica capturada no commit (docstring `scripts/rule_engine/heuristics/legacy_refs.py:11-16`):**
+**Evidência empírica capturada no commit (docstring `src/uip_engine/heuristics/legacy_refs.py:11-16`):**
 - Projeto que ABRE em Studio 23.10 (solicitacao-acessos-sisbr-arquivo-xml-performer): 69/69 XAMLs com `<AssemblyReference>mscorlib</AssemblyReference>`
 - Projeto que QUEBRA em Studio 23.10 (contestacao-de-compras-ajuste-na-reserva-de-fraude-performer): 0/25 XAMLs com mscorlib
 
@@ -60,7 +60,7 @@
 ---
 
 ### Tentativa 3 — `uip` god command run em 2026-05-22 00:32:41
-**Comando:** `python -m scripts.rule_engine.cli all "C:\Users\lisan\Desktop\temp\contestacao-..."`
+**Comando:** `python -m uip_engine.cli all "C:\Users\lisan\Desktop\temp\contestacao-..."`
 
 **Engine state:** HEAD = 1974b86 (local, com ENV-1/2/3 + W-19 + W-11g + W-4 + W-11x/y/z + W-20 active)
 
@@ -267,7 +267,7 @@ PORÉM, esses sozinhos não bastam SEM ENV-4 (VisualBasic.Settings normalize). D
 **Implementação (commits pendentes, não pushed):**
 
 1. **ENV-4** — `detect_env4_normalize_vb_settings` + `apply_normalize_visualbasic_settings`
-   - File: `scripts/rule_engine/heuristics/legacy_refs.py` (detector) + `scripts/rule_engine/fixers.py` (fixer)
+   - File: `src/uip_engine/heuristics/legacy_refs.py` (detector) + `src/uip_engine/fixers.py` (fixer)
    - Rule: `rules.yaml` (ERROR breaking, target=windows, deterministic)
    - Tests: `tests/test_env4_visualbasic_settings.py` (12/12 PASS)
    - Mecânica: substitui `<mva:VisualBasic.Settings>text|/>` por `<VisualBasic.Settings><x:Null /></VisualBasic.Settings>` + drop `xmlns:mva=...` se prefix unused.
@@ -315,7 +315,7 @@ Status: PENDING_REVIEW (contextual debt pré-existente, NÃO blocking)
 ## Próximas validações pendentes
 
 1. Usuário reabre Studio no path Desktop/temp/contestacao... pra trigger analyze → verifica `output.txt` zerou BC errors.
-2. Se confirmado: commit final na branch `main` do `mucunfo/uipath-rules` (ENV-4 + W-31 + W-32 + W-11y baseline ajuste + tests).
+2. Se confirmado: commit final na branch `main` do `mucunfo/uip-toolchain` (ENV-4 + W-31 + W-32 + W-11y baseline ajuste + tests).
 3. Update outras rules description com pré-requisito ENV-4 (W-11g, ENV-2 etc).
 4. Cleanup cosmético `strip_assembly_reference` (consumir blank lines residuais).
 
@@ -354,10 +354,10 @@ Status: PENDING_REVIEW (contextual debt pré-existente, NÃO blocking)
 - `C:\Users\lisan\OneDrive - Sicoob\UiPath\2026-05-22_UiPath.Studio.log` — Studio main log
 - `C:\Users\lisan\OneDrive - Sicoob\UiPath\2026-05-22_UiPath.Studio.Project.log` — project load log
 - `C:\Users\lisan\OneDrive - Sicoob\UiPath\2026-05-22_UiPath.Studio.Analyzer.log` — analyzer log
-- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uipath-rules\.tmp\target_pre_review.json` — engine review baseline pré-fix
-- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uipath-rules\.tmp\target_post_review.json` — engine review pós-fix
-- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uipath-rules\.tmp\target_pre_hashes.txt` / `target_post_hashes.txt` — file hashes diff
-- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uipath-rules\.tmp\target_uip_run.log` — uip phase output
+- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uip-toolchain\.tmp\target_pre_review.json` — engine review baseline pré-fix
+- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uip-toolchain\.tmp\target_post_review.json` — engine review pós-fix
+- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uip-toolchain\.tmp\target_pre_hashes.txt` / `target_post_hashes.txt` — file hashes diff
+- `C:\Users\lisan\OneDrive - Sicoob\Projects\.uip-toolchain\.tmp\target_uip_run.log` — uip phase output
 
 ## Convenção pra próximas entradas
 Cada nova tentativa: appendar seção `### Tentativa N — descrição` com:

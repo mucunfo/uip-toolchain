@@ -1,9 +1,9 @@
-"""Heuristics for Windows-target rules (W-*)."""
+﻿"""Heuristics for Windows-target rules (W-*)."""
 from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_LINQ_ON_ARG = re.compile(

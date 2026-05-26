@@ -1,4 +1,4 @@
-"""S-19 heuristic — Production XAML invoca workflow listado em ignoredFiles.
+﻿"""S-19 heuristic — Production XAML invoca workflow listado em ignoredFiles.
 
 Background:
   Studio analyzer (uipcli analyze) só valida XAMLs production e não detecta
@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 # Casa InvokeWorkflowFile com DisplayName antes ou depois de WorkflowFileName.

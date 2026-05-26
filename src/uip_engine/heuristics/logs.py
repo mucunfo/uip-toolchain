@@ -1,4 +1,4 @@
-"""Heuristics N-3, N-5, N-6, N-7 — log conventions.
+﻿"""Heuristics N-3, N-5, N-6, N-7 — log conventions.
 
 All thresholds, whitelists, blacklists e nomes especiais vinem de
 rules.yaml params. Sem hardcoded.
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_LOG_MESSAGE = re.compile(r'<ui:LogMessage\b[^>]*?(/?)>')

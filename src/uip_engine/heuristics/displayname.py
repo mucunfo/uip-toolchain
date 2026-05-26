@@ -1,4 +1,4 @@
-"""Heuristic S-8b: InvokeWorkflowFile DisplayName != basename(WorkflowFileName).
+﻿"""Heuristic S-8b: InvokeWorkflowFile DisplayName != basename(WorkflowFileName).
 
 Permitido: `Foo` ou `Foo (suffix)` quando workflow é `Foo.xaml`.
 Flagged: `Step 3` invocando `RealizarTransferencia.xaml`.
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_INVOKE = re.compile(

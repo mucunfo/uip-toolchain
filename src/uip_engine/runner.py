@@ -1,4 +1,4 @@
-"""Runner orchestrates: project discovery + rule x file iteration."""
+﻿"""Runner orchestrates: project discovery + rule x file iteration."""
 from __future__ import annotations
 
 import os
@@ -35,8 +35,8 @@ def _default_worker_cap() -> int:
 
 
 def _parallel_enabled() -> bool:
-    """Opt-out via `RULE_ENGINE_NO_PARALLEL=1` (debug/repro)."""
-    return os.environ.get("RULE_ENGINE_NO_PARALLEL", "").strip() not in (
+    """Opt-out via `UIP_TOOLCHAIN_NO_PARALLEL=1` (debug/repro)."""
+    return os.environ.get("UIP_TOOLCHAIN_NO_PARALLEL", "").strip() not in (
         "1", "true", "yes",
     )
 
@@ -104,7 +104,7 @@ class Runner:
         # mesmo sem multiprocessing. ValidationResult.add() é list.append,
         # GIL-atomic em CPython.
         # Cap: nproc/2 max 8 (override via RULE_ENGINE_WORKERS=N).
-        # Opt-out determinístico: RULE_ENGINE_NO_PARALLEL=1.
+        # Opt-out determinístico: UIP_TOOLCHAIN_NO_PARALLEL=1.
         if _parallel_enabled() and len(files) > 1:
             workers = min(_default_worker_cap(), len(files))
             with ThreadPoolExecutor(max_workers=workers) as ex:

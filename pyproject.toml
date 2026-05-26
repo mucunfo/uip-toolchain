@@ -1,7 +1,7 @@
 [project]
-name = "rule-engine"
+name = "uip-toolchain"
 version = "0.1.0"
-description = "UiPath rules engine — single source of truth"
+description = "UiPath dev toolchain — lint, fix, migrate, gate, pack"
 requires-python = ">=3.11"
 dependencies = [
     "PyYAML>=6.0",
@@ -15,13 +15,12 @@ dependencies = [
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [project.scripts]
-rule-engine = "rule_engine.cli:main"
-uip = "rule_engine.cli:uip_main"
+uip = "uip_engine.cli:uip_main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.setuptools.packages.find]
-where = ["scripts"]
-include = ["rule_engine*"]
+where = ["src"]
+include = ["uip_engine*"]

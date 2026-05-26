@@ -1,12 +1,12 @@
-"""Tests for heuristics/test_coverage.py — TCC-1/3/4."""
+﻿"""Tests for heuristics/test_coverage.py — TCC-1/3/4."""
 import json
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.test_coverage import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.test_coverage import (
     detect_tc_cov_1_missing,
     detect_tc_cov_3_no_tests_folder,
     detect_tc_cov_4_low_arg_variation,

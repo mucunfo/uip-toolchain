@@ -1,4 +1,4 @@
-"""Tests for naming_prefix.py — N-1/N-2 prefix validation.
+﻿"""Tests for naming_prefix.py — N-1/N-2 prefix validation.
 
 Foco: bug do `vIntegerCount` — prefixo válido exige Nome capitalizado após.
 `Int` em `vIntegerCount` é substring de `Integer`, não prefixo de tipo.
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.heuristics.naming_prefix import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext
+from uip_engine.heuristics.naming_prefix import (
     _has_valid_prefix,
     _compute_var_fix,
     _compute_arg_fix,

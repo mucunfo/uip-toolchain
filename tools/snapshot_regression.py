@@ -1,4 +1,4 @@
-"""Snapshot regression suite — engine output stability gate.
+﻿"""Snapshot regression suite — engine output stability gate.
 
 Roda `cli review` em projetos canonical Sicoob, normaliza output, compara
 contra baseline. Catches engine regressions: rule mudou, detector quebrou,
@@ -6,15 +6,15 @@ fixer over-reach (mascara findings que antes apareciam).
 
 Workflow:
   1. Capture baseline (uma vez):
-       python -m scripts.snapshot_regression --capture
+       python -m tools.snapshot_regression --capture
 
   2. Validate (após mudança engine):
-       python -m scripts.snapshot_regression
+       python -m tools.snapshot_regression
        exit 0 = OK
        exit 1 = drift detectado (review diff + decidir update baseline)
 
   3. Update baseline (após review intentional change):
-       python -m scripts.snapshot_regression --capture --force
+       python -m tools.snapshot_regression --capture --force
 
 Catalog canonical (estável, Windows-target migrado, conhecidamente passa):
   - importar-cadastro-avais-fiancas-honrados-performer
@@ -94,7 +94,7 @@ def _normalize(findings: list[dict], project_path: Path) -> list[dict]:
 def _run_review(project_path: Path) -> tuple[int, list[dict]]:
     """Run cli review --format json. Returns (exit_code, findings_list)."""
     cmd = [
-        sys.executable, "-m", "scripts.rule_engine.cli", "review",
+        sys.executable, "-m", "uip_engine.cli", "review",
         str(project_path), "--format", "json",
     ]
     proc = subprocess.run(

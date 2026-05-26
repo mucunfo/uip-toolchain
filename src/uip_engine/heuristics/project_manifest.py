@@ -1,4 +1,4 @@
-"""Heuristics for project.json manifest hygiene (J-8 stale fileInfoCollection).
+﻿"""Heuristics for project.json manifest hygiene (J-8 stale fileInfoCollection).
 
 Studio publish FALHA quando `project.json::designOptions.fileInfoCollection`
 lista test cases (`fileName`) que não existem mais no disco. Studio analyze
@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 def _load(fc):

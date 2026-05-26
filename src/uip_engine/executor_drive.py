@@ -1,4 +1,4 @@
-"""executor_drive — UiPath Robot Executor headless validation gate.
+﻿"""executor_drive — UiPath Robot Executor headless validation gate.
 
 Stream E §01: ``UiPath.Executor.NetCore.exe`` é o Robot real (Windows target),
 mas é **service-bound** — recusa invocação direta com
@@ -32,7 +32,7 @@ Findings emitidos:
 Limitations explicit:
 
 * Gate é **caro** (15–60s por XAML em projetos médios). Opt-in via
-  ``UIPATH_RULES_EXECUTOR_GATE=1`` no `cli.py` (não integrar default).
+  ``UIP_TOOLCHAIN_EXECUTOR_GATE=1`` no `cli.py` (não integrar default).
 * `UiRobot execute --file` requer Robot service `UiPath.Service.UserHost` ativo.
   Sem service, exit ≠ 0; finding emitido como INFRA.
 * **NÃO** invoque em XAMLs com UI activities (Chrome/SAP), Config_*.xlsx com
@@ -57,7 +57,7 @@ from ._types import Category, Finding, Severity
 # ---------------------------------------------------------------------------
 
 _ENV_BIN_OVERRIDE = "UIPATH_EXECUTOR_BIN"
-_ENV_TIMEOUT = "UIPATH_RULES_EXECUTOR_TIMEOUT"
+_ENV_TIMEOUT = "UIP_TOOLCHAIN_EXECUTOR_TIMEOUT"
 
 _DEFAULT_TIMEOUT_SEC = 300
 
@@ -259,7 +259,7 @@ def run_validate(
     Args:
         project_root: project folder containing ``project.json``.
         timeout: per-XAML hard timeout (seconds). Default 300, env override
-            ``UIPATH_RULES_EXECUTOR_TIMEOUT``.
+            ``UIP_TOOLCHAIN_EXECUTOR_TIMEOUT``.
 
     Returns:
         ``(exit_code, findings)`` — exit_code is 0 when ALL safe XAMLs passed

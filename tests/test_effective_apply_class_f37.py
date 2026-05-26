@@ -1,4 +1,4 @@
-"""F37 tests — effective apply_class per-finding.
+﻿"""F37 tests — effective apply_class per-finding.
 
 Engine só bloqueia PASS pelo que pode auto-fixar mecanicamente. Findings
 que sinalizam problema real mas SEM fix_mechanical (safety guard preventiva,
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.rule_engine._types import Finding, Rule, Severity, ValidationResult
-from scripts.rule_engine.cli import (
+from uip_engine._types import Finding, Rule, Severity, ValidationResult
+from uip_engine.cli import (
     _effective_apply_class,
     _is_blocking_error,
     _classify_contextual_pending,

@@ -1,4 +1,4 @@
-"""Tests for heuristics/empty_activityfunc.py — S-18.
+﻿"""Tests for heuristics/empty_activityfunc.py — S-18.
 
 S-18 detect ActivityFunc body vazio em property .OCREngine/.CVEngine.
 """
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.heuristics.empty_activityfunc import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext
+from uip_engine.heuristics.empty_activityfunc import (
     detect_empty_ocr_activityfunc,
 )
 
@@ -24,7 +24,7 @@ def _rule() -> Rule:
         detect={
             "type": "python",
             "params": {
-                "module": "scripts.rule_engine.heuristics.empty_activityfunc",
+                "module": "uip_engine.heuristics.empty_activityfunc",
                 "function": "detect_empty_ocr_activityfunc",
             },
         },

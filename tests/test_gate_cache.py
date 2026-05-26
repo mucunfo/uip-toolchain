@@ -1,4 +1,4 @@
-"""Phase 10 tests — FixLoopGateCache contract.
+﻿"""Phase 10 tests — FixLoopGateCache contract.
 
 Mínimos 3 testes:
   1. Baseline set/get + has_baseline flag.
@@ -13,8 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.rule_engine._gate_cache import FixLoopGateCache
-from scripts.rule_engine._types import Category, Finding, Severity
+from uip_engine._gate_cache import FixLoopGateCache
+from uip_engine._types import Category, Finding, Severity
 
 
 def _finding(file: str, rule_id: str = "RT-LOAD-INVALID_WORKFLOW") -> Finding:

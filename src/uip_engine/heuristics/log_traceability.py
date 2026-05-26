@@ -1,4 +1,4 @@
-"""N-16: LLM-assisted semantic traceability of LogMessage content.
+﻿"""N-16: LLM-assisted semantic traceability of LogMessage content.
 
 Detects LogMessages whose Message string lacks debugging value in
 production: generic literals, missing variable refs, indistinguishable
@@ -22,10 +22,10 @@ def _llm_disabled() -> bool:
     optou por bypass. Default OFF (fica ON quando claude CLI presente).
 
     Triggers:
-      - env `UIPATH_RULES_NO_LLM=1` (explicit opt-out)
-      - env `RULE_ENGINE_NO_LLM=1` (alias)
+      - env `UIP_TOOLCHAIN_NO_LLM=1` (explicit opt-out)
+      - env `UIP_TOOLCHAIN_NO_LLM_LEGACY=1` (alias)
     """
-    for var in ("UIPATH_RULES_NO_LLM", "RULE_ENGINE_NO_LLM"):
+    for var in ("UIP_TOOLCHAIN_NO_LLM", "UIP_TOOLCHAIN_NO_LLM_LEGACY"):
         if os.environ.get(var, "").strip() in ("1", "true", "yes"):
             return True
     return False

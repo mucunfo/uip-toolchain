@@ -1,4 +1,4 @@
-"""F35 tests — analyzer-gate per-file rollback + retomar fix loop.
+﻿"""F35 tests — analyzer-gate per-file rollback + retomar fix loop.
 
 Comportamento esperado pós-F35:
   - Quando analyzer-gate detecta new Error pós-fix: rollback per-file
@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine import analyzer as _analyzer
-from scripts.rule_engine import cli as _cli
+from uip_engine import analyzer as _analyzer
+from uip_engine import cli as _cli
 
 
 # Fixture XAML que dispara fix S-1 (`<x:Members />` → `<x:Members></x:Members>`).

@@ -1,4 +1,4 @@
-"""Tests for S-19 — Production XAML invoca workflow em ignoredFiles.
+﻿"""Tests for S-19 — Production XAML invoca workflow em ignoredFiles.
 
 Bug pattern: `<ui:InvokeWorkflowFile WorkflowFileName="Subfolder\\Mock.xaml"/>`
 em XAML production, mas `Subfolder/Mock.xaml` está em
@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.invoke_refs import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.invoke_refs import (
     detect_invoke_ignoredfile_ref,
     _normalize,
 )
@@ -232,8 +232,8 @@ def test_s19_loader_validates_apply_class():
     """S-19 deve declarar apply_class=structural (heurística não emite
     fix_mechanical dinâmico — só prose). Loader valida que python detector
     com fix dinâmico tenha apply_class explícito."""
-    from scripts.rule_engine.loader import load_rules
-    from scripts.rule_engine import detectors, fixers
+    from uip_engine.loader import load_rules
+    from uip_engine import detectors, fixers
 
     rules_path = Path(__file__).resolve().parents[1] / "rules.yaml"
     rules = load_rules(

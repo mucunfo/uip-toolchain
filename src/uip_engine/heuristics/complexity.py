@@ -1,4 +1,4 @@
-"""Heuristics for complexity rules (CX-*).
+﻿"""Heuristics for complexity rules (CX-*).
 
 Métricas estáticas por workflow XAML:
   CX-1 cyclomatic — soma de decision points (If/Switch case/While/DoWhile/
@@ -21,8 +21,8 @@ from typing import Any
 
 from lxml import etree
 
-from scripts.rule_engine._types import Finding, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
+from uip_engine._types import Finding, Severity
+from uip_engine.context import FileContext, ProjectContext
 
 
 _RE_INVOKE_WF_FILE = re.compile(

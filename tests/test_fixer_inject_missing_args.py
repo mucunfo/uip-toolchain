@@ -1,4 +1,4 @@
-"""Tests for Phase 9E `apply_inject_missing_args` fixer + RT-LOAD-AMBIGUOUS-ARG.
+﻿"""Tests for Phase 9E `apply_inject_missing_args` fixer + RT-LOAD-AMBIGUOUS-ARG.
 
 Coverage:
   - Pure fixer mechanic: inject <x:Property/> em <x:Members> com type pré-resolvido.
@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.fixers import REGISTRY, apply_inject_missing_args
-from scripts.rule_engine import runtime_loadtest as rt
+from uip_engine.fixers import REGISTRY, apply_inject_missing_args
+from uip_engine import runtime_loadtest as rt
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ def test_parse_output_layer4_halt_unknown(tmp_path):
     assert iw[0].fix_mechanical is None
     # HALT finding emitido em paralelo
     assert len(amb) == 1
-    from scripts.rule_engine._types import Severity
+    from uip_engine._types import Severity
     assert amb[0].severity == Severity.HALT
     assert "xyz_unknownArgWeird" in amb[0].message
 

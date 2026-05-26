@@ -1,6 +1,6 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.context import FileContext, ProjectContext
+from uip_engine.context import FileContext, ProjectContext
 
 FIX = Path(__file__).parent / "fixtures"
 

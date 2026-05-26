@@ -1,4 +1,4 @@
-"""Tests for orphan NuGet.config cleanup guard.
+﻿"""Tests for orphan NuGet.config cleanup guard.
 
 Pack-gate cria NuGet.config temp p/ apontar `.nupkgs/` local + remove em
 finally. Em crash hard (SIGKILL, machine reboot) finally não roda → orphan
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.cli import (
+from uip_engine.cli import (
     _cleanup_orphan_temp_nuget_config,
     _TEMP_NUGET_CONFIG_SENTINEL,
 )
@@ -71,14 +71,14 @@ def test_directory_with_nuget_config_name_skipped(tmp_path):
 def test_sentinel_string_stable():
     """Sentinel deve ser estável cross-version pra cleanup funcionar com
     orphans deixados por engine versions anteriores. Lock literal."""
-    assert _TEMP_NUGET_CONFIG_SENTINEL == "engine-temp-nuget-config (.uipath-rules)"
+    assert _TEMP_NUGET_CONFIG_SENTINEL == "engine-temp-nuget-config (.uip-toolchain)"
 
 
 def test_pack_gate_generated_xml_carries_sentinel():
     """Garantia que pack-gate emite sentinel — protege contra regressão
     onde alguém edita XML gerado e esquece de incluir o comment."""
     import inspect
-    from scripts.rule_engine import cli
+    from uip_engine import cli
     src = inspect.getsource(cli)
     # Procura f-string com sentinel no XML gerado pelo pack-gate.
     assert f'<!-- {{_TEMP_NUGET_CONFIG_SENTINEL}} -->' in src or \

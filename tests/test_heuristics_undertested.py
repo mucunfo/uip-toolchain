@@ -1,4 +1,4 @@
-"""Smoke unit-tests pra heuristics sem cobertura direta:
+﻿"""Smoke unit-tests pra heuristics sem cobertura direta:
 arg_default, empty_sequence, json_checks, testing, transaction_item, value_types.
 
 Nao reescreve smoke completo — só garante que cada função roda + emite/não
@@ -8,22 +8,22 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.arg_default import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.arg_default import (
     detect_w3_arg_default_attribute_form,
 )
-from scripts.rule_engine.heuristics.empty_sequence import detect_empty_sequence
-from scripts.rule_engine.heuristics.json_checks import (
+from uip_engine.heuristics.empty_sequence import detect_empty_sequence
+from uip_engine.heuristics.json_checks import (
     detect_j3_required_packages,
     detect_j6_excluded_logged,
     detect_j7_user_interaction_consistency,
 )
-from scripts.rule_engine.heuristics.testing import detect_t5_missing_workflow
-from scripts.rule_engine.heuristics.transaction_item import (
+from uip_engine.heuristics.testing import detect_t5_missing_workflow
+from uip_engine.heuristics.transaction_item import (
     detect_a19_io_transaction_item,
 )
-from scripts.rule_engine.heuristics.value_types import (
+from uip_engine.heuristics.value_types import (
     detect_v1_nothing_in_value_type,
 )
 

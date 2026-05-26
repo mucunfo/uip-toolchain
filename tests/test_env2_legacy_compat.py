@@ -1,4 +1,4 @@
-"""Tests for ENV-2: ensure legacy compat refs em XAML deploy Studio 23.10.
+﻿"""Tests for ENV-2: ensure legacy compat refs em XAML deploy Studio 23.10.
 
 Cobre:
   - Detector `detect_env2_ensure_legacy_refs` (finding per ref faltando)
@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.fixers import apply_insert_assembly_reference
-from scripts.rule_engine.heuristics.legacy_refs import (
+from uip_engine.context import FileContext
+from uip_engine.fixers import apply_insert_assembly_reference
+from uip_engine.heuristics.legacy_refs import (
     detect_env2_ensure_legacy_refs,
     _LEGACY_REFS_REQUIRED,
 )

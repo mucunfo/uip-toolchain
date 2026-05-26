@@ -1,4 +1,4 @@
-"""Heuristic S-15: empty `<Sequence>` removal com parent-guard.
+﻿"""Heuristic S-15: empty `<Sequence>` removal com parent-guard.
 
 Empty Sequence (sem children executáveis ou só whitespace) pode ser:
   - Cosmético: `<Sequence>` vazio dentro de outro `<Sequence>` → remover.
@@ -11,7 +11,7 @@ parent imediato via stack-scan; só emitir fix se parent NÃO for required.
 from __future__ import annotations
 
 import re
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 # Parents onde empty Sequence é REQUIRED placeholder (remoção quebra o parent).

@@ -1,7 +1,7 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.runner import Runner
-from scripts.rule_engine._types import ValidationResult
+from uip_engine.runner import Runner
+from uip_engine._types import ValidationResult
 
 
 def test_runner_with_no_rules_returns_empty_result(tmp_path):
@@ -51,7 +51,7 @@ def test_runner_applies_to_include_filter(tmp_path, sample_rule_factory):
 
 
 def _stub_regex_detector(rule, file_ctx, project_ctx):
-    from scripts.rule_engine._types import Finding
+    from uip_engine._types import Finding
     if "BAD_PATTERN" in file_ctx.content:
         return [Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
@@ -62,7 +62,7 @@ def _stub_regex_detector(rule, file_ctx, project_ctx):
 
 @pytest.fixture
 def sample_rule_factory():
-    from scripts.rule_engine._types import Rule, Severity
+    from uip_engine._types import Rule, Severity
     def make(applies_to=None, target="all"):
         return Rule(
             id="X-99", severity=Severity.ERROR, category="breaking",

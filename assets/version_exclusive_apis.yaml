@@ -1,6 +1,6 @@
-# APIs exclusivas de versão > pin Sicoob.
+﻿# APIs exclusivas de versão > pin Sicoob.
 #
-# Consumido por heuristic `scripts.rule_engine.heuristics.pin_alert.detect_pin_alert`
+# Consumido por heuristic `uip_engine.heuristics.pin_alert.detect_pin_alert`
 # (rule D-PIN-ALERT em rules.yaml).
 #
 # Para cada package, lista APIs/atributos/elementos XAML que só existem em

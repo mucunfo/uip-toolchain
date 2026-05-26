@@ -1,5 +1,5 @@
-import pytest
-from scripts.rule_engine._types import Finding, Severity, Category, ValidationResult
+﻿import pytest
+from uip_engine._types import Finding, Severity, Category, ValidationResult
 
 
 def test_finding_creates_with_required_fields():

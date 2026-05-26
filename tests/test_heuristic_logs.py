@@ -1,11 +1,11 @@
-"""Tests for heuristics in logs.py — focused on N-7 (InvokeWorkflowFile LogEntry/LogExit)."""
+﻿"""Tests for heuristics in logs.py — focused on N-7 (InvokeWorkflowFile LogEntry/LogExit)."""
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.logs import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.logs import (
     detect_n5_trace_log_significant,
     detect_n7_invoke_log_entry_exit,
 )
@@ -108,7 +108,7 @@ def test_n7_fix_inserts_attribute_when_missing(tmp_path):
         '  <ui:InvokeWorkflowFile WorkflowFileName="X.xaml" Level="Info"/>'
     )
     fc = _write_xaml(tmp_path, body)
-    from scripts.rule_engine.fixers import apply_regex_replace
+    from uip_engine.fixers import apply_regex_replace
     for _ in range(5):
         fc2 = FileContext(fc.path)
         findings = detect_n7_invoke_log_entry_exit(_make_rule(), fc2, None)
@@ -126,7 +126,7 @@ def test_n7_fix_replaces_wrong_value(tmp_path):
         'LogEntry="Always" LogExit="Never"/>'
     )
     fc = _write_xaml(tmp_path, body)
-    from scripts.rule_engine.fixers import apply_regex_replace
+    from uip_engine.fixers import apply_regex_replace
     for _ in range(5):
         fc2 = FileContext(fc.path)
         findings = detect_n7_invoke_log_entry_exit(_make_rule(), fc2, None)

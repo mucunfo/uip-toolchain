@@ -1,4 +1,4 @@
-"""migrator_headless wrapper — invoke .NET migrator_headless.exe subprocess.
+﻿"""migrator_headless wrapper — invoke .NET migrator_headless.exe subprocess.
 
 Stream E §04: MigrationService.Migrate reflection-driven. Aims to cover the 130
 migrators surfaced by ``UiPath.UIAutomationNext.Migration.dll`` without depending
@@ -41,7 +41,7 @@ _ENV_DLL = "UIPATH_MIGRATOR_DLL"
 _ENGINE_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_BIN = (
     _ENGINE_ROOT
-    / "migrator_headless"
+    / "migrator"
     / "bin"
     / "Release"
     / "net6.0-windows"
@@ -49,7 +49,7 @@ _DEFAULT_BIN = (
 )
 _DEBUG_BIN = (
     _ENGINE_ROOT
-    / "migrator_headless"
+    / "migrator"
     / "bin"
     / "Debug"
     / "net6.0-windows"
@@ -101,8 +101,8 @@ def _binary_path() -> _MigratorBinary:
 
     Priority:
       1. ``UIPATH_MIGRATOR_HEADLESS_BIN`` env override.
-      2. ``<engine_root>/migrator_headless/bin/Release/net6.0-windows/migrator_headless.exe``
-      3. ``<engine_root>/migrator_headless/bin/Debug/net6.0-windows/migrator_headless.exe``
+      2. ``<engine_root>/migrator/bin/Release/net6.0-windows/migrator_headless.exe``
+      3. ``<engine_root>/migrator/bin/Debug/net6.0-windows/migrator_headless.exe``
     """
     override = os.environ.get(_ENV_BIN)
     if override:
@@ -289,7 +289,7 @@ def run_migrate(
             "MG-INFRA-BIN-MISSING",
             project_root,
             f"migrator_headless.exe not found at {bin_info.path}. Build via "
-            f"`dotnet build -c Release` in .uipath-rules/migrator_headless/.",
+            f"`dotnet build -c Release` in .uip-toolchain/migrator/.",
         )]
 
     args: list[str] = [str(bin_info.path), "--project", str(project_root)]

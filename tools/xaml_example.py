@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """xaml_example.py — on-demand activity example lookup from reference models.
 
 Replaces the static TEMPLATES.md / QUICK-REFERENCE snippet blocks with live
 extraction from configured reference projects. The example returned is real
 code in PRD — never invented.
 
-Config: `models.conf` in .uipath-rules/ root. One absolute path per line
+Config: `models.conf` in .uip-toolchain/ root. One absolute path per line
 (reference project root). Order = priority.
 
 Usage:

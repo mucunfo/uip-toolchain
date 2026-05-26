@@ -1,4 +1,4 @@
-"""Tests for scripts.rule_engine.pack_scrubber.
+﻿"""Tests for uip_engine.pack_scrubber.
 
 Real-world fixture: a Sicoob CCS library nupkg em
 `C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.nupkgs\\`. Copy pra tmp_path
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.pack_scrubber import (
+from uip_engine.pack_scrubber import (
     NupkgInfo,
     inspect,
     scrub_repository,

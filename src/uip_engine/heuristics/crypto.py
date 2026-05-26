@@ -1,4 +1,4 @@
-"""Heuristics para activity renames deprecated (CRY-* + IOCR-4).
+﻿"""Heuristics para activity renames deprecated (CRY-* + IOCR-4).
 
 CRY-5: HashText/HashFile (legacy) → KeyedHashText/KeyedHashFile.
 UiPath.Cryptography.Activities marca HashText/HashFile como deprecated
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_HASH_LEGACY = re.compile(r'<([A-Za-z_][\w]*):(HashText|HashFile)\b')

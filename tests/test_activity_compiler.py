@@ -1,4 +1,4 @@
-"""Tests for the activity_compiler wrapper (PHASE 2 gate).
+﻿"""Tests for the activity_compiler wrapper (PHASE 2 gate).
 
 Three scenarios:
   1. Binary not found → AC-COMPILE-INFRA (WARN, METADATA) finding.
@@ -9,7 +9,7 @@ Three scenarios:
      (skipped if binary not available on this host).
 
 Tests honour env var UIPATH_ACTIVITY_COMPILER_BIN; pytest harness sets
-UIPATH_RULES_DISABLE_EXTERNAL_GATES=1 globally (conftest.py) but we call
+UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 globally (conftest.py) but we call
 the wrapper directly, not through the cli orchestrator, so that flag is
 irrelevant here.
 """
@@ -26,8 +26,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.rule_engine import activity_compiler  # noqa: E402
-from scripts.rule_engine._types import Category, Severity  # noqa: E402
+from uip_engine import activity_compiler  # noqa: E402
+from uip_engine._types import Category, Severity  # noqa: E402
 
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "activity_compiler"

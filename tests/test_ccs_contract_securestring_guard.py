@@ -1,4 +1,4 @@
-"""CCS-1 detector tests — emite rename_attribute fix em casing mismatch.
+﻿"""CCS-1 detector tests — emite rename_attribute fix em casing mismatch.
 
 F36 safety guard REMOVIDO 2026-05-21: empiricamente Studio 23.10 reporta
 `Cannot set unknown member` independente de SecureString sibling. Engine
@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics import ccs_contract as cc
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics import ccs_contract as cc
 
 
 def _mk_rule():

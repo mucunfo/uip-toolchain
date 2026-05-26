@@ -1,4 +1,4 @@
-"""Tests pra fixers novos da sessão Layer 2 (F21-F28).
+﻿"""Tests pra fixers novos da sessão Layer 2 (F21-F28).
 
 Cobre:
   - insert_trace_log (N-5 fixer): walker tag-name-exact, restrictive parent
@@ -12,7 +12,7 @@ Cobre:
 from pathlib import Path
 import pytest
 
-from scripts.rule_engine.fixers import (
+from uip_engine.fixers import (
     apply_insert_trace_log,
     apply_remove_anticipatory_log,
     apply_add_prefixo_arg,
@@ -375,7 +375,7 @@ def test_add_prefixo_arg_idempotent_when_already_declared(tmp_path):
 def test_classify_parent_for_logmessage_unknown_falls_through():
     """Schema classifier retorna 'unknown' quando parent não em schema —
     caller fallback hardcoded list."""
-    from scripts.rule_engine.heuristics.activity_meta import (
+    from uip_engine.heuristics.activity_meta import (
         classify_parent_for_logmessage,
     )
     # Random non-existent activity → unknown
@@ -385,7 +385,7 @@ def test_classify_parent_for_logmessage_unknown_falls_through():
 
 def test_classify_parent_known_top_level_containers():
     """Sequence/Flowchart/StateMachine = open (multi-child)."""
-    from scripts.rule_engine.heuristics.activity_meta import (
+    from uip_engine.heuristics.activity_meta import (
         classify_parent_for_logmessage,
     )
     assert classify_parent_for_logmessage("Sequence") == "open"
@@ -394,7 +394,7 @@ def test_classify_parent_known_top_level_containers():
 
 def test_classify_activity_action_is_wrap_able():
     """ActivityAction (delegate body) = wrap_able."""
-    from scripts.rule_engine.heuristics.activity_meta import (
+    from uip_engine.heuristics.activity_meta import (
         classify_parent_for_logmessage,
     )
     assert classify_parent_for_logmessage("ActivityAction") == "wrap_able"
@@ -405,8 +405,8 @@ def test_classify_activity_action_is_wrap_able():
 
 def test_duplicate_id_skips_auto_generated_pattern(tmp_path):
     """X-1 detector skip `<TypeName>``\\d+_\\d+` IdRefs (Studio auto-gen)."""
-    from scripts.rule_engine.detectors import detect_duplicate_id
-    from scripts.rule_engine._types import Rule
+    from uip_engine.detectors import detect_duplicate_id
+    from uip_engine._types import Rule
     f = tmp_path / "wf.xaml"
     body = (
         '  <Sequence>\n'
@@ -419,7 +419,7 @@ def test_duplicate_id_skips_auto_generated_pattern(tmp_path):
         '  </Sequence>\n'
     )
     f.write_text(XAML_HEAD + body + XAML_TAIL, encoding="utf-8")
-    from scripts.rule_engine.context import FileContext
+    from uip_engine.context import FileContext
 
     class FakeRule:
         id = "X-1"

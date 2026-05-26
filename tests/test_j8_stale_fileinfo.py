@@ -1,7 +1,7 @@
-"""Tests for J-8 stale fileInfoCollection entries.
+﻿"""Tests for J-8 stale fileInfoCollection entries.
 
-- Detector: scripts.rule_engine.heuristics.project_manifest.detect_j8_stale_fileinfo_entries
-- Fixer:    scripts.rule_engine.fixers.apply_project_manifest_remove_stale_entries
+- Detector: uip_engine.heuristics.project_manifest.detect_j8_stale_fileinfo_entries
+- Fixer:    uip_engine.fixers.apply_project_manifest_remove_stale_entries
 
 Studio publish FALHA quando project.json::designOptions.fileInfoCollection
 lista TC com fileName que não existe no disco. Detector identifica entries
@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.project_manifest import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.project_manifest import (
     detect_j8_stale_fileinfo_entries,
 )
-from scripts.rule_engine.fixers import (
+from uip_engine.fixers import (
     apply_project_manifest_remove_stale_entries,
 )
 
@@ -53,7 +53,7 @@ def _rule(**params) -> Rule:
         detect={
             "type": "python",
             "params": {
-                "module": "scripts.rule_engine.heuristics.project_manifest",
+                "module": "uip_engine.heuristics.project_manifest",
                 "function": "detect_j8_stale_fileinfo_entries",
                 **defaults,
             },
@@ -344,15 +344,15 @@ def test_fix_noop_when_array_missing(tmp_path):
 # ---------- registry sanity ----------
 
 def test_fixer_registered():
-    from scripts.rule_engine.fixers import REGISTRY
+    from uip_engine.fixers import REGISTRY
     assert "project_manifest_remove_stale_entries" in REGISTRY
 
 
 def test_rule_loads_in_yaml():
     """J-8 deve carregar via loader sem schema errors."""
-    from scripts.rule_engine.loader import load_rules
-    from scripts.rule_engine.detectors import REGISTRY as DETECTORS
-    from scripts.rule_engine.fixers import REGISTRY as FIXERS
+    from uip_engine.loader import load_rules
+    from uip_engine.detectors import REGISTRY as DETECTORS
+    from uip_engine.fixers import REGISTRY as FIXERS
 
     rules_yaml = (
         Path(__file__).resolve().parents[1] / "rules.yaml"

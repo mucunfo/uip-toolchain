@@ -1,9 +1,9 @@
-"""Heuristics for project.json J-* rules."""
+﻿"""Heuristics for project.json J-* rules."""
 from __future__ import annotations
 
 import json
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 def _load(fc):

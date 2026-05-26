@@ -1,4 +1,4 @@
-# .uipath-rules — Arquitetura
+﻿# .uip-toolchain — Arquitetura
 
 Manual operacional da engine de regras UiPath. Lê quando ficar com dúvida sobre
 qual arquivo modificar para qual tipo de mudança.
@@ -10,19 +10,19 @@ qual arquivo modificar para qual tipo de mudança.
 | `rules.yaml` | Todas as regras (id, severity, category, target, description, applies_to, detect, fix). | **Sempre. Único.** |
 | `ARCHITECTURE.md` | Este arquivo. | Quando arquitetura mudar |
 | `pyproject.toml` | Deps + scripts. | Raramente |
-| `scripts/rule_engine/loader.py` | Parse YAML + schema validation. | Nunca (só se schema mudar) |
-| `scripts/rule_engine/_types.py` | Rule, Finding, Severity, Category, Target. | Quando schema mudar |
-| `scripts/rule_engine/encoding.py` | BOM detect + decode. | Nunca |
-| `scripts/rule_engine/context.py` | FileContext, ProjectContext. | Nunca |
-| `scripts/rule_engine/suppressions.py` | rule-disable parser. | Nunca |
-| `scripts/rule_engine/detectors.py` | Registry de detectores. Cada `detect.type` em rules.yaml mapeia para função aqui. | Só se aparecer **novo tipo de detecção** |
-| `scripts/rule_engine/fixers.py` | Registry de fixers mecânicos. | Só se aparecer **novo tipo de fix** |
-| `scripts/rule_engine/runner.py` | Orquestrador: itera regras × arquivos. | Nunca |
-| `scripts/rule_engine/cli.py` | CLI: `review`, `fix`, `list`, `validate`. | Nunca |
-| `scripts/rule_engine/heuristics/*.py` | Escape hatches python para regras `detect.type: python`. | Quando regra precisar de lógica não-declarativa |
-| `scripts/rule_engine/safety.py` | Post-fix gate (XML well-formedness + VB ref↔decl). Snapshot+rollback. | Só se gate strategy mudar |
-| `scripts/rule_engine/vb_validator.py` | VB ref orphan detector (BC30451-class). | Quando whitelist mudar |
-| `scripts/rule_engine/classify.py` | apply_class taxonomy (deterministic/contextual/structural). | Só se schema mudar |
+| `src/uip_engine/loader.py` | Parse YAML + schema validation. | Nunca (só se schema mudar) |
+| `src/uip_engine/_types.py` | Rule, Finding, Severity, Category, Target. | Quando schema mudar |
+| `src/uip_engine/encoding.py` | BOM detect + decode. | Nunca |
+| `src/uip_engine/context.py` | FileContext, ProjectContext. | Nunca |
+| `src/uip_engine/suppressions.py` | rule-disable parser. | Nunca |
+| `src/uip_engine/detectors.py` | Registry de detectores. Cada `detect.type` em rules.yaml mapeia para função aqui. | Só se aparecer **novo tipo de detecção** |
+| `src/uip_engine/fixers.py` | Registry de fixers mecânicos. | Só se aparecer **novo tipo de fix** |
+| `src/uip_engine/runner.py` | Orquestrador: itera regras × arquivos. | Nunca |
+| `src/uip_engine/cli.py` | CLI: `review`, `fix`, `list`, `validate`. | Nunca |
+| `src/uip_engine/heuristics/*.py` | Escape hatches python para regras `detect.type: python`. | Quando regra precisar de lógica não-declarativa |
+| `src/uip_engine/safety.py` | Post-fix gate (XML well-formedness + VB ref↔decl). Snapshot+rollback. | Só se gate strategy mudar |
+| `src/uip_engine/vb_validator.py` | VB ref orphan detector (BC30451-class). | Quando whitelist mudar |
+| `src/uip_engine/classify.py` | apply_class taxonomy (deterministic/contextual/structural). | Só se schema mudar |
 | `tests/*` | Unit + integration. | Quando adicionar cenário novo |
 
 ## Mudanças que NÃO requerem tocar arquivos além de rules.yaml
@@ -69,9 +69,9 @@ Severities: `HALT | ERROR | WARN | INFO`.
 Categories: `breaking | architectural | testing | agent_behavior`.
 Targets: `all | windows | legacy`.
 
-Detectors disponíveis: ver `scripts/rule_engine/detectors.py` REGISTRY.
+Detectors disponíveis: ver `src/uip_engine/detectors.py` REGISTRY.
 
-Fixers disponíveis (`scripts/rule_engine/fixers.py` REGISTRY):
+Fixers disponíveis (`src/uip_engine/fixers.py` REGISTRY):
 - `regex_replace` — substituição regex pattern→replacement.
 - `rename_attribute` — whole-word rename case-insensitive (VB-aware) com orphan check.
 - `rename_argument` — rename arg + cascade callers (`<ui:InvokeWorkflowFile>` blocks + `this:Class.arg` propertyelement).
@@ -125,7 +125,7 @@ Activity Migrator GA do Studio v25.10 replica o botão Migrate-to-Windows headle
 
 15 regras pinam pacotes core (System, UIAutomation, Excel, Database, WebAPI, Cryptography, DocumentUnderstanding, IntelligentOCR, Mail, MicrosoftOffice365, OCR, PDF, Testing, SharePoint, XML). Todas são severity **ERROR** category **breaking** com `apply_class: deterministic`.
 
-Detector `nuget_version_check` (em `scripts/rule_engine/detectors.py`) aceita dois params mutuamente exclusivos com precedência:
+Detector `nuget_version_check` (em `src/uip_engine/detectors.py`) aceita dois params mutuamente exclusivos com precedência:
 
 - `exact: "X.Y.Z"` — exige versão idêntica; qualquer drift (maior OU menor) viola. **Usado pelos D-1*.** Caso real: UIA pinado 25.10.8, Migrator instalou 25.10.21 — sem `exact:`, version drift `> pin` passava silente porque `min:` só checa lower bound.
 - `min: "X.Y.Z"` — legado/backward compat; só flagueia `actual < min`.
@@ -138,7 +138,7 @@ Realinhar o pin (D-1*) é seguro só se o XAML também não usa APIs introduzida
 
 **D-PINALERT** cruza `project.json::dependencies` com `assets/version_exclusive_apis.yaml` (catálogo `package -> [{pattern, introduced_in, fix}]`). Para cada package onde `pinned < introduced_in` AND o XAML contém o `pattern`, emite finding ERROR `breaking` com fix prose.
 
-- Detector: heuristic em `scripts/rule_engine/heuristics/pin_alert.py::detect_pin_alert` (registrado via `type: python`).
+- Detector: heuristic em `src/uip_engine/heuristics/pin_alert.py::detect_pin_alert` (registrado via `type: python`).
 - `apply_class: contextual` — fix depende da API (remover atributo vs substituir activity); não há fixer mecânico genérico.
 
 ### Pipeline pós-Activity-Migrator
@@ -208,17 +208,17 @@ env vars apenas:
 
 | Env var | Default | Efeito |
 |---|---|---|
-| `UIPATH_RULES_FILE` | `<repo>/rules.yaml` | override rules.yaml |
-| `UIPATH_RULES_SKIP_MIGRATION` | `0` | pula PHASE 0 (Activity Migrator) |
-| `UIPATH_RULES_NO_SWAP` | `0` | não swap source ↔ _Migrated |
-| `UIPATH_RULES_WATCH` | `0` | loop interativo Studio dev (mtime watch) |
-| `UIPATH_RULES_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
-| `UIPATH_RULES_MAX_ITERS` | `0` | limite iters loop (0 = ilimitado) |
-| `UIPATH_RULES_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
+| `UIP_TOOLCHAIN_RULES_FILE` | `<repo>/rules.yaml` | override rules.yaml |
+| `UIP_TOOLCHAIN_SKIP_MIGRATION` | `0` | pula PHASE 0 (Activity Migrator) |
+| `UIP_TOOLCHAIN_NO_SWAP` | `0` | não swap source ↔ _Migrated |
+| `UIP_TOOLCHAIN_WATCH` | `0` | loop interativo Studio dev (mtime watch) |
+| `UIP_TOOLCHAIN_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
+| `UIP_TOOLCHAIN_MAX_ITERS` | `0` | limite iters loop (0 = ilimitado) |
+| `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
-Underlying: `python -m scripts.rule_engine.cli all <project>`. PS alias
+Underlying: `python -m uip_engine.cli all <project>`. PS alias
 `uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona
-`cd .uipath-rules` automático.
+`cd .uip-toolchain` automático.
 
 Subcomandos atomicos (`review`, `fix`, `migrate-windows`, etc.) seguem
 existindo para debug e para o pipeline interno do `cli all`.
@@ -254,7 +254,7 @@ sem opt-out. Se passa, projeto é publish-safe garantido.
 Sem opt-out via CLI. `--no-analyzer-gate` flag mantida apenas como deprecation
 warning — emite `[WARNING] --no-analyzer-gate is deprecated and ignored; review always runs analyzer gate.` e ignora.
 
-**Env override (test harness apenas)**: `UIPATH_RULES_DISABLE_EXTERNAL_GATES=1`
+**Env override (test harness apenas)**: `UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1`
 pula gates 3/4/5 (não invoca uipcli/nuget). Usado pelo pytest harness (em
 `tests/conftest.py`) para evitar dependência de binaries externos durante
 unit tests. NÃO usar em produção.
@@ -295,7 +295,7 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 **Studio version mismatch**: uipcli respeita `project.json.targetFramework`. Local Studio v26.x analisando project Windows-5.x carrega rules compat. Diff gate elimina falsos positivos vindos de rules-novas em Studio local.
 
-**Cache** (F27): baseline cacheado em `.uipath-rules/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA1(project.json mtime + xaml count + max xaml mtime) invalida quando projeto muda materialmente. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados).
+**Cache** (F27): baseline cacheado em `.uip-toolchain/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA1(project.json mtime + xaml count + max xaml mtime) invalida quando projeto muda materialmente. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados).
 
 **Discovery**: ordem de busca uipcli:
 1. Env var `UIPATH_STUDIO_CLI`
@@ -332,7 +332,7 @@ uipcli gates + unit tests por heurística.
 Engine, hooks, agentes e CLI **NUNCA** rodam `git add/commit/push` em projetos UiPath.
 Edits ficam locais; usuário commita manualmente.
 
-`.uipath-rules/` é repo git próprio (`mucunfo/uipath-rules`, branch `main`) com
+`.uip-toolchain/` é repo git próprio (`mucunfo/uip-toolchain`, branch `main`) com
 CI windows-latest rodando `cli validate` + `pytest` em push/PR. Branch
 protection desativada (private free tier). Mudanças no engine seguem fluxo
 PR padrão.
@@ -366,13 +366,13 @@ W-1, W-2, W-4, W-11, W-13, W-14, W-15 ficam `target: windows` (relevância hist�
 ## Como adicionar regra nova
 
 1. Editar `rules.yaml` adicionando entrada nova com schema completo.
-2. Verificar detector type já existe via `python -m scripts.rule_engine.cli list`.
+2. Verificar detector type já existe via `python -m uip_engine.cli list`.
    - Se sim → done.
    - Se não → adicionar função em `detectors.py` (registrar em REGISTRY).
-3. Validar: `python -m scripts.rule_engine.cli validate`.
+3. Validar: `python -m uip_engine.cli validate`.
 4. Adicionar unit test em `tests/test_heuristic_*.py` ou `test_detectors_*.py`
    cobrindo XAML fixture sintético (positive + negative cases).
-5. Smoke contra projeto real: `python -m scripts.rule_engine.cli review <project>`
+5. Smoke contra projeto real: `python -m uip_engine.cli review <project>`
    — confirmar regra dispara onde deveria + `analyzer-gate` não regride.
 
 ## Como deprecar regra
@@ -404,13 +404,13 @@ em Cecil e caem em `Kind=DataObject` por falsa-falha de `Test-IsActivity`.
 ### Como regenerar
 
 ```powershell
-cd scripts/activities_meta
+cd tools/activities_meta
 .\batch-extract.ps1   # sweep ~/.nuget/packages/uipath.* via Cecil
 .\build-schema.ps1    # compacta + gera markdown
 ```
 
 Pré-requisito: UiPath Studio instalado + packages alvo abertos pelo menos
-uma vez (popula nuget cache). Detalhes em `scripts/activities_meta/README.md`.
+uma vez (popula nuget cache). Detalhes em `tools/activities_meta/README.md`.
 
 Quando regenerar:
 - Adicionou package novo / atualizou versão.
@@ -421,7 +421,7 @@ NÃO rodar em CI/hook (depende de cache local).
 
 ### Detector
 
-Heuristic Python `scripts/rule_engine/heuristics/activity_meta.py` carrega
+Heuristic Python `src/uip_engine/heuristics/activity_meta.py` carrega
 schema em singleton, indexa por FQN + (xmlns, local_name) + variantes
 generic-arity.
 
@@ -489,9 +489,9 @@ serializa em XAML mesmo não exibindo no painel design-time).
 
 ## Hooks — contrato
 
-`scripts/hooks/post_xaml_edit.py` + `post_project_json_edit.py`:
+`hooks/post_xaml_edit.py` + `post_project_json_edit.py`:
 - Input: stdin JSON (Claude Code PostToolUse format).
-- Action: `python -m scripts.rule_engine.cli review <project> --format json`.
+- Action: `python -m uip_engine.cli review <project> --format json`.
 - Output formato compacto p/ LLM:
   ```
   [SEV] [rule_id] linha N: <message>

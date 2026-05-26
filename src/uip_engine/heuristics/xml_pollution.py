@@ -1,4 +1,4 @@
-"""S-17: XML comment as direct child of <Activity> root quebra Studio compiler.
+﻿"""S-17: XML comment as direct child of <Activity> root quebra Studio compiler.
 
 Background:
   Studio 23.10+ compiler XAML loader itera children de <Activity> esperando
@@ -20,7 +20,7 @@ Fix mecanico: remover o comment (linha inteira + trailing newline).
 from __future__ import annotations
 
 import re
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 # Match Activity root open tag (with all xmlns attrs) followed by content

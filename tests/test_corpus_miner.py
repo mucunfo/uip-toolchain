@@ -1,4 +1,4 @@
-"""Tests for scripts/rule_engine/corpus_miner.py."""
+﻿"""Tests for src/uip_engine/corpus_miner.py."""
 from __future__ import annotations
 
 import textwrap
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine import corpus_miner
-from scripts.rule_engine.corpus_miner import (
+from uip_engine import corpus_miner
+from uip_engine.corpus_miner import (
     ArgSpec,
     MineStats,
     extract_property_declarations,

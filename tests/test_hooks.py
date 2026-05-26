@@ -6,7 +6,7 @@ import sys
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-HOOKS = ROOT / "scripts" / "hooks"
+HOOKS = ROOT / "hooks"
 
 REF_PATH = Path(
     "C:/Users/lisan/OneDrive - Sicoob/Projects/"

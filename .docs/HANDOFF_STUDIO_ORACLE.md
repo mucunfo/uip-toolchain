@@ -1,7 +1,7 @@
-# HANDOFF — Studio Oracle Integration + Engine Professionalization
+﻿# HANDOFF — Studio Oracle Integration + Engine Professionalization
 
 **Criado:** 2026-05-22
-**Contexto:** sessão pós-resolução incidente `contestacao-fraude-bc-errors` (ver `.uipath-rules/.docs/incidents/contestacao-fraude-bc-errors.md`)
+**Contexto:** sessão pós-resolução incidente `contestacao-fraude-bc-errors` (ver `.uip-toolchain/.docs/incidents/contestacao-fraude-bc-errors.md`)
 **Audiência:** próxima sessão Claude (limpa, sem contexto da conversa anterior)
 
 ---
@@ -54,8 +54,8 @@ Tudo acima está working tree. Status branch `main` ahead origin/main por 1 comm
 
 **Steps:**
 1. `git status` — confirmar working tree changes (rules.yaml, fixers.py, heuristics/legacy_refs.py, tests/test_env4_*.py)
-2. Run full test suite: `cd .uipath-rules && python -m pytest -x` (deve passar 100%)
-3. Lint check rules.yaml: `python -m scripts.rule_engine.cli validate rules.yaml`
+2. Run full test suite: `cd .uip-toolchain && python -m pytest -x` (deve passar 100%)
+3. Lint check rules.yaml: `python -m uip_engine.cli validate rules.yaml`
 4. Commit message sugerido:
    ```
    feat(engine): ENV-4 normalize VisualBasic.Settings + W-31/W-32 ref cleanup
@@ -165,12 +165,12 @@ PHASE 4  decisão
 Recomendação: **AUTHORITATIVE em produção, VERIFICATION em modo `--engine-only`** (debug + CI lite).
 
 **Implementação:**
-1. `scripts/rule_engine/studio_oracle.py` — wrapper pythonnet
+1. `src/uip_engine/studio_oracle.py` — wrapper pythonnet
    - `class StudioOracle`: discover_studio(), load_workflow(), import_references(), serialize()
    - `available() -> bool` — feature detection
-2. `scripts/rule_engine/cli.py` — adicionar `_phase1_5_studio_oracle(project)` no loop iterativo de `cmd_all`
-3. Env var `UIPATH_RULES_DISABLE_STUDIO_ORACLE=1` pra opt-out (CI lite, debug)
-4. Telemetria: cada drift event vai pra `.uipath-rules/.tmp/telemetry/studio_drift_<date>.jsonl`
+2. `src/uip_engine/cli.py` — adicionar `_phase1_5_studio_oracle(project)` no loop iterativo de `cmd_all`
+3. Env var `UIP_TOOLCHAIN_DISABLE_STUDIO_ORACLE=1` pra opt-out (CI lite, debug)
+4. Telemetria: cada drift event vai pra `.uip-toolchain/.tmp/telemetry/studio_drift_<date>.jsonl`
 5. Tests: `tests/test_studio_oracle.py` — mock + real (skip se Studio unavailable)
 
 **CI handling:**
@@ -193,7 +193,7 @@ Recomendação: **AUTHORITATIVE em produção, VERIFICATION em modo `--engine-on
 
 **Estrutura:**
 ```
-.uipath-rules/.golden/
+.uip-toolchain/.golden/
   contestacao-fraude/
     pre/                       # XAML pre-fix snapshot (immutable)
     studio_canonical/          # XAML pós Studio Import References (oracle ground truth)
@@ -259,7 +259,7 @@ def test_engine_matches_studio_oracle(incident):
 
 ### Fase 5 — Boot self-audit (1-2 dias)
 
-CLI command `python -m scripts.rule_engine.cli doctor`:
+CLI command `python -m uip_engine.cli doctor`:
 ```
 === Engine Self-Audit ===
 Rules total:          270
@@ -329,8 +329,8 @@ Boot CLI emit summary line:
 ## Arquivos relevantes referência
 
 - `.docs/incidents/contestacao-fraude-bc-errors.md` — incident origem desta sessão (Tentativas 1-6 documentadas)
-- `scripts/rule_engine/heuristics/legacy_refs.py` — ENV-2, ENV-3, ENV-4, W-31, W-32 detectors
-- `scripts/rule_engine/fixers.py` — normalize_visualbasic_settings (linha ~3093), insert_assembly_reference (linha ~2916), strip_assembly_reference (linha ~3093+wrap)
+- `src/uip_engine/heuristics/legacy_refs.py` — ENV-2, ENV-3, ENV-4, W-31, W-32 detectors
+- `src/uip_engine/fixers.py` — normalize_visualbasic_settings (linha ~3093), insert_assembly_reference (linha ~2916), strip_assembly_reference (linha ~3093+wrap)
 - `rules.yaml` — ENV-4 definição (busca `^  - id: ENV-4`)
 - `tests/test_env4_visualbasic_settings.py` — 12 tests passando
 - `.tmp/target_uip_run_v2.log` — last run output (referência)

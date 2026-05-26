@@ -1,12 +1,12 @@
-import json as jsonlib
+﻿import json as jsonlib
 from pathlib import Path
 import pytest
-from scripts.rule_engine.detectors import (
+from uip_engine.detectors import (
     detect_json_field_check, detect_json_version_compare, detect_nuget_version_check,
     REGISTRY,
 )
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
 
 
 def make_rule(detect_params, sev=Severity.WARN, category="architectural"):
@@ -220,7 +220,7 @@ def test_registry_has_data_detectors():
 
 
 import shutil
-from scripts.rule_engine.detectors import detect_config_xlsx_keys
+from uip_engine.detectors import detect_config_xlsx_keys
 
 
 FIX_DIR = Path(__file__).parent / "fixtures"

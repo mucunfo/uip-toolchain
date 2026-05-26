@@ -1,6 +1,6 @@
-"""Tests for invocation_xref — caller/arg-type cross-reference scanner.
+﻿"""Tests for invocation_xref — caller/arg-type cross-reference scanner.
 
-Module under test: :mod:`scripts.rule_engine.invocation_xref`.
+Module under test: :mod:`uip_engine.invocation_xref`.
 
 The scanner walks a UiPath project, finds every
 ``<ui:InvokeWorkflowFile WorkflowFileName="...">`` activity, and (when
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.invocation_xref import (
+from uip_engine.invocation_xref import (
     CallerSite,
     InvocationArg,
     dump_arg_to_xaml,

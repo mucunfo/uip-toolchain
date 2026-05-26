@@ -1,4 +1,4 @@
-# C:/Users/lisan/OneDrive - Sicoob/Projects/.uipath-rules/rules.yaml
+﻿# C:/Users/lisan/OneDrive - Sicoob/Projects/.uip-toolchain/rules.yaml
 # Single source of truth — edit aqui adiciona/modifica/remove regra.
 # Schema: ARCHITECTURE.md.
 version: 1
@@ -134,7 +134,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_w2_linq_no_guard
     fix:
       apply_class: deterministic
@@ -165,7 +165,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.arg_default
+        module: uip_engine.heuristics.arg_default
         function: detect_w3_arg_default_attribute_form
     fix:
       apply_class: deterministic
@@ -470,7 +470,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.xmlns_refs
+        module: uip_engine.heuristics.xmlns_refs
         function: detect_xmlns_required_refs
     fix:
       apply_class: deterministic
@@ -538,7 +538,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.xmlns_refs
+        module: uip_engine.heuristics.xmlns_refs
         function: detect_baseline_refs
         # Baseline refs cross-version Windows target. Lista derivada empiricamente
         # de xamls Sicoob funcionais. Adicionar conforme novos baselines descobertos.
@@ -617,7 +617,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.xmlns_refs
+        module: uip_engine.heuristics.xmlns_refs
         function: detect_vb_symbol_refs
     fix:
       apply_class: deterministic
@@ -654,7 +654,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.ccs_contract
+        module: uip_engine.heuristics.ccs_contract
         function: detect_ccs_contract_check
     fix:
       apply_class: deterministic
@@ -735,7 +735,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.xmlns_refs
+        module: uip_engine.heuristics.xmlns_refs
         function: detect_w20_orphan_xmlns
     fix:
       apply_class: deterministic
@@ -778,7 +778,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.legacy_refs
+        module: uip_engine.heuristics.legacy_refs
         function: detect_unused_legacy_facade_refs
     fix:
       apply_class: deterministic
@@ -817,7 +817,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.legacy_refs
+        module: uip_engine.heuristics.legacy_refs
         function: detect_obsolete_dotnet4_refs
     fix:
       apply_class: deterministic
@@ -940,7 +940,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.vb_legacy_syntax
+        module: uip_engine.heuristics.vb_legacy_syntax
         function: detect_w33_vb_legacy_patterns
     fix:
       apply_class: contextual
@@ -1006,7 +1006,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.legacy_refs
+        module: uip_engine.heuristics.legacy_refs
         function: detect_env2_ensure_legacy_refs
     fix:
       apply_class: deterministic
@@ -1040,7 +1040,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_w12_array_literal
     fix:
       apply_class: deterministic
@@ -1066,7 +1066,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_w13_sendmail
     fix:
       prose: |
@@ -1120,7 +1120,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_w16_isnullorempty
         static_class_names: [string, "s:string", "x:string"]
         last_segment_skip: [string]
@@ -1150,7 +1150,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_w17_toint32
         static_class_names:
           - convert
@@ -1194,7 +1194,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_ocr1_empty_engine
     fix:
       apply_class: deterministic
@@ -1234,7 +1234,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.legacy_refs
+        module: uip_engine.heuristics.legacy_refs
         function: detect_servicemodel_refs
     fix:
       apply_class: deterministic
@@ -1416,7 +1416,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.json_checks
+        module: uip_engine.heuristics.json_checks
         function: detect_j3_required_packages
         packages:
           - UiPath.System.Activities
@@ -1446,7 +1446,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.json_checks
+        module: uip_engine.heuristics.json_checks
         function: detect_j6_excluded_logged
         path: runtimeOptions.excludedLoggedData
         required_patterns:
@@ -1477,7 +1477,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.json_checks
+        module: uip_engine.heuristics.json_checks
         function: detect_j7_user_interaction_consistency
         name_path: name
         flag_path: requiresUserInteraction
@@ -1510,7 +1510,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.project_manifest
+        module: uip_engine.heuristics.project_manifest
         function: detect_j8_stale_fileinfo_entries
         key_path: designOptions.fileInfoCollection
         filename_field: fileName
@@ -1559,7 +1559,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.project_manifest
+        module: uip_engine.heuristics.project_manifest
         function: detect_env1_studio_compat
     fix:
       apply_class: deterministic
@@ -1616,7 +1616,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.legacy_refs
+        module: uip_engine.heuristics.legacy_refs
         function: detect_env3_ensure_namespace_imports
     fix:
       apply_class: deterministic
@@ -1686,7 +1686,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.legacy_refs
+        module: uip_engine.heuristics.legacy_refs
         function: detect_env4_normalize_vb_settings
     fix:
       apply_class: deterministic
@@ -1794,7 +1794,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.migrator_regress
+        module: uip_engine.heuristics.migrator_regress
         function: detect_x2_property_element_with_attribute
     fix:
       apply_class: deterministic
@@ -2108,7 +2108,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.transaction_item
+        module: uip_engine.heuristics.transaction_item
         function: detect_a19_io_transaction_item
 
   - id: A-19b
@@ -2126,7 +2126,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.transaction_item
+        module: uip_engine.heuristics.transaction_item
         function: detect_a19b_in_args_missing
     fix:
       apply_class: deterministic
@@ -2154,7 +2154,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n17_log_displayname_quality
     fix:
       apply_class: deterministic
@@ -2182,7 +2182,7 @@ rules:
       - Sem placeholder runtime (`vXxx`, `in_Xxx`, `&` concatenations)
 
       Validator cacheia veredito por hash da mensagem
-      em `.uipath-rules-cache/llm_logmsg.json` — re-runs sao baratas.
+      em `.uip-toolchain-cache/llm_logmsg.json` — re-runs sao baratas.
 
       Fail-open: erro de LLM (CLI ausente, network, etc) NAO emite finding.
     applies_to:
@@ -2191,7 +2191,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.log_traceability
+        module: uip_engine.heuristics.log_traceability
         function: detect_n16_log_semantic_traceability
     fix:
       prose: |
@@ -2227,7 +2227,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.transaction_item
+        module: uip_engine.heuristics.transaction_item
         function: detect_a19c_caller_arg_misnamed
         similarity_threshold: 0.5
     fix:
@@ -2265,7 +2265,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming
+        module: uip_engine.heuristics.naming
         function: detect_s4_acronyms
         acronyms:
           - XML
@@ -2373,7 +2373,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming
+        module: uip_engine.heuristics.naming
         function: detect_s6_xclass_filename
     fix:
       mechanical:
@@ -2445,7 +2445,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming
+        module: uip_engine.heuristics.naming
         function: detect_s9_pt_br
         forbidden:
           - User
@@ -2527,7 +2527,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_s10_logmessage_in_restrictive_parent
     fix:
       prose: |
@@ -2565,7 +2565,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.testing
+        module: uip_engine.heuristics.testing
         function: detect_s11_xmlns_assembly_missing
         whitelist_assemblies:
           - System.Private.CoreLib
@@ -2711,7 +2711,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.empty_sequence
+        module: uip_engine.heuristics.empty_sequence
         function: detect_empty_sequence
     fix:
       apply_class: deterministic
@@ -2813,7 +2813,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.xml_pollution
+        module: uip_engine.heuristics.xml_pollution
         function: detect_s17_xml_comment_root
     fix:
       apply_class: deterministic
@@ -2861,7 +2861,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.empty_activityfunc
+        module: uip_engine.heuristics.empty_activityfunc
         function: detect_empty_ocr_activityfunc
     fix:
       apply_class: structural
@@ -2914,7 +2914,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.invoke_refs
+        module: uip_engine.heuristics.invoke_refs
         function: detect_invoke_ignoredfile_ref
     fix:
       apply_class: structural
@@ -2942,7 +2942,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.displayname
+        module: uip_engine.heuristics.displayname
         function: detect_s8b_displayname_mismatch
     fix:
       apply_class: deterministic
@@ -2973,7 +2973,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming_prefix
+        module: uip_engine.heuristics.naming_prefix
         function: detect_n1_variable_prefix
         type_prefix: &type_prefix
           - {type: SecureString, prefix: SSt}
@@ -3105,7 +3105,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming_prefix
+        module: uip_engine.heuristics.naming_prefix
         function: detect_n2_argument_prefix
         type_prefix: *type_prefix
         wrong_prefix_map: *wrong_prefix_map
@@ -3178,7 +3178,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n3_log_prefixo
         prefixo_arg_name: in_StPrefixoLog
         exclude_paths: &chain_exclude_paths
@@ -3219,7 +3219,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming_prefix
+        module: uip_engine.heuristics.naming_prefix
         function: detect_n4_arg_count
         threshold: 7
 
@@ -3253,7 +3253,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n5_trace_log_significant
         exclude_paths: *chain_exclude_paths
         proximity_window: 600
@@ -3370,7 +3370,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n6_invoke_log_level
         exclude_paths:
           - "tests/"
@@ -3411,7 +3411,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n7_invoke_log_entry_exit
         exclude_paths:
           - "tests/"
@@ -3463,7 +3463,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.value_types
+        module: uip_engine.heuristics.value_types
         function: detect_v1_nothing_in_value_type
         # extra_value_types: lista opcional pra estender (Guid, etc.)
         extra_value_types: []
@@ -3506,7 +3506,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming_prefix
+        module: uip_engine.heuristics.naming_prefix
         function: detect_n11_argument_direction
         bare_special: *bare_special
         reframework_main_vars: *reframework_main_vars
@@ -3629,7 +3629,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n10_log_anticipatory
         exclude_paths: *chain_exclude_paths
     fix:
@@ -3754,7 +3754,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n9_log_message_mechanical
         exclude_paths: *chain_exclude_paths
     fix:
@@ -3797,7 +3797,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming_prefix
+        module: uip_engine.heuristics.naming_prefix
         function: detect_n8_name_length
         threshold: 30
     fix:
@@ -3956,7 +3956,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.testing
+        module: uip_engine.heuristics.testing
         function: detect_t5_missing_workflow
 
   - id: T-6
@@ -4360,7 +4360,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.pin_alert
+        module: uip_engine.heuristics.pin_alert
         function: detect_pin_alert
     fix:
       # Mixed: attribute strips (LogRetriedExceptions, DestinationResource, etc)
@@ -4407,7 +4407,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.nuget_peer
+        module: uip_engine.heuristics.nuget_peer
         function: detect_nuget_peer_conflict
     fix:
       apply_class: contextual  # fix depende de qual lado realinhar (primary vs peer)
@@ -4793,7 +4793,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.windows
+        module: uip_engine.heuristics.windows
         function: detect_ui7_simulate_delays
     fix:
       apply_class: deterministic
@@ -5042,7 +5042,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.crypto
+        module: uip_engine.heuristics.crypto
         function: detect_cry5_hash_legacy
     fix:
       apply_class: deterministic
@@ -5392,7 +5392,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.crypto
+        module: uip_engine.heuristics.crypto
         function: detect_iocr4_cjk_ocr
     fix:
       apply_class: deterministic
@@ -5732,7 +5732,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.unused
+        module: uip_engine.heuristics.unused
         function: detect_unused_variables
     fix:
       apply_class: deterministic
@@ -5787,7 +5787,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.unused
+        module: uip_engine.heuristics.unused
         function: detect_unused_arguments
     fix:
       prose: |
@@ -5825,7 +5825,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.unused
+        module: uip_engine.heuristics.unused
         function: detect_undeclared_identifiers
     fix:
       prose: |
@@ -5876,7 +5876,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.unused
+        module: uip_engine.heuristics.unused
         function: detect_duplicate_variable_names
     fix:
       # Mixed: same-scope duplicates → mechanical delete (deterministic).
@@ -5917,7 +5917,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.naming
+        module: uip_engine.heuristics.naming
         function: detect_n13_verb_infinitive
         targets:
           - filename
@@ -5990,7 +5990,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.logs
+        module: uip_engine.heuristics.logs
         function: detect_n15_log_infinitive
         exclude_paths:
           - "framework/"
@@ -6064,7 +6064,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.unused
+        module: uip_engine.heuristics.unused
         function: detect_u5_variable_aliases
         trivial_defaults:
           - ""
@@ -6248,7 +6248,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.unused
+        module: uip_engine.heuristics.unused
         function: detect_u6_variable_hoist
         # Loop tags onde Variable é scope-local intencional
         loop_parents:
@@ -6280,7 +6280,7 @@ rules:
   # ---------------------------------------------------------------------
   # M-* — Schema-aware activity validation (categoria metadata)
   # Schema source: assets/activities/activities-compact.json
-  # Regenerar: scripts/activities_meta/{batch-extract,build-schema}.ps1
+  # Regenerar: tools/activities_meta/{batch-extract,build-schema}.ps1
   # ---------------------------------------------------------------------
 
   - id: M-1
@@ -6304,7 +6304,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m1_activity_unknown
     fix:
       apply_class: contextual
@@ -6331,7 +6331,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m2_required_missing
     fix:
       apply_class: deterministic
@@ -6362,7 +6362,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m3_unknown_arg
     fix:
       apply_class: contextual
@@ -6386,7 +6386,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m4_overload_conflict
     fix:
       apply_class: contextual
@@ -6410,7 +6410,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m6_xmlns_missing
     fix:
       apply_class: deterministic
@@ -6450,7 +6450,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m5_type_mismatch
     fix:
       apply_class: contextual
@@ -6484,7 +6484,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m8_nothing_in_value_type
     fix:
       apply_class: deterministic
@@ -6519,7 +6519,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.activity_meta
+        module: uip_engine.heuristics.activity_meta
         function: detect_m7_redundant_default
     fix:
       apply_class: deterministic
@@ -6552,7 +6552,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.complexity
+        module: uip_engine.heuristics.complexity
         function: detect_cx1_cyclomatic
         threshold_warn: 10
         threshold_error: 20
@@ -6578,7 +6578,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.complexity
+        module: uip_engine.heuristics.complexity
         function: detect_cx2_depth
         threshold_warn: 5
         threshold_error: 8
@@ -6604,7 +6604,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.complexity
+        module: uip_engine.heuristics.complexity
         function: detect_cx3_fanout
         threshold_warn: 10
         threshold_error: 15
@@ -6630,7 +6630,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.complexity
+        module: uip_engine.heuristics.complexity
         function: detect_cx4_activities
         threshold_warn: 100
         threshold_error: 300
@@ -6656,7 +6656,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.complexity
+        module: uip_engine.heuristics.complexity
         function: detect_cx5_god_workflow
         threshold_lines: 200
         threshold_activities: 50
@@ -6690,7 +6690,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.hygiene
+        module: uip_engine.heuristics.hygiene
         function: detect_hy1_merge_markers
     fix:
       apply_class: contextual
@@ -6713,7 +6713,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.hygiene
+        module: uip_engine.heuristics.hygiene
         function: detect_hy2_placeholder_description
     fix:
       apply_class: deterministic
@@ -6738,7 +6738,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.hygiene
+        module: uip_engine.heuristics.hygiene
         function: detect_hy3_main_empty
     fix:
       apply_class: contextual
@@ -6760,7 +6760,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.hygiene
+        module: uip_engine.heuristics.hygiene
         function: detect_hy4_gitignore
     fix:
       apply_class: deterministic
@@ -6784,7 +6784,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.hygiene
+        module: uip_engine.heuristics.hygiene
         function: detect_hy5_eol_mix
     fix:
       apply_class: deterministic
@@ -6807,7 +6807,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.hygiene
+        module: uip_engine.heuristics.hygiene
         function: detect_hy6_bom_json
     fix:
       apply_class: deterministic
@@ -6840,7 +6840,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.test_coverage
+        module: uip_engine.heuristics.test_coverage
         function: detect_tc_cov_1_missing
     fix:
       apply_class: contextual
@@ -6863,7 +6863,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.test_coverage
+        module: uip_engine.heuristics.test_coverage
         function: detect_tc_cov_3_no_tests_folder
     fix:
       apply_class: contextual
@@ -6891,7 +6891,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.test_coverage
+        module: uip_engine.heuristics.test_coverage
         function: detect_tc_cov_4_low_arg_variation
         arg_threshold: 3
     fix:
@@ -6932,7 +6932,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.selector_audit
+        module: uip_engine.heuristics.selector_audit
         function: detect_healchain
     fix:
       apply_class: contextual
@@ -6963,7 +6963,7 @@ rules:
     detect:
       type: python
       params:
-        module: scripts.rule_engine.heuristics.selector_audit
+        module: uip_engine.heuristics.selector_audit
         function: detect_semantic_leak
     fix:
       apply_class: contextual
@@ -7027,7 +7027,7 @@ rules:
       via nenhuma das 3 layers:
 
         L1 — Canonical Sicoob/REFramework table (corpus-mined 1254 args,
-             .uipath-rules/scripts/rule_engine/_canonical_args.py)
+             .uip-toolchain/src/uip_engine/_canonical_args.py)
         L2 — Invocation cross-reference (caller InvokeWorkflowFile.Arguments
              majority vote)
         L3 — Hungarian prefix convention (Sicoob naming: St, Int, Bol, Dt,

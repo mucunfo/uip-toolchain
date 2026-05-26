@@ -1,16 +1,16 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Performance bench — engine review timing per XAML.
 
 Usage:
-    python scripts/perf_bench.py <project_path>
-    python scripts/perf_bench.py <project_path> --profile  # cProfile mode
+    python tools/perf_bench.py <project_path>
+    python tools/perf_bench.py <project_path> --profile  # cProfile mode
 
 Output:
     - Per-file timing (ms): parse, detect, total
     - Aggregate: p50/p95/max + total findings
     - Top hotspots if --profile
 
-Run from .uipath-rules/ root.
+Run from .uip-toolchain/ root.
 """
 from __future__ import annotations
 
@@ -24,23 +24,23 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Allow direct execution: ensure .uipath-rules root in sys.path
+# Allow direct execution: ensure .uip-toolchain root in sys.path
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 
 def _bench_review(project_path: str) -> dict[str, Any]:
-    from scripts.rule_engine.cli import _load_rules_or_die, DEFAULT_RULES_FILE
-    from scripts.rule_engine.detectors import REGISTRY as DETECTOR_REGISTRY
-    from scripts.rule_engine.fixers import REGISTRY as FIXER_REGISTRY
-    from scripts.rule_engine.runner import Runner
+    from uip_engine.cli import _load_rules_or_die, DEFAULT_RULES_FILE
+    from uip_engine.detectors import REGISTRY as DETECTOR_REGISTRY
+    from uip_engine.fixers import REGISTRY as FIXER_REGISTRY
+    from uip_engine.runner import Runner
 
     rules = _load_rules_or_die(str(DEFAULT_RULES_FILE))
 
     # Pre-warm schema singleton (don't count first-load cost in per-file)
     try:
-        from scripts.rule_engine.heuristics.activity_meta import get_schema
+        from uip_engine.heuristics.activity_meta import get_schema
         t0 = time.perf_counter()
         s = get_schema()
         schema_load_ms = (time.perf_counter() - t0) * 1000

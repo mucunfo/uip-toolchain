@@ -1,4 +1,4 @@
-"""Tests for ENV-4: normalize legacy `<mva:VisualBasic.Settings>` text-content.
+﻿"""Tests for ENV-4: normalize legacy `<mva:VisualBasic.Settings>` text-content.
 
 ROOT CAUSE de BC30652/BC31424 isolated empiricamente (2026-05-22):
   - Studio "Import References" auto-fix substitui `<mva:VisualBasic.Settings>
@@ -25,9 +25,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.fixers import apply_normalize_visualbasic_settings
-from scripts.rule_engine.heuristics.legacy_refs import (
+from uip_engine.context import FileContext
+from uip_engine.fixers import apply_normalize_visualbasic_settings
+from uip_engine.heuristics.legacy_refs import (
     detect_env4_normalize_vb_settings,
 )
 

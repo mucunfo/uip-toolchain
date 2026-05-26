@@ -1,4 +1,4 @@
-"""Tests for ENV-1 Studio compat flags rule.
+﻿"""Tests for ENV-1 Studio compat flags rule.
 
 Cobre:
   - apply_project_manifest_set_keys fixer (idempotency, atomic patch,
@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.rule_engine.fixers import apply_project_manifest_set_keys
-from scripts.rule_engine.heuristics.project_manifest import (
+from uip_engine.fixers import apply_project_manifest_set_keys
+from uip_engine.heuristics.project_manifest import (
     detect_env1_studio_compat,
     _ENV1_REQUIRED,
 )

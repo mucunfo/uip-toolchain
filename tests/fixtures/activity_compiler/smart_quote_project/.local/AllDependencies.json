@@ -8761,9 +8761,9 @@
     "restore": {
       "projectUniqueName": "SmartQuoteProject",
       "projectName": "SmartQuoteProject",
-      "projectPath": "C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.uipath-rules\\tests\\fixtures\\activity_compiler\\smart_quote_project\\.local",
+      "projectPath": "C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.uip-toolchain\\tests\\fixtures\\activity_compiler\\smart_quote_project\\.local",
       "packagesPath": "C:\\Users\\lisan\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.uipath-rules\\tests\\fixtures\\activity_compiler\\smart_quote_project\\.local",
+      "outputPath": "C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.uip-toolchain\\tests\\fixtures\\activity_compiler\\smart_quote_project\\.local",
       "UsingMicrosoftNETSdk": false,
       "restoreAuditProperties": {
         "enableAudit": "False"

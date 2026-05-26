@@ -1,11 +1,11 @@
-"""Tests for heuristics/complexity.py — CX-1..5."""
+﻿"""Tests for heuristics/complexity.py — CX-1..5."""
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.complexity import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.complexity import (
     detect_cx1_cyclomatic,
     detect_cx2_depth,
     detect_cx3_fanout,
@@ -36,7 +36,7 @@ def _rule(rid: str, fn: str, params: dict | None = None) -> Rule:
         id=rid, severity=Severity.WARN, category="architectural", target="all",
         title=f"test {rid}", description="",
         detect={"type": "python", "params": {
-            "module": "scripts.rule_engine.heuristics.complexity",
+            "module": "uip_engine.heuristics.complexity",
             "function": fn,
             **(params or {}),
         }},

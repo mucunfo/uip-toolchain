@@ -1,9 +1,9 @@
-"""Heuristics for testing rules (T-*)."""
+﻿"""Heuristics for testing rules (T-*)."""
 from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_INVOKE_FILE = re.compile(

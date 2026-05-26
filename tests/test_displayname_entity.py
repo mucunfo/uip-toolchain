@@ -1,4 +1,4 @@
-"""Tests for V-4 — DisplayName/Annotation com entity double-escape.
+﻿"""Tests for V-4 — DisplayName/Annotation com entity double-escape.
 
 V-4 cobre attrs plain-text (DisplayName, AnnotationText) — diferente de
 V-3 que cobre attrs de expressão VB (Expression, Condition, ExpressionText).
@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext
-from scripts.rule_engine.detectors import detect_regex
-from scripts.rule_engine.fixers import apply_regex_replace
-from scripts.rule_engine.loader import load_rules
-from scripts.rule_engine import detectors as det_mod
-from scripts.rule_engine import fixers as fix_mod
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext
+from uip_engine.detectors import detect_regex
+from uip_engine.fixers import apply_regex_replace
+from uip_engine.loader import load_rules
+from uip_engine import detectors as det_mod
+from uip_engine import fixers as fix_mod
 
 
 def _v4_rule_from_yaml() -> Rule:

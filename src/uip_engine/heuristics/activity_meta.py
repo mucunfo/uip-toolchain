@@ -1,11 +1,11 @@
-"""Heuristic for activity metadata schema validation (M-* rules).
+﻿"""Heuristic for activity metadata schema validation (M-* rules).
 
 Loads `assets/activities/activities-compact.json` (built by
-`scripts/activities_meta/build-schema.ps1`) and exposes lookups + per-check
+`tools/activities_meta/build-schema.ps1`) and exposes lookups + per-check
 detectors consumed by `detect_activity_signature` in `detectors.py`.
 
 Schema regenerated offline (Mono.Cecil reflection over installed nuget
-packages). See `scripts/activities_meta/README.md`.
+packages). See `tools/activities_meta/README.md`.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 SCHEMA_PATH = (
@@ -246,7 +246,7 @@ def get_schema() -> ActivitySchema:
             return _singleton  # use stale if file disappeared mid-process
         raise FileNotFoundError(
             f"Activity schema não encontrado em {SCHEMA_PATH}. "
-            "Rode scripts/activities_meta/batch-extract.ps1 + build-schema.ps1."
+            "Rode tools/activities_meta/batch-extract.ps1 + build-schema.ps1."
         )
     current_mtime = SCHEMA_PATH.stat().st_mtime
     if _singleton is None or current_mtime > _singleton_mtime:

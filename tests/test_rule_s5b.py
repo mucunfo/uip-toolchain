@@ -1,4 +1,4 @@
-"""Tests for S-5b — Activity Migrator [PostMigration Action Required] markers.
+﻿"""Tests for S-5b — Activity Migrator [PostMigration Action Required] markers.
 
 Cobertura:
 - Detect: regex pattern hits PostMigration annotations.
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.fixers import apply_strip_annotation_text
-from scripts.rule_engine.loader import load_rules
+from uip_engine.fixers import apply_strip_annotation_text
+from uip_engine.loader import load_rules
 
 
 # ---- Fixtures ----
@@ -66,7 +66,7 @@ def test_s5b_rule_registered():
 
 
 def test_s5b_rule_metadata():
-    from scripts.rule_engine._types import Severity
+    from uip_engine._types import Severity
     rules = load_rules(Path(__file__).resolve().parents[1] / "rules.yaml")
     s5b = next(r for r in rules if r.id == "S-5b")
     assert s5b.severity == Severity.ERROR

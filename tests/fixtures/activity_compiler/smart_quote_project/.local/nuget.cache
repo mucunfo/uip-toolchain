@@ -2,7 +2,7 @@
   "version": 2,
   "dgSpecHash": "6uYVnRQ07yA=",
   "success": true,
-  "projectFilePath": "C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.uipath-rules\\tests\\fixtures\\activity_compiler\\smart_quote_project\\.local\\",
+  "projectFilePath": "C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.uip-toolchain\\tests\\fixtures\\activity_compiler\\smart_quote_project\\.local\\",
   "expectedPackageFiles": [
     "C:\\Users\\lisan\\.nuget\\packages\\csvhelper\\16.0.0\\csvhelper.16.0.0.nupkg.sha512",
     "C:\\Users\\lisan\\.nuget\\packages\\dynamicexpresso.core\\2.12.0\\dynamicexpresso.core.2.12.0.nupkg.sha512",

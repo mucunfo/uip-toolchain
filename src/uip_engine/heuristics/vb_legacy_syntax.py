@@ -1,4 +1,4 @@
-"""W-33 heuristic — VB legacy syntax patterns incompat Roslyn .NET 6.
+﻿"""W-33 heuristic — VB legacy syntax patterns incompat Roslyn .NET 6.
 
 Detecta padrões VB.NET aceitos por compiler legacy .NET Framework 4.6.1
 mas rejeitados por Roslyn (Windows target Studio v25.10+).
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 # Pattern catalog: (regex, label, fix_hint)

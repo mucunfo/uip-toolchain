@@ -1,9 +1,9 @@
-"""Heuristics para A-19 (io_TransactionItem) e A-19b (In args missing)."""
+﻿"""Heuristics para A-19 (io_TransactionItem) e A-19b (In args missing)."""
 from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_INVOKE_BLOCK = re.compile(

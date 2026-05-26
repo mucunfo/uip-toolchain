@@ -1,13 +1,13 @@
-"""Tests for N-13 (verb infinitive), N-15 (log infinitive), U-5 (var aliases)."""
+﻿"""Tests for N-13 (verb infinitive), N-15 (log infinitive), U-5 (var aliases)."""
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.naming import detect_n13_verb_infinitive
-from scripts.rule_engine.heuristics.logs import detect_n15_log_infinitive
-from scripts.rule_engine.heuristics.unused import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.naming import detect_n13_verb_infinitive
+from uip_engine.heuristics.logs import detect_n15_log_infinitive
+from uip_engine.heuristics.unused import (
     detect_u5_variable_aliases,
     detect_u6_variable_hoist,
 )

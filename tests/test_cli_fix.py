@@ -1,4 +1,4 @@
-"""Tests for cli fix + phase-out subcommands."""
+﻿"""Tests for cli fix + phase-out subcommands."""
 from pathlib import Path
 import subprocess
 import sys
@@ -39,7 +39,7 @@ def fake_project(tmp_path: Path) -> Path:
 
 def _run_cli(*args, cwd=ROOT):
     return subprocess.run(
-        [sys.executable, "-m", "scripts.rule_engine.cli", *args],
+        [sys.executable, "-m", "uip_engine.cli", *args],
         cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=120,
     )

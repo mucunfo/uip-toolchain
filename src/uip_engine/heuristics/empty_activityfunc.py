@@ -1,4 +1,4 @@
-"""S-18 detector — ActivityFunc body vazio em property .OCREngine/.CVEngine.
+﻿"""S-18 detector — ActivityFunc body vazio em property .OCREngine/.CVEngine.
 
 Background:
   Properties Modern UI como `<uix:NApplicationCard.OCREngine>` recebem
@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 # Properties que exigem activity plug — não bastam ActivityFunc placeholder.

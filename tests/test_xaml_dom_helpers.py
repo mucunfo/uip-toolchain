@@ -1,4 +1,4 @@
-"""F38 — xaml_dom helpers: parse + byte-surgical insert.
+﻿"""F38 — xaml_dom helpers: parse + byte-surgical insert.
 
 Coverage:
   - BOM detection + preservation
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._helpers.xaml_dom import (
+from uip_engine._helpers.xaml_dom import (
     UTF8_BOM,
     detect_bom,
     parse_and_find_target,

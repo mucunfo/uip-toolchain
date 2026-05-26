@@ -1,4 +1,4 @@
-"""Heuristics N-1 (var prefix), N-2 (arg prefix), N-4 (limite args),
+﻿"""Heuristics N-1 (var prefix), N-2 (arg prefix), N-4 (limite args),
 N-8 (tamanho do nome).
 
 All convenções (type prefixes, wrong-prefix map, bare-special, REFramework
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_VARIABLE = re.compile(

@@ -1,4 +1,4 @@
-"""Entry point for `python -m scripts.rule_engine.cli`."""
+﻿"""Entry point for `python -m uip_engine.cli`."""
 import sys
 from .cli import main
 

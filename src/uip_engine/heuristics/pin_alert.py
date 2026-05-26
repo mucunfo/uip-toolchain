@@ -1,4 +1,4 @@
-"""D-PIN-ALERT heuristic — XAML APIs exclusivas de versão > pin.
+﻿"""D-PIN-ALERT heuristic — XAML APIs exclusivas de versão > pin.
 
 Cruza `project.json::dependencies` (pin atual por pacote) com a lista
 `assets/version_exclusive_apis.yaml` (APIs introduzidas em versão X).
@@ -19,7 +19,7 @@ from typing import Any
 
 import yaml
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _CACHE: dict[str, Any] | None = None
@@ -56,7 +56,7 @@ def detect_pin_alert(rule, fc, pc):
     if fc.path.suffix.lower() != ".xaml":
         return []
 
-    # Engine root = parents[3] de .../scripts/rule_engine/heuristics/pin_alert.py
+    # Engine root = parents[3] de .../src/uip_engine/heuristics/pin_alert.py
     engine_root = Path(__file__).resolve().parents[3]
     apis = _load_apis_yaml(engine_root)
     if not apis:

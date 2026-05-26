@@ -1,4 +1,4 @@
-"""Studio Analyzer integration — diff-based gate.
+﻿"""Studio Analyzer integration — diff-based gate.
 
 Engine layer #2 (ground truth): wraps `UiPath.Studio.CommandLine.exe analyze`
 para validar fixes contra Roslyn VB compiler + assembly metadata schema.
@@ -234,9 +234,9 @@ def _project_signature(project_root: Path) -> str:
 def _engine_cache_dir(project_root: Path) -> Path:
     """Cache dir per-project, alojado em `<engine_root>/.tmp/analyzer_cache/<sig>/`.
 
-    Antes ficava em `<project_root>/.uipath-rules-cache/` — poluía o working
+    Antes ficava em `<project_root>/.uip-toolchain-cache/` — poluía o working
     dir do projeto UiPath e podia vazar pra git (gitignore não cobre). Agora
-    fica isolado em `.uipath-rules/.tmp/` (gitignored, descartável entre
+    fica isolado em `.uip-toolchain/.tmp/` (gitignored, descartável entre
     sessões), alinhado com a política de intermediários da CLAUDE.md.
 
     `sig` = SHA1 (hex 16 chars) do absolute path do project_root → garante

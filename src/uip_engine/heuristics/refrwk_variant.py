@@ -1,10 +1,10 @@
-"""REFramework variant detection helpers.
+﻿"""REFramework variant detection helpers.
 
 Markers configured via rules.yaml params (no hardcoded activity names).
 """
 from __future__ import annotations
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 def is_dispatcher(rule, fc, pc):

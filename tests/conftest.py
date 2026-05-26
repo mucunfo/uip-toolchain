@@ -1,4 +1,4 @@
-"""Pytest harness setup.
+﻿"""Pytest harness setup.
 
 Default behavior: opt OUT dos external gates (analyzer/nuget/pack) durante
 testes — esses gates invocam subprocess `uipcli`/`nuget` que:
@@ -22,4 +22,4 @@ def pytest_configure(config):
     subprocess via os.environ default. Tests podem override per-test via
     `monkeypatch.delenv` se quiserem testar o real pipeline.
     """
-    os.environ.setdefault("UIPATH_RULES_DISABLE_EXTERNAL_GATES", "1")
+    os.environ.setdefault("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", "1")

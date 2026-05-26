@@ -1,11 +1,11 @@
-"""Tests for S-HEALCHAIN + S-SEMANTIC-LEAK detectors (selector_audit)."""
+﻿"""Tests for S-HEALCHAIN + S-SEMANTIC-LEAK detectors (selector_audit)."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.heuristics.selector_audit import (
+from uip_engine.heuristics.selector_audit import (
     detect_healchain, detect_semantic_leak,
     _parse_search_steps_value,
     HEALCHAIN_MASK, SEMANTIC_LEAK_MASK,
@@ -242,8 +242,8 @@ def test_modern_ui_uix_clean_selector_only(tmp_path):
 
 def test_engine_calling_convention(tmp_path):
     """Engine calls detect(rule, fc, pc). Path goes through fc.path attribute."""
-    from scripts.rule_engine._types import Rule, Severity
-    from scripts.rule_engine.context import FileContext
+    from uip_engine._types import Rule, Severity
+    from uip_engine.context import FileContext
 
     rule = Rule(
         id="S-HEALCHAIN",

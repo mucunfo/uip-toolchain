@@ -1,6 +1,6 @@
-import pytest
+﻿import pytest
 from pathlib import Path
-from scripts.rule_engine.mojibake_fixer import (
+from uip_engine.mojibake_fixer import (
     detect, fix, fix_file, validate_round_trip,
     MojibakeKind, DetectionResult,
 )

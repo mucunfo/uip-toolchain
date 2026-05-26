@@ -1,6 +1,6 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
-from scripts.rule_engine.encoding import detect_and_decode
+from uip_engine.encoding import detect_and_decode
 
 FIX = Path(__file__).parent / "fixtures"
 

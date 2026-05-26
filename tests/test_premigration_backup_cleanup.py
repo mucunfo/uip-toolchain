@@ -1,4 +1,4 @@
-"""F38b — auto-clean `<project>_BeforeMigration_*` siblings após PASS.
+﻿"""F38b — auto-clean `<project>_BeforeMigration_*` siblings após PASS.
 
 PHASE 0 Activity Migrator cria backup pre-swap. Após engine PASS, backup é
 dead weight (50-200MB). Auto-clean dispara só em PASS final.
@@ -7,7 +7,7 @@ Coverage:
   - Backup matching pattern → removido
   - Backup com timestamp inválido → preservado (não match)
   - Sibling não-relacionado → preservado
-  - Opt-out via UIPATH_RULES_KEEP_BACKUP=1
+  - Opt-out via UIP_TOOLCHAIN_KEEP_BACKUP=1
   - Múltiplos backups (corrida anterior) → todos removidos
   - Readonly files (.git/refs) → handler chmod+retry
   - parent não existe → no-op
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.cli import _cleanup_pre_migration_backups
+from uip_engine.cli import _cleanup_pre_migration_backups
 
 
 def _mkproject(parent: Path, name: str) -> Path:
@@ -82,7 +82,7 @@ def test_multiple_backups_all_removed(tmp_path):
 def test_opt_out_via_env(tmp_path, monkeypatch):
     project = _mkproject(tmp_path, "my-proj")
     backup = _mkbackup(tmp_path, "my-proj", "20260521-103248")
-    monkeypatch.setenv("UIPATH_RULES_KEEP_BACKUP", "1")
+    monkeypatch.setenv("UIP_TOOLCHAIN_KEEP_BACKUP", "1")
     removed = _cleanup_pre_migration_backups(project)
     assert removed == []
     assert backup.exists()
@@ -92,7 +92,7 @@ def test_opt_out_via_env(tmp_path, monkeypatch):
 def test_opt_out_accepts_multiple_truthy(tmp_path, monkeypatch, value):
     project = _mkproject(tmp_path, "my-proj")
     backup = _mkbackup(tmp_path, "my-proj", "20260521-103248")
-    monkeypatch.setenv("UIPATH_RULES_KEEP_BACKUP", value)
+    monkeypatch.setenv("UIP_TOOLCHAIN_KEEP_BACKUP", value)
     removed = _cleanup_pre_migration_backups(project)
     assert removed == []
     assert backup.exists()

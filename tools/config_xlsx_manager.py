@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Config.xlsx manager for UiPath REFramework projects.
 
 Add, list, and validate Config.xlsx entries. Works with the four-sheet
@@ -8,11 +8,11 @@ Config files are discovered under the assets/ directory using the
 pattern assets/Config_*.xlsx (e.g., assets/Config_ProcessName.xlsx).
 
 Usage:
-    python3 scripts/config_xlsx_manager.py add <project> --sheet Settings --key WebApp_CredentialAssetName --value WebApp_Credential --desc "Credential asset name for WebApp login"
-    python3 scripts/config_xlsx_manager.py add <project> --sheet Assets --key WebApp_Url --asset WebApp_ApplicationUrl --folder Shared --desc "the target web application login URL"
-    python3 scripts/config_xlsx_manager.py add <project> --sheet Exceptions --key BusinessRuleException_InvalidData --value "Invalid data found" --desc "Thrown when input data fails validation"
-    python3 scripts/config_xlsx_manager.py list <project>
-    python3 scripts/config_xlsx_manager.py validate <project>
+    python3 tools/config_xlsx_manager.py add <project> --sheet Settings --key WebApp_CredentialAssetName --value WebApp_Credential --desc "Credential asset name for WebApp login"
+    python3 tools/config_xlsx_manager.py add <project> --sheet Assets --key WebApp_Url --asset WebApp_ApplicationUrl --folder Shared --desc "the target web application login URL"
+    python3 tools/config_xlsx_manager.py add <project> --sheet Exceptions --key BusinessRuleException_InvalidData --value "Invalid data found" --desc "Thrown when input data fails validation"
+    python3 tools/config_xlsx_manager.py list <project>
+    python3 tools/config_xlsx_manager.py validate <project>
 """
 
 import argparse

@@ -1,4 +1,4 @@
-"""Legacy/Windows-Legacy → Windows migration orchestrator.
+﻿"""Legacy/Windows-Legacy → Windows migration orchestrator.
 
 Wraps UiPath Activity Migrator CLI (closed-source binário oficial GA em Studio
 v25.10) com pre-scan + post-fix do engine de regras Sicoob.
@@ -570,9 +570,9 @@ def cmd_migrate_windows(args) -> int:
     #   - Sem HALT findings no _Migrated/ (errors são esperados — são o
     #     trabalho post-migration. Halt = projeto não pode rodar.)
     # Default: swap ON. Opt-out: --no-swap-after-migration ou
-    # UIPATH_RULES_NO_SWAP=1.
+    # UIP_TOOLCHAIN_NO_SWAP=1.
     no_swap = bool(getattr(args, "no_swap_after_migration", False)) or (
-        os.environ.get("UIPATH_RULES_NO_SWAP", "").strip() in ("1", "true", "yes")
+        os.environ.get("UIP_TOOLCHAIN_NO_SWAP", "").strip() in ("1", "true", "yes")
     )
     if no_swap:
         print("# swap: --no-swap-after-migration — _Migrated/ preservado, source intacto.")

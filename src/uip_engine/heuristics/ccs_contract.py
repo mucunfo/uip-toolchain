@@ -1,4 +1,4 @@
-"""CCS-PROPCHECK heuristic — case-mismatch detector pra refs CCS_* libs.
+﻿"""CCS-PROPCHECK heuristic — case-mismatch detector pra refs CCS_* libs.
 
 Engine extrai contracts (workflow + property names) das libs em
 `C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.nupkgs\\CCS_*.nupkg`.
@@ -30,7 +30,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _NUPKGS_DIR = Path(r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs")

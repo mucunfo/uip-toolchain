@@ -1,4 +1,4 @@
-"""Tests for ``scripts.rule_engine.migrator_headless``.
+﻿"""Tests for ``uip_engine.migrator_headless``.
 
 The .NET host binary is **optional**. We do not require ``dotnet build`` to have
 run before pytest invocation — tests that need the binary skip themselves when
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine import migrator_headless as mh
-from scripts.rule_engine._types import Category, Severity
+from uip_engine import migrator_headless as mh
+from uip_engine._types import Category, Severity
 
 
 # ---------------------------------------------------------------------------

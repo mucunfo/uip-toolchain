@@ -1,4 +1,4 @@
-"""Structured status emission — `.uipath-rules/.tmp/engine_status.json`.
+﻿"""Structured status emission — `.uip-toolchain/.tmp/engine_status.json`.
 
 Permite monitor robusto sem `tail | grep` no stdout (que sofre com log dedup,
 encoding e flush). Toda transição de fase atualiza o JSON via atomic write.

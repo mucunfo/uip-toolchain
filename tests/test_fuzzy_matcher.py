@@ -1,4 +1,4 @@
-"""Golden tests for fuzzy_matcher — UiPath FuzzyMatcher.Matches() port.
+﻿"""Golden tests for fuzzy_matcher — UiPath FuzzyMatcher.Matches() port.
 
 Refs: sicoob-studio-research/02-healing-agent.md linhas 76-90.
 """
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.rule_engine.fuzzy_matcher import (
+from uip_engine.fuzzy_matcher import (
     matches, levenshtein_distance, levenshtein_ratio, MatchResult,
     _preprocess, _token_sort_ratio,
 )

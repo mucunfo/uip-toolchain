@@ -1,4 +1,4 @@
-"""Tests for `cli all` god subcommand orchestration.
+﻿"""Tests for `cli all` god subcommand orchestration.
 
 Cobre cenários básicos:
   - Project clean (Windows, sem findings) → PASS exit 0
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.cli import (
+from uip_engine.cli import (
     _cmd_all, _ns, _read_target_framework, _phase0_migration,
     EXIT_OK, EXIT_WARN, EXIT_ERROR, EXIT_HALT, EXIT_INTERNAL,
 )

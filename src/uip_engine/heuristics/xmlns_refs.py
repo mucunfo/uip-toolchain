@@ -1,4 +1,4 @@
-"""W-11-family heuristics — AssemblyReference coverage cross-version Studio.
+﻿"""W-11-family heuristics — AssemblyReference coverage cross-version Studio.
 
 Três detectores ortogonais:
 
@@ -27,7 +27,7 @@ from typing import Any
 
 import yaml
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _RE_XMLNS_ASSEMBLY = re.compile(

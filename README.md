@@ -1,6 +1,6 @@
-# .uipath-rules
+﻿# .uip-toolchain
 
-Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML-driven (`scripts/rule_engine`)**. Fonte única = **`rules.yaml`**.
+Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML-driven (`src/uip_engine`)**. Fonte única = **`rules.yaml`**.
 
 ## Quick start — comando único `uip`
 
@@ -21,19 +21,19 @@ Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 
 | Env var | Default | Efeito |
 |---|---|---|
-| `UIPATH_RULES_FILE` | `<repo>/rules.yaml` | override rules.yaml |
-| `UIPATH_RULES_SKIP_MIGRATION` | `0` | pula PHASE 0 (Activity Migrator) |
-| `UIPATH_RULES_NO_SWAP` | `0` | não swap source ↔ _Migrated após Migrator |
-| `UIPATH_RULES_WATCH` | `0` | loop interativo aguardando mtime change |
-| `UIPATH_RULES_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
-| `UIPATH_RULES_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
-| `UIPATH_RULES_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
+| `UIP_TOOLCHAIN_RULES_FILE` | `<repo>/rules.yaml` | override rules.yaml |
+| `UIP_TOOLCHAIN_SKIP_MIGRATION` | `0` | pula PHASE 0 (Activity Migrator) |
+| `UIP_TOOLCHAIN_NO_SWAP` | `0` | não swap source ↔ _Migrated após Migrator |
+| `UIP_TOOLCHAIN_WATCH` | `0` | loop interativo aguardando mtime change |
+| `UIP_TOOLCHAIN_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
+| `UIP_TOOLCHAIN_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
+| `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
 Exit codes: `0` PASS, `1` PENDING_REVIEW (contextual aguarda `--apply-contextual`),
 `2` FAIL, `3` HALT, `10` INTERNAL.
 
 Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
-`python -m scripts.rule_engine.cli all <project>`. Subcomandos atômicos
+`python -m uip_engine.cli all <project>`. Subcomandos atômicos
 (`review`, `fix`, `migrate-windows`) seguem existindo para debug interno.
 
 ## Arquivos ativos
@@ -70,33 +70,33 @@ Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 
 ```bash
 # Validar schema rules.yaml
-python -m scripts.rule_engine.cli validate
+python -m uip_engine.cli validate
 
 # Review (read-only, mostra TODOS findings — todas classes)
-python -m scripts.rule_engine.cli review <project_path> --format text
-python -m scripts.rule_engine.cli review <project_path> --format json
+python -m uip_engine.cli review <project_path> --format text
+python -m uip_engine.cli review <project_path> --format json
 
 # Fix dry-run (default, só deterministic class)
-python -m scripts.rule_engine.cli fix <project_path>
+python -m uip_engine.cli fix <project_path>
 
 # Fix --apply (escreve, default só deterministic)
-python -m scripts.rule_engine.cli fix --apply <project_path>
+python -m uip_engine.cli fix --apply <project_path>
 
 # Fix --apply opt-in classes
-python -m scripts.rule_engine.cli fix --apply --include-class=deterministic,contextual <project_path>
-python -m scripts.rule_engine.cli fix --apply --include-class=all <project_path>
+python -m uip_engine.cli fix --apply --include-class=deterministic,contextual <project_path>
+python -m uip_engine.cli fix --apply --include-class=all <project_path>
 
 # Listar regras
-python -m scripts.rule_engine.cli list                  # com [apply_class] em cada linha
-python -m scripts.rule_engine.cli list --by-class       # agrupado por classe
-python -m scripts.rule_engine.cli list --by-category
+python -m uip_engine.cli list                  # com [apply_class] em cada linha
+python -m uip_engine.cli list --by-class       # agrupado por classe
+python -m uip_engine.cli list --by-category
 
 # Catálogo derivado (markdown — auto-gerado, NÃO editar à mão)
-python -m scripts.rule_engine.cli docs --llm-only --out .tmp/llm-rules.md
-python -m scripts.rule_engine.cli docs --out .tmp/all-rules.md
+python -m uip_engine.cli docs --llm-only --out .tmp/llm-rules.md
+python -m uip_engine.cli docs --out .tmp/all-rules.md
 
 # Workspace multi-projeto
-python -m scripts.rule_engine.cli review <workspace> --multi-project
+python -m uip_engine.cli review <workspace> --multi-project
 ```
 
 Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).
@@ -180,7 +180,7 @@ Hooks silenciam quando nada a reportar — zero ruído em tarefas normais.
 
 Engine, hooks, agentes e CLI **NUNCA** rodam `git add/commit/push` em projetos UiPath. Toda alteração fica como modificação local pendente; usuário commita manualmente. Volume alto de modificações é normal em batch fixes.
 
-`.uipath-rules/` em si não é repo git.
+`.uip-toolchain/` em si não é repo git.
 
 ## Configurar novo projeto modelo
 
@@ -188,4 +188,4 @@ Editar `models.conf` e adicionar path absoluto do projeto (1 linha). Ordem = pri
 
 ## Referência de IDs
 
-IDs em `rules.yaml`: `A-3`, `S-5`, `W-12`, `J-1`, `EXC-1`, etc. Engine usa nas mensagens de finding. Lookup: `python -m scripts.rule_engine.cli list --by-category`.
+IDs em `rules.yaml`: `A-3`, `S-5`, `W-12`, `J-1`, `EXC-1`, etc. Engine usa nas mensagens de finding. Lookup: `python -m uip_engine.cli list --by-category`.

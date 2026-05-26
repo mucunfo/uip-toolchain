@@ -1,4 +1,4 @@
-import json
+﻿import json
 from pathlib import Path
 import subprocess
 import sys
@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def test_cli_help_runs():
     proc = subprocess.run(
-        [sys.executable, "-m", "scripts.rule_engine.cli", "--help"],
+        [sys.executable, "-m", "uip_engine.cli", "--help"],
         cwd=str(ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
@@ -27,7 +27,7 @@ def test_cli_review_empty_rules_returns_zero(tmp_path):
     rules_file.write_text("version: 1\nrules: []\n")
 
     proc = subprocess.run(
-        [sys.executable, "-m", "scripts.rule_engine.cli", "review",
+        [sys.executable, "-m", "uip_engine.cli", "review",
          str(proj), "--rules-file", str(rules_file)],
         cwd=str(ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace",
@@ -45,7 +45,7 @@ def test_cli_review_format_json(tmp_path):
     rules_file.write_text("version: 1\nrules: []\n")
 
     proc = subprocess.run(
-        [sys.executable, "-m", "scripts.rule_engine.cli", "review",
+        [sys.executable, "-m", "uip_engine.cli", "review",
          str(proj), "--rules-file", str(rules_file), "--format", "json"],
         cwd=str(ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace",
@@ -62,7 +62,7 @@ def test_cli_validate_command_checks_schema(tmp_path):
     bad.write_text("version: 1\nrules:\n  - id: X-99\n")  # missing required fields
 
     proc = subprocess.run(
-        [sys.executable, "-m", "scripts.rule_engine.cli", "validate",
+        [sys.executable, "-m", "uip_engine.cli", "validate",
          "--rules-file", str(bad)],
         cwd=str(ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace",

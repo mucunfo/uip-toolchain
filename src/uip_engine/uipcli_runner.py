@@ -1,4 +1,4 @@
-"""Guarded uipcli runner — pre-flight + halt detection.
+﻿"""Guarded uipcli runner — pre-flight + halt detection.
 
 Engine layer #2 dispara `UiPath.Studio.CommandLine.exe analyze` e `... publish`
 como gates pré-publicação. `subprocess.run(..., timeout=N)` simples sofre 2
@@ -70,7 +70,7 @@ def _console_spawn_attrs() -> tuple[int, "subprocess.STARTUPINFO | None"]:
     Solução: CREATE_NEW_CONSOLE + STARTUPINFO(STARTF_USESHOWWINDOW, SW_HIDE).
     Console alocada (uipcli happy), janela invisível.
 
-    Env var `UIPATH_RULES_SHOW_CLI_CONSOLE=1` força console visível — escape
+    Env var `UIP_TOOLCHAIN_SHOW_CLI_CONSOLE=1` força console visível — escape
     hatch se SW_HIDE regredir hang em ambiente específico, ou pra debug
     quando precisar ver stdout cru do uipcli.
 
@@ -79,7 +79,7 @@ def _console_spawn_attrs() -> tuple[int, "subprocess.STARTUPINFO | None"]:
     creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
     if not creationflags or not hasattr(subprocess, "STARTUPINFO"):
         return 0, None
-    if os.environ.get("UIPATH_RULES_SHOW_CLI_CONSOLE") == "1":
+    if os.environ.get("UIP_TOOLCHAIN_SHOW_CLI_CONSOLE") == "1":
         return creationflags, None
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -197,7 +197,7 @@ def preflight(
     # para iniciar. Sem console (CREATE_NO_WINDOW implícito) trava em
     # AllocConsole. CREATE_NEW_CONSOLE + SW_HIDE: aloca console mas
     # janela invisível. uipcli completa cold start em ~9s vs 90s+ hang.
-    # Env UIPATH_RULES_SHOW_CLI_CONSOLE=1 reverte pra console visível
+    # Env UIP_TOOLCHAIN_SHOW_CLI_CONSOLE=1 reverte pra console visível
     # (escape hatch debug / regressão). No-op em não-Windows.
     _creationflags, _startupinfo = _console_spawn_attrs()
     try:
@@ -350,7 +350,7 @@ def run_uipcli_guarded(
 
     # Spawn process — CREATE_NEW_CONSOLE + SW_HIDE em Windows: Studio v26
     # cloud uipcli precisa console handle alocado pra start. SW_HIDE deixa
-    # a janela invisível. Env UIPATH_RULES_SHOW_CLI_CONSOLE=1 reverte.
+    # a janela invisível. Env UIP_TOOLCHAIN_SHOW_CLI_CONSOLE=1 reverte.
     # Mesma justificativa que preflight().
     _creationflags, _startupinfo = _console_spawn_attrs()
     try:

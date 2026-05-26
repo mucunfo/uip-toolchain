@@ -1,4 +1,4 @@
-"""Heuristics for CI/CD hygiene rules (HY-*).
+﻿"""Heuristics for CI/CD hygiene rules (HY-*).
 
 HY-1 merge conflict markers leftover (`<<<<<<<` / `=======` / `>>>>>>>`)
      em XAML/JSON/Config.xlsx. Publish quebra silencioso. ERROR breaking.
@@ -16,8 +16,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from scripts.rule_engine._types import Finding, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
+from uip_engine._types import Finding, Severity
+from uip_engine.context import FileContext, ProjectContext
 
 
 _RE_MERGE_MARKER = re.compile(r'^(<{7}|={7}|>{7})(?:\s|$)', re.MULTILINE)

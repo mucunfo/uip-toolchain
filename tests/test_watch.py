@@ -1,10 +1,10 @@
-"""Tests for scripts.rule_engine.watch — mtime-based file watcher."""
+﻿"""Tests for uip_engine.watch — mtime-based file watcher."""
 import time
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine.watch import snapshot, diff, wait_for_change
+from uip_engine.watch import snapshot, diff, wait_for_change
 
 
 def _touch(p: Path, content: str = "x") -> None:
@@ -83,7 +83,7 @@ def test_wait_for_change_returns_on_modification(tmp_path, monkeypatch):
     state = snapshot(tmp_path)
 
     # Patch time.sleep para no-op; injeta mudança no primeiro tick.
-    import scripts.rule_engine.watch as w
+    import uip_engine.watch as w
     real_sleep = time.sleep
     tick = {"n": 0}
 

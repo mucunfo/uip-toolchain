@@ -1,4 +1,4 @@
-"""ENV-2 heuristic — ENSURE legacy compat refs em XAML de projeto Windows.
+﻿"""ENV-2 heuristic — ENSURE legacy compat refs em XAML de projeto Windows.
 
 CONTEXTO (correção factual da hipótese W-26 original, agora removida):
 
@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 # Refs legacy compat OBRIGATÓRIOS pra deploy Studio 23.10 resolver type

@@ -1,5 +1,5 @@
-"""Tests for vb_validator — orphan ref detection."""
-from scripts.rule_engine.vb_validator import (
+﻿"""Tests for vb_validator — orphan ref detection."""
+from uip_engine.vb_validator import (
     extract_declarations, extract_references, find_orphans, diff_orphans,
 )
 

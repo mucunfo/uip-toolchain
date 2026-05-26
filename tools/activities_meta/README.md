@@ -1,4 +1,4 @@
-# activities_meta
+﻿# activities_meta
 
 Offline build tools que extraem schema de atividades dos packages NuGet UiPath
 instalados localmente e geram artefatos consumidos pela engine.
@@ -30,7 +30,7 @@ Pré-requisitos:
 - Packages alvo já abertos pelo menos uma vez no Studio (popula `~/.nuget/packages/`).
 
 ```powershell
-cd .uipath-rules\scripts\activities_meta
+cd .uip-toolchain\tools\activities_meta
 
 # 1. extrai metadata bruta de todos packages uipath.* instalados
 .\batch-extract.ps1
@@ -40,10 +40,10 @@ cd .uipath-rules\scripts\activities_meta
 ```
 
 Saídas:
-- `.uipath-rules/.tmp/activities_dump/` — raw dumps por DLL + `activities-all.json` (descartável).
-- `.uipath-rules/assets/activities/activities-compact.json` — schema compacto (commit, ~600 KB).
-- `.uipath-rules/assets/activities/INDEX.md` — índice human-readable.
-- `.uipath-rules/assets/activities/uipath.<package>.md` — referência por package.
+- `.uip-toolchain/.tmp/activities_dump/` — raw dumps por DLL + `activities-all.json` (descartável).
+- `.uip-toolchain/assets/activities/activities-compact.json` — schema compacto (commit, ~600 KB).
+- `.uip-toolchain/assets/activities/INDEX.md` — índice human-readable.
+- `.uip-toolchain/assets/activities/uipath.<package>.md` — referência por package.
 
 ## Override de paths
 
@@ -65,7 +65,7 @@ Todos scripts aceitam params:
 
 ## Integração com engine
 
-`scripts/rule_engine/heuristics/activity_meta.py` carrega
+`src/uip_engine/heuristics/activity_meta.py` carrega
 `assets/activities/activities-compact.json` em singleton, indexa por FQN +
 `(xmlns, local_name)`, expõe checks consumidos pelo detector
 `activity_signature` (regras M-*).

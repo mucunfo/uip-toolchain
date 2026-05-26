@@ -1,12 +1,12 @@
-"""Tests for heuristics/hygiene.py — HY-1..6."""
+﻿"""Tests for heuristics/hygiene.py — HY-1..6."""
 import json
 from pathlib import Path
 
 import pytest
 
-from scripts.rule_engine._types import Rule, Severity
-from scripts.rule_engine.context import FileContext, ProjectContext
-from scripts.rule_engine.heuristics.hygiene import (
+from uip_engine._types import Rule, Severity
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.heuristics.hygiene import (
     detect_hy1_merge_markers,
     detect_hy2_placeholder_description,
     detect_hy3_main_empty,
@@ -14,7 +14,7 @@ from scripts.rule_engine.heuristics.hygiene import (
     detect_hy5_eol_mix,
     detect_hy6_bom_json,
 )
-from scripts.rule_engine.fixers import REGISTRY as FIXER_REGISTRY
+from uip_engine.fixers import REGISTRY as FIXER_REGISTRY
 
 
 def _rule(rid: str, sev: Severity = Severity.WARN, mech: dict | None = None) -> Rule:

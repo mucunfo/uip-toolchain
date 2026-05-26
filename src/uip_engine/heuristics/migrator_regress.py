@@ -1,4 +1,4 @@
-"""Heuristics for Activity Migrator post-output regressions.
+﻿"""Heuristics for Activity Migrator post-output regressions.
 
 X-2 Property element with attribute (XAML invalid).
 
@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 
-from scripts.rule_engine._types import Finding
+from uip_engine._types import Finding
 
 
 _PROPELEM_ATTR_RE = re.compile(

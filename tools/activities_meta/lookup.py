@@ -1,4 +1,4 @@
-"""Quick CLI for querying the activity schema.
+﻿"""Quick CLI for querying the activity schema.
 
 Use cases:
 - LLM agent precisa saber args de uma activity antes de emitir XAML.
@@ -7,11 +7,11 @@ Use cases:
 - Search por palavra-chave em FQN.
 
 Examples:
-    python -m scripts.activities_meta.lookup --activity WriteRange
-    python -m scripts.activities_meta.lookup --activity "UiPath.Excel.Activities.WriteRange"
-    python -m scripts.activities_meta.lookup --search ReadRange --json
-    python -m scripts.activities_meta.lookup --list-packages
-    python -m scripts.activities_meta.lookup --package uipath.mail.activities
+    python -m tools.activities_meta.lookup --activity WriteRange
+    python -m tools.activities_meta.lookup --activity "UiPath.Excel.Activities.WriteRange"
+    python -m tools.activities_meta.lookup --search ReadRange --json
+    python -m tools.activities_meta.lookup --list-packages
+    python -m tools.activities_meta.lookup --package uipath.mail.activities
 """
 from __future__ import annotations
 
@@ -20,11 +20,11 @@ import json
 import sys
 from pathlib import Path
 
-# Ensure schema loader resolves relative to .uipath-rules root
+# Ensure schema loader resolves relative to .uip-toolchain root
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from scripts.rule_engine.heuristics.activity_meta import get_schema  # noqa: E402
+from uip_engine.heuristics.activity_meta import get_schema  # noqa: E402
 
 
 def _format_arg(a, label: str | None = None) -> str:
