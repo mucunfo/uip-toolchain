@@ -1,23 +1,38 @@
-﻿# ROADMAP — UiPath Schema Validator
+﻿# ROADMAP — UiPath dev toolchain
 
 Plano persistente entre sessões. Atualizado a cada fase concluída.
 **Audience**: agente Claude retomando trabalho + dev humano.
 
 ## Estado atual
 
-**Última atualização**: 2026-05-07 (pós F20)
+**Última atualização**: 2026-05-26 (pós migração rename `.uipath-rules` → `.uip-toolchain`)
 
 **Métricas vivas** (rodar para confirmar antes de retomar):
 
 ```bash
 cd .uip-toolchain
-python -m uip_engine.cli validate    # esperar "227 regras"
-python -m pytest -q                            # esperar "237 passed"
-python -m uip_engine.cli review "../importar-cadastro-avais-fiancas-honrados/importar-cadastro-avais-fiancas-honrados-performer" --format json > .tmp/m_review_check.json
-python -c "import json; from collections import Counter; d=json.load(open('.tmp/m_review_check.json',encoding='utf-8')); m=[f for f in d['findings'] if f['rule_id'].startswith('M-')]; print('M-* REF:', len(m), dict(Counter(f['rule_id'] for f in m)))"  # esperar "M-* REF: 0 {}"
+python -m uip_engine.cli validate    # esperar "278 regras"
+python -m pytest -q                  # esperar "819 passed, 11 skipped"
+# Validação SOMENTE no projeto temp (Projects/ proibido — ver Projects/CLAUDE.md):
+python -m uip_engine.cli review "C:/Users/lisan/Desktop/temp/contestacao-de-compras-ajuste-na-reserva-de-fraude/contestacao-de-compras-ajuste-na-reserva-de-fraude-performer" --format json > .tmp/m_review_check.json
+python -c "import json; from collections import Counter; d=json.load(open('.tmp/m_review_check.json',encoding='utf-8')); m=[f for f in d['findings'] if f['rule_id'].startswith('M-')]; print('M-* TEMP:', len(m), dict(Counter(f['rule_id'] for f in m)))"
 ```
 
 Se métricas divergem → investigar antes de avançar.
+
+## Fase R — Rename + reorg (2026-05-26, concluída)
+
+- `.uipath-rules/` → `.uip-toolchain/` (pasta + GitHub repo)
+- Pacote Python `rule_engine` → `uip_engine`
+- Pip dist `rule-engine` → `uip-toolchain`
+- Layout PEP 518 `src/`: `src/uip_engine/`, `tools/`, `hooks/`, `evals/`, `experiments/`, `migrator/`
+- Env vars `UIPATH_RULES_*` + `RULE_ENGINE_*` → `UIP_TOOLCHAIN_*` (19 vars)
+- `.factory/` umbrella criado pra 4 seeds Sicoob (activities/cli/orchestrator/studio-research)
+- Backup branch: `origin/backup/pre-uip-toolchain-rename` SHA 9e099bcf04cf894f386daeaa027308f2e4bb2b47
+- Spec: `Projects/.docs/specs/2026-05-26-uip-toolchain-rename-and-factory-reorg.md`
+- Plan: `Projects/.docs/plans/2026-05-26-uip-toolchain-migration.md`
+- Audit: `Projects/.docs/audits/2026-05-26-uip-toolchain-post-migration-audit-plan.md`
+- Status: production
 
 ---
 
