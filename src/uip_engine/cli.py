@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import sys
 from pathlib import Path
@@ -761,7 +760,6 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     from ._types import Finding
     import os
     import re
-    import subprocess
 
     cli = discover_uipcli()
     if cli is None or not cli.is_file():
@@ -974,7 +972,7 @@ def _run_nuget_restore_gate(result, project_path: str, timeout: int = 300,
     binary_name = Path(binary).name.lower()
     if binary_name.startswith("dotnet"):
         if verbose:
-            print(f"[NUGET-GATE] only dotnet available — project.json UiPath "
+            print("[NUGET-GATE] only dotnet available — project.json UiPath "
                   "não é suportado por `dotnet restore`. Skipping.",
                   file=sys.stderr)
         return
@@ -1285,7 +1283,7 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
             try:
                 project_nuget_config.unlink(missing_ok=True)
                 if verbose:
-                    print(f"[PACK-GATE] removed temp NuGet.config", file=sys.stderr)
+                    print("[PACK-GATE] removed temp NuGet.config", file=sys.stderr)
             except OSError as e:
                 if verbose:
                     print(f"[PACK-GATE] cannot remove temp NuGet.config: {e}",
@@ -1415,13 +1413,6 @@ def _parse_pack_output_and_inject(result, output: str, project_root: Path) -> in
         re.MULTILINE,
     )
 
-    # Pattern 2: linhas após [Error] / Errors: anchors (no file context).
-    generic_err_re = re.compile(
-        r"^\s*\[Error\]\s*(?P<msg>.+?)\s*$|"
-        r"^\s*ERROR\s*:\s*(?P<msg2>.+?)\s*$",
-        re.MULTILINE,
-    )
-
     injected = 0
     seen: set[tuple[str, str, str]] = set()
 
@@ -1539,7 +1530,7 @@ def _parse_window(window: str):
 def _cmd_stats(args) -> int:
     """Aggregate telemetry JSONL files, print markdown report."""
     from collections import defaultdict
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     if not _TELEMETRY_DIR.exists():
         print(f"[stats] no telemetry data in {_TELEMETRY_DIR}")
@@ -1595,16 +1586,16 @@ def _cmd_stats(args) -> int:
     rule_ids_total = len(rules_by_id) or "?"
 
     print(f"# Telemetry stats — window={args.since}")
-    print(f"")
+    print("")
     print(f"- Records aggregated: {parsed_records}")
     print(f"- Total findings: {total_findings}")
     print(f"- Distinct rules triggered: {len(counts)}/{rule_ids_total}")
     print(f"- Distinct projects: {len(runs_per_project)}")
-    print(f"")
+    print("")
     print(f"## Top {args.top} rules by findings")
-    print(f"")
-    print(f"| Rank | Rule | Sev | Title | Count | Suppressed | Projects |")
-    print(f"|---|---|---|---|---|---|---|")
+    print("")
+    print("| Rank | Rule | Sev | Title | Count | Suppressed | Projects |")
+    print("|---|---|---|---|---|---|---|")
     for i, (rid, info) in enumerate(sorted_counts[:args.top], 1):
         title = rules_by_id.get(rid).title if rid in rules_by_id else "?"
         sev = "/".join(sorted(info["severities"]))
@@ -1614,10 +1605,10 @@ def _cmd_stats(args) -> int:
     # Rules never triggered (candidates for deprecation review)
     untriggered = sorted(set(rules_by_id) - set(counts))
     if untriggered and rules_by_id:
-        print(f"")
+        print("")
         print(f"## Rules never triggered ({len(untriggered)} of {len(rules_by_id)})")
-        print(f"")
-        print(f"Candidates for review (may indicate dead rules or rare conditions):")
+        print("")
+        print("Candidates for review (may indicate dead rules or rare conditions):")
         for rid in untriggered[:30]:
             print(f"- {rid}: {rules_by_id[rid].title[:80]}")
         if len(untriggered) > 30:
@@ -2079,7 +2070,7 @@ def _cmd_fix(args) -> int:
         if not new_errs:
             # Gate limpo. Warns são informativas.
             if new_warns:
-                print(f"\n[ANALYZER WARN] Warnings introduzidas (sem block):")
+                print("\n[ANALYZER WARN] Warnings introduzidas (sem block):")
                 for i in new_warns[:10]:
                     print(f"  ~ {format_issue(i)[:200]}")
                 if len(new_warns) > 10:
@@ -2175,7 +2166,6 @@ def _cmd_phase_out(args) -> int:
         return EXIT_INTERNAL
 
     UNIVERSALIZE = {"W-3", "W-10", "W-12", "W-16", "W-17"}
-    KEEP_WINDOWS = {"W-1", "W-2", "W-4", "W-11a", "W-11b", "W-13", "W-14", "W-15"}
 
     rules_file = Path(args.rules_file)
     content = rules_file.read_text(encoding="utf-8")
@@ -2187,12 +2177,10 @@ def _cmd_phase_out(args) -> int:
 
     changes: list[tuple[int, str, str]] = []
     current_rule = None
-    rule_start_line = -1
     for i, line in enumerate(lines):
         m = id_pattern.match(line)
         if m:
             current_rule = m.group(1)
-            rule_start_line = i
             continue
         if current_rule in UNIVERSALIZE:
             tm = target_pattern.match(line)
@@ -2514,7 +2502,7 @@ def _print_status(status: str, *, project: Path, apply_contextual: bool) -> None
         else:
             print(f"[PENDING REVIEW] aplica: uip {project} --apply-contextual")
     elif status == "FAIL":
-        print(f"[FAIL] errors/halts residuais.")
+        print("[FAIL] errors/halts residuais.")
 
 
 def _print_findings_table(findings: list, *, max_rows: int = 10, header: str) -> None:
@@ -2760,7 +2748,7 @@ def _cmd_pre_migrate_check(args) -> int:
 
     # Phase 2.1: pasta .nupkgs/ local. Empty string => disable (remote-only).
     local_nupkgs_raw = getattr(args, "local_nupkgs", None)
-    local_nupkgs_folder: Optional[Path] = None
+    local_nupkgs_folder: Path | None = None
     if local_nupkgs_raw:
         candidate = Path(local_nupkgs_raw)
         if candidate.exists() and candidate.is_dir():

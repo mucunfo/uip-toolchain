@@ -24,7 +24,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -348,7 +347,7 @@ def cmd_migrate_windows(args) -> int:
     """Subcommand entry point. Returns engine exit code."""
     from .cli import (
         EXIT_OK, EXIT_ERROR, EXIT_INTERNAL,
-        _cmd_review, _cmd_fix, _load_rules_or_die,
+        _cmd_review, _cmd_fix,
     )
 
     src = Path(args.path).expanduser().resolve()
@@ -372,7 +371,7 @@ def cmd_migrate_windows(args) -> int:
         else src.parent / f"{src.name}_Migrated"
     )
 
-    print(f"# === migrate-windows ===")
+    print("# === migrate-windows ===")
     print(f"# source : {src}")
     print(f"# target : {out}")
     print(f"# tf     : {tf}\n")
@@ -593,7 +592,7 @@ def cmd_migrate_windows(args) -> int:
               file=sys.stderr)
         return final_rc
 
-    print(f"\n## [5/5] Swap source ↔ _Migrated")
+    print("\n## [5/5] Swap source ↔ _Migrated")
     print(f"# {src.name} → {backup.name}")
     try:
         os.rename(src, backup)

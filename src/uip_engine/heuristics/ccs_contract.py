@@ -23,12 +23,10 @@ version. Funciona offline.
 """
 from __future__ import annotations
 
-import io
 import re
 import threading
 import zipfile
 from pathlib import Path
-from typing import Any
 
 from uip_engine._types import Finding
 

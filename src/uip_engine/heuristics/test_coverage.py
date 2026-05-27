@@ -18,12 +18,11 @@ performer Sicoob.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from lxml import etree
 
-from uip_engine._types import Finding, Severity
+from uip_engine._types import Finding
 from uip_engine.context import FileContext, ProjectContext
 
 

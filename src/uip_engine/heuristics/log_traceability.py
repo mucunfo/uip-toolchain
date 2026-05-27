@@ -23,11 +23,9 @@ def _llm_disabled() -> bool:
 
     Triggers:
       - env `UIP_TOOLCHAIN_NO_LLM=1` (explicit opt-out)
-      - env `UIP_TOOLCHAIN_NO_LLM_LEGACY=1` (alias)
     """
-    for var in ("UIP_TOOLCHAIN_NO_LLM", "UIP_TOOLCHAIN_NO_LLM_LEGACY"):
-        if os.environ.get(var, "").strip() in ("1", "true", "yes"):
-            return True
+    if os.environ.get("UIP_TOOLCHAIN_NO_LLM", "").strip() in ("1", "true", "yes"):
+        return True
     return False
 
 _RE_LOGMSG_MESSAGE = re.compile(

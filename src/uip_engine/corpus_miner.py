@@ -18,7 +18,6 @@ Public API:
 from __future__ import annotations
 
 import argparse
-import io
 import re
 import sys
 import traceback
@@ -28,7 +27,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterator
 
 # XAML namespaces
 XAML_NS = "{http://schemas.microsoft.com/winfx/2006/xaml}"

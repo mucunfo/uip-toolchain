@@ -138,7 +138,7 @@ def cmd_list(args):
                 has_keys = True
                 total += 1
         if not has_keys:
-            print(f"    (empty)")
+            print("    (empty)")
 
     print(f"\n  Total: {total} keys")
 

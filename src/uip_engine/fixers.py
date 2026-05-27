@@ -138,7 +138,6 @@ def apply_add_property_element(file: Path, spec: dict[str, Any], dry_run: bool =
             new_content = content[:m.start()] + replacement + content[m.end():]
         else:
             # Find matching close tag. Scan forward respecting nesting.
-            close_tag = f'</{prefix}:{activity}>'
             close_start = _find_matching_close(content, m.end(), prefix, activity)
             if close_start < 0:
                 continue
@@ -1348,10 +1347,6 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
         rel_posix = callee_basename
         rel_winsep = callee_basename
 
-    # WorkflowFileName="..." pode usar / ou \\ ou \\\\ no XML
-    name_patterns = {callee_basename, rel_posix, rel_winsep,
-                     rel_winsep.replace("\\", "\\\\")}
-
     modified = 0
     for caller in project_root.rglob("*.xaml"):
         if caller == callee_file:
@@ -1505,11 +1500,8 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
     insert_str = f'\n{indent}<x:Property Name="{prefixo_arg}" Type="InArgument(x:String)" />'
     insertion_point = members_end_close.start()
     # Strip trailing whitespace before </x:Members> to preserve clean format
-    new_content = (new_content[:insertion_point]
-                   + insert_str + "\n" + members_text[-len(re.match(r'\s*$', members_text).group(0)):]
-                   if False
-                   else new_content[:insertion_point].rstrip(" \t\n") + insert_str + "\n  "
-                        + new_content[insertion_point:])
+    new_content = (new_content[:insertion_point].rstrip(" \t\n") + insert_str + "\n  "
+                   + new_content[insertion_point:])
 
     # Step 2a: garantir xmlns:this declarado no <Activity> root. Sem isso,
     # `<this:<Class>.<arg>>` quebra XML (unbound prefix).
@@ -1628,7 +1620,6 @@ def apply_guard_linq_arg_ref(file: Path, spec: dict, dry_run: bool = True,
     changed = 0
 
     def _rewrite(m):
-        nonlocal changed
         arg, meth, args = m.group(1), m.group(2), m.group(3)
         full = m.group(0)
         return _wrap_or_keep(content, m, arg, meth, args, full)
@@ -2074,8 +2065,6 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
     n_lines = len(lines)
     if activity_line < 1 or activity_line > n_lines:
         return False
-    # Compute offset of start of the line.
-    line_start_offset = sum(len(s) for s in lines[: activity_line - 1])
     # Search within a small window of lines (line ±2) — CommentOut stripping
     # rarely shifts more than a couple lines but be safe.
     activity_offset = None
@@ -2704,75 +2693,6 @@ def apply_queue_item_indexer_to_item(file: Path, spec: dict, dry_run: bool = Tru
     return True
 
 
-@register("revert_xmlns_assembly_to_private_corelib")
-def apply_revert_xmlns_assembly_to_private_corelib(file: Path, spec: dict,
-                                                     dry_run: bool = True,
-                                                     project_root: Path | None = None) -> bool:
-    """ROLLBACK fixer pra desfazer W-21 mal-feito.
-
-    Reverse mapping: assembly=<X> → assembly=System.Private.CoreLib
-    para namespaces que tinham `Private.CoreLib` originalmente.
-
-    Run-once. Após apply, W-21 deve estar no-op pra evitar re-aplicar.
-    """
-    content = file.read_text(encoding="utf-8-sig")
-
-    # Reverse mapping: NS → bad_asm que W-21 introduziu → revert pra Private.CoreLib
-    # Apenas pra NS que originalmente vinham de Private.CoreLib (não tocar legítimos).
-    ns_revert_targets = {
-        "System": "System.Runtime",
-        "System.Collections": "System.Collections",
-        "System.Collections.Generic": "System.Collections",
-        "System.Collections.ObjectModel": "System.ObjectModel",
-        "System.Security": "System.Runtime.InteropServices",
-        "System.Reflection": "System.Runtime",
-        "System.Threading": "System.Threading.Thread",
-    }
-
-    pat = re.compile(
-        r'(xmlns:[A-Za-z_][\w]*="clr-namespace:([A-Za-z_][\w.]*?));\s*assembly=([^"]+)"'
-    )
-
-    def _replacement(m):
-        full_prefix = m.group(1)
-        ns = m.group(2)
-        current_asm = m.group(3).strip()
-        expected = ns_revert_targets.get(ns)
-        if expected and current_asm == expected:
-            return f'{full_prefix};assembly=System.Private.CoreLib"'
-        return m.group(0)
-
-    new_content = pat.sub(_replacement, content)
-    if new_content == content:
-        return False
-    if not dry_run:
-        raw = file.read_bytes()
-        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
-        file.write_bytes(prefix + new_content.encode("utf-8"))
-    return True
-
-
-@register("retarget_xmlns_assembly")
-def apply_retarget_xmlns_assembly(file: Path, spec: dict, dry_run: bool = True,
-                                    project_root: Path | None = None) -> bool:
-    """W-21 fixer — DESATIVADO temporariamente.
-
-    Tentativa anterior: retarget xmlns:X="clr-namespace:NS;assembly=Private.CoreLib"
-    → .NET 6 reference assembly correto per namespace. Resultou em REGRESSÃO:
-    Studio 23.10 falha ao resolver Collection<T>, IEnumerable<Match> com novos
-    mappings (System.ObjectModel, System.Text.RegularExpressions etc não
-    aceitos como xmlns assembly target nessa versão Studio).
-
-    Decisão: no-op. Manter xmlns:X="...assembly=System.Private.CoreLib" como
-    Migrator deixou. AssemblyReferences declaradas pelo W-11* cobrem resolução
-    via path padrão Studio.
-
-    TODO: ground-truth catalog via scan refs/* do Studio install pra mapping
-    correto. Por enquanto manter pre-W-21 state.
-    """
-    return False  # no-op
-
-
 @register("strip_orphan_xmlns")
 def apply_strip_orphan_xmlns(file: Path, spec: dict, dry_run: bool = True,
                               project_root: Path | None = None) -> bool:
@@ -2848,7 +2768,7 @@ def apply_strip_orphan_xmlns(file: Path, spec: dict, dry_run: bool = True,
 @register("strip_nwindow_operation")
 def apply_strip_nwindow_operation(file: Path, spec: dict, dry_run: bool = True,
                                     project_root: Path | None = None) -> bool:
-    """D-PINALERT NWindowOperation fixer: strip activity + força CloseMode="Always"
+    r"""D-PINALERT NWindowOperation fixer: strip activity + força CloseMode="Always"
     nos NApplicationCard que continham NWindowOperation.
 
     NWindowOperation foi introduzida em UIA 25.10.21. Pin Sicoob = 25.10.8 — não
@@ -3073,10 +2993,6 @@ def apply_insert_namespace_import(file: Path, spec: dict, dry_run: bool = True,
 
     # Match bloco NamespacesForImplementation. Studio escreve via
     # <scg:List x:TypeArguments="x:String" Capacity="N"> ... </scg:List>.
-    block_pat = re.compile(
-        r'(<scg:List\s+x:TypeArguments="x:String"[^>]*>.*?)(\n[ \t]*)(</scg:List>)',
-        re.DOTALL,
-    )
     # Bloco específico — precisa estar dentro de NamespacesForImplementation
     ns_block_pat = re.compile(
         r'(<TextExpression\.NamespacesForImplementation>.*?)'
@@ -3680,14 +3596,6 @@ def apply_replace_hostile_unicode_chars(
     if not dry_run:
         _write_preserving_bom(file, new_content, bom)
     return True
-
-
-# Backward-compat alias para chamadas antigas (rules.yaml history).
-@register("replace_smart_quotes")
-def apply_replace_smart_quotes(file: Path, spec: dict, dry_run: bool = True,
-                                project_root: Path | None = None) -> bool:
-    """Compat: delega para replace_hostile_unicode_chars (W-30 expandido)."""
-    return apply_replace_hostile_unicode_chars(file, spec, dry_run, project_root)
 
 
 @register("strip_property_element_with_attribute")

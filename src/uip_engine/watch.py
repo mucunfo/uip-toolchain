@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Iterable
 
 
 _WATCH_PATTERNS = ("*.xaml", "project.json", "Config*.xlsx", ".gitignore")

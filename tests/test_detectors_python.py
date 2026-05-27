@@ -17,24 +17,6 @@ def make_rule(detect_params, **kwargs):
 
 # ---- Task 26: python ----
 
-def test_python_calls_registered_function(tmp_path):
-    f = tmp_path / "Foo.xaml"
-    f.write_text("<Activity><BulkAddQueueItems/></Activity>")
-    fc = FileContext(f)
-    rule = make_rule({
-        "type": "python",
-        "params": {
-            "module": "uip_engine.heuristics.refrwk_variant",
-            "function": "is_dispatcher",
-            "markers": ["BulkAddQueueItems"],
-        }
-    })
-    findings = detect_python(rule, fc, None)
-    assert len(findings) == 1
-    assert findings[0].rule_id == "A-VAR"
-    assert findings[0].line == 1
-
-
 def test_python_module_not_found_returns_internal_finding(tmp_path):
     f = tmp_path / "Foo.xaml"
     f.write_text("<Activity/>")

@@ -14,7 +14,6 @@ Comparison é case-insensitive (VB é case-insensitive).
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 
 # VB keywords

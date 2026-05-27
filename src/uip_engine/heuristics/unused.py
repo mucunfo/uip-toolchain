@@ -15,7 +15,7 @@ from html import unescape as _xml_unescape
 from pathlib import Path
 from typing import Iterable
 
-from uip_engine._types import Finding, Severity
+from uip_engine._types import Finding
 
 
 # ---------- Common helpers ----------
@@ -108,7 +108,7 @@ def detect_duplicate_variable_names(rule, fc, pc):
         if len(entries) <= 1:
             continue
         first_offset = entries[0][0]
-        m0 = re.search(rf'<Variable\b[^>]*\bName="([^"]+)"', content[first_offset:first_offset+200])
+        m0 = re.search(r'<Variable\b[^>]*\bName="([^"]+)"', content[first_offset:first_offset+200])
         original_name = m0.group(1) if m0 else name_lc
         # Emit 1 finding per extra (entries[1:])
         for offset, decl_text in entries[1:]:
@@ -135,7 +135,7 @@ def detect_duplicate_variable_names(rule, fc, pc):
         scopes = {_scope_offset_for(content, o) for o in offsets}
         if len(scopes) <= 1:
             continue  # all in same scope (handled above)
-        m0 = re.search(rf'<Variable\b[^>]*\bName="([^"]+)"', content[offsets[0]:offsets[0]+200])
+        m0 = re.search(r'<Variable\b[^>]*\bName="([^"]+)"', content[offsets[0]:offsets[0]+200])
         original_name = m0.group(1) if m0 else name_lc
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,

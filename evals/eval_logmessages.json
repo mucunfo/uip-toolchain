@@ -1,0 +1,53 @@
+[
+  {
+    "id": 0,
+    "traceability": "HIGH",
+    "score": 9,
+    "rationale": "Specific action + selector + actual extracted value. Production traces field collection point.",
+    "strengths": [
+      "includes concrete selector",
+      "shows actual result value",
+      "action unmistakable"
+    ],
+    "weaknesses": []
+  },
+  {
+    "id": 1,
+    "traceability": "HIGH",
+    "score": 9,
+    "rationale": "Specific extraction action + selector + label value. Fully debuggable state.",
+    "strengths": [
+      "clear extraction point identified",
+      "actual label value included",
+      "source selector context"
+    ],
+    "weaknesses": []
+  },
+  {
+    "id": 2,
+    "traceability": "HIGH",
+    "score": 9,
+    "rationale": "Specific filter operation + selector + extracted modality value. Actionable for debugging.",
+    "strengths": [
+      "identifies filtering operation",
+      "selector context preserved",
+      "result value visible"
+    ],
+    "weaknesses": []
+  },
+  {
+    "id": 3,
+    "traceability": "LOW",
+    "score": 2,
+    "rationale": "Generic action with zero contextual values. Cannot distinguish from identical logs elsewhere or debug outcome.",
+    "strengths": [],
+    "weaknesses": [
+      "no modality value shown",
+      "no list identifier",
+      "no success/failure indicator",
+      "indistinguishable from other 'added to list' operations",
+      "production debugging: useless"
+    ],
+    "fix_suggestion": "Add modality value + list identifier: in_StPrefixoLog + \"Adicionou modalidade '\" + vStModalidade + \"' à lista '\" + in_StNomeLista + \"'.\""
+  }
+]

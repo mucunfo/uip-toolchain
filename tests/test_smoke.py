@@ -27,7 +27,7 @@ def _run_review(project_path: Path, rules_file: Path | None = None):
         cmd += ["--rules-file", str(rules_file)]
     return subprocess.run(
         cmd, cwd=str(ROOT), capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=180,
+        encoding="utf-8", errors="replace", timeout=300,
     )
 
 

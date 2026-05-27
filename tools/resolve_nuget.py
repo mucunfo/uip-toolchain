@@ -42,7 +42,6 @@ import sys
 import urllib.request
 import urllib.error
 import argparse
-import re
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -158,7 +157,7 @@ def fetch_latest_stable(package_id: str, no_cache: bool = False) -> tuple[str | 
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            return None, f"package not found (404)"
+            return None, "package not found (404)"
         return None, f"HTTP {e.code}: {e.reason}"
     except urllib.error.URLError as e:
         return None, f"network error: {e.reason}"

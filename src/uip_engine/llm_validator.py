@@ -18,7 +18,6 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Iterable
 
 
 def _resolve_claude_cmd() -> str:

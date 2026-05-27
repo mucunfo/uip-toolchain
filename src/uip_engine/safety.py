@@ -110,7 +110,6 @@ def apply_with_gate(
 
     pre_primary_ok, _ = validate_file(file_path)
 
-    pre_validity: dict[Path, bool] = {}
     pre_mtimes: dict[Path, int] = {}
     pre_bytes_cascade: dict[Path, bytes] = {}
     if project_root is not None:

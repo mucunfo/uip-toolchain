@@ -40,7 +40,6 @@ import os
 import re
 import zipfile
 from pathlib import Path
-from typing import Any
 
 from uip_engine._types import Finding
 

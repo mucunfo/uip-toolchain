@@ -17,12 +17,11 @@ Thresholds via rule.detect.params.threshold_warn/threshold_error.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from lxml import etree
 
 from uip_engine._types import Finding, Severity
-from uip_engine.context import FileContext, ProjectContext
+from uip_engine.context import FileContext
 
 
 _RE_INVOKE_WF_FILE = re.compile(
