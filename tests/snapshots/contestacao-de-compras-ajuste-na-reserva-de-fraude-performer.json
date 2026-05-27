@@ -1,0 +1,4865 @@
+{
+  "slug": "contestacao-de-compras-ajuste-na-reserva-de-fraude-performer",
+  "engine_review_exit": 2,
+  "findings_count": 687,
+  "findings": [
+    {
+      "rule_id": "UIPATH:ST-USG-010",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-USG-034",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:TA-DBP-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-ANA-016",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-ANA-017",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-ANA-018",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "(project)",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Arquivos/CriaRelatorioSaida.xaml",
+      "line": 129
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Consolida_Dados/ObtemDadosAnalitico.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-USG-020",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Consolida_Dados/ObtemDadosAnalitico.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosAnalitico.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosAnalitico.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Consolida_Dados/ObtemDadosAnalitico.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 107
+    },
+    {
+      "rule_id": "EXC-1",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 139
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 139
+    },
+    {
+      "rule_id": "EXC-1",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 140
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 199
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 200
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 203
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 269
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 270
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 273
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 291
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 292
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 295
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 313
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 314
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 317
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 405
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 406
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Consolida_Dados/ObtemDadosExcel.xaml",
+      "line": 409
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/CloseAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/CloseAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/GetTransactionData.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/GetTransactionData.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/GetTransactionData.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/GetTransactionData.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/GetTransactionData.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/GetTransactionData.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllApplications.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/InitAllSettings.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/InitAllSettings.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/InitAllSettings.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllSettings.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/InitAllSettings.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/KillAllProcesses.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/KillAllProcesses.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/KillAllProcesses.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/Process.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/RetryCurrentTransaction.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/RetryCurrentTransaction.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/RetryCurrentTransaction.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Framework/RetryCurrentTransaction.xaml",
+      "line": 322
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-005",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-005",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-005",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-005",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-005",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-005",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "U-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 172
+    },
+    {
+      "rule_id": "U-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 173
+    },
+    {
+      "rule_id": "U-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Framework/SetTransactionStatus.xaml",
+      "line": 209
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Framework/TakeScreenshot.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Framework/TakeScreenshot.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Framework/TakeScreenshot.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-PRR-004",
+      "severity": "INFO",
+      "category": "uipath_framework_scope",
+      "file": "Framework/TakeScreenshot.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Main.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Main.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Main.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Main.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Main.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-1",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "W-3",
+      "severity": "WARN",
+      "category": "breaking",
+      "file": "Main.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 141
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 144
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 159
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 160
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 161
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 164
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 205
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 206
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 207
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 210
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 260
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 261
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 264
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 288
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 289
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 292
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 309
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 310
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 313
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 352
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 392
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 393
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 396
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 402
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 403
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 406
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 412
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 413
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 416
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 491
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 590
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 591
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 594
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 642
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 643
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 646
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 661
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 662
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 665
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 717
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 718
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 721
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 730
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 731
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 734
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 785
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 812
+    },
+    {
+      "rule_id": "N-10",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 830
+    },
+    {
+      "rule_id": "V-1",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Main.xaml",
+      "line": 848
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/AbreDetalhesChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-016",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 5
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AcoesCamposEtapaReembolso.xaml",
+      "line": 186
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-016",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 5
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 222
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 231
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 434
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 435
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 438
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 451
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 452
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 455
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 551
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 552
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 555
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 568
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 569
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/AtendeChamado.xaml",
+      "line": 572
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-1",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "U-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 143
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 148
+    },
+    {
+      "rule_id": "U-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 162
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 167
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 268
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 358
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 442
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 510
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 526
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 542
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 543
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 546
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 564
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 674
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 690
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 699
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 748
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 749
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 752
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 770
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 813
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 814
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 817
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 835
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 878
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 879
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 882
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 900
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 943
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 944
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 947
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 965
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1008
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1009
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1012
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1030
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1073
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1074
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1077
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1095
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1301
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1302
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1305
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1323
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1324
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1327
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/CapturaDadosEtapaReembolso.xaml",
+      "line": 1486
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-016",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-016",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-1",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 5
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 6
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 267
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 268
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 271
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 376
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 424
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 440
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 449
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 531
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 555
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 583
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 604
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 626
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 724
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 810
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 855
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 914
+    },
+    {
+      "rule_id": "N-16",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 962
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1076
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1144
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1250
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1272
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1273
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1276
+    },
+    {
+      "rule_id": "W-13",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1280
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1333
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1334
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1337
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1360
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1391
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1400
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1516
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1538
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1539
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1542
+    },
+    {
+      "rule_id": "W-13",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1546
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1599
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1600
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1603
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1626
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1760
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1761
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1764
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1768
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1769
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/FinalizaChamado.xaml",
+      "line": 1772
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 211
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 269
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 270
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 273
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 335
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 380
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 412
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 438
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 458
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 467
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 528
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 529
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ObtemDadosChamado.xaml",
+      "line": 532
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-016",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-13",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 5
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 140
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 196
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 258
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 307
+    },
+    {
+      "rule_id": "U-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 307
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 308
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 311
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 345
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 407
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 408
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 411
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 445
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 461
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 462
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 465
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 483
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 484
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 487
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 550
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 551
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 554
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 583
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 584
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 587
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 611
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 612
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 615
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Direct/ValidaChamado.xaml",
+      "line": 686
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-SEC-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-PRR-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "S-HEALCHAIN",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 314
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 618
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 619
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 622
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 635
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 636
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 639
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 960
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 967
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 974
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 981
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 998
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1024
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1033
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1130
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1181
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1223
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1224
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1227
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1357
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1358
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1361
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1374
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1375
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaDados.xaml",
+      "line": 1378
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-008",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-8",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 140
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 502
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 503
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 506
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 519
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 520
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 523
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 639
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 640
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 643
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 656
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 657
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 660
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 703
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 730
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 731
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 734
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 747
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 748
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 751
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 763
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 796
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 797
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 800
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1038
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1039
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1042
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1055
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1056
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/ColetaExtratoReservaFraude.xaml",
+      "line": 1059
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-021",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-021",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-002",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-MRD-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-004",
+      "severity": "WARN",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:UI-USG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "W-30",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 480
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 590
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 591
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 594
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 612
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 614
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 670
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 671
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 674
+    },
+    {
+      "rule_id": "W-2",
+      "severity": "WARN",
+      "category": "breaking",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 675
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 739
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 754
+    },
+    {
+      "rule_id": "UI-1",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 763
+    },
+    {
+      "rule_id": "UI-1",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 764
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 765
+    },
+    {
+      "rule_id": "UI-1",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 774
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 797
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 827
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 903
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 904
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 907
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 911
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 912
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 915
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 919
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 920
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 923
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 964
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 965
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 968
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 981
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 982
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 985
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1026
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1055
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1056
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1059
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1093
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1094
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1097
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1110
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1225
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1335
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1336
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1339
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1352
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1353
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1356
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1369
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1630
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1631
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1634
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1647
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1648
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaAjusteFraude.xaml",
+      "line": 1651
+    },
+    {
+      "rule_id": "RT-LOAD-INVALID_WORKFLOW",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-009",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-DBP-007",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-009",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-NMG-011",
+      "severity": "INFO",
+      "category": "uipath_sicoob_policy",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 0
+    },
+    {
+      "rule_id": "CX-2",
+      "severity": "ERROR",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-4",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "CX-5",
+      "severity": "WARN",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-1",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "TCC-4",
+      "severity": "INFO",
+      "category": "testing",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 1
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 199
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 200
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 203
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 245
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 261
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 270
+    },
+    {
+      "rule_id": "N-5",
+      "severity": "INFO",
+      "category": "architectural",
+      "file": "Sipag_Net/RealizaConfirmacaoReserva.xaml",
+      "line": 392
+    },
+    {
+      "rule_id": "UIPATH:PACK",
+      "severity": "ERROR",
+      "category": "breaking",
+      "file": "project.json",
+      "line": 0
+    },
+    {
+      "rule_id": "UIPATH:ST-ANA-003",
+      "severity": "INFO",
+      "category": "uipath",
+      "file": "project.json",
+      "line": 0
+    },
+    {
+      "rule_id": "TCC-3",
+      "severity": "WARN",
+      "category": "testing",
+      "file": "project.json",
+      "line": 1
+    }
+  ],
+  "rule_counts": {
+    "UIPATH:ST-USG-010": 1,
+    "UIPATH:ST-USG-034": 1,
+    "UIPATH:TA-DBP-002": 24,
+    "UIPATH:UI-ANA-016": 1,
+    "UIPATH:UI-ANA-017": 1,
+    "UIPATH:UI-ANA-018": 1,
+    "RT-LOAD-INVALID_WORKFLOW": 23,
+    "UIPATH:ST-ANA-009": 24,
+    "UIPATH:ST-MRD-002": 33,
+    "UIPATH:ST-NMG-004": 52,
+    "CX-2": 14,
+    "N-13": 12,
+    "TCC-1": 14,
+    "N-5": 294,
+    "UIPATH:ST-USG-020": 1,
+    "UIPATH:ST-NMG-008": 8,
+    "UIPATH:ST-NMG-009": 17,
+    "UIPATH:ST-NMG-011": 17,
+    "CX-4": 12,
+    "CX-5": 11,
+    "N-8": 10,
+    "EXC-1": 2,
+    "UIPATH:ST-SEC-008": 9,
+    "UIPATH:ST-SEC-009": 4,
+    "UIPATH:ST-DBP-007": 12,
+    "N-16": 15,
+    "UIPATH:ST-NMG-005": 6,
+    "U-4": 3,
+    "UIPATH:UI-PRR-004": 2,
+    "CX-1": 3,
+    "W-3": 1,
+    "N-10": 7,
+    "V-1": 1,
+    "UIPATH:ST-NMG-016": 5,
+    "UIPATH:UI-USG-011": 20,
+    "TCC-4": 8,
+    "U-5": 3,
+    "W-13": 2,
+    "S-HEALCHAIN": 1,
+    "UIPATH:ST-DBP-021": 2,
+    "UIPATH:ST-MRD-009": 2,
+    "W-30": 1,
+    "W-2": 1,
+    "UI-1": 3,
+    "UIPATH:PACK": 1,
+    "UIPATH:ST-ANA-003": 1,
+    "TCC-3": 1
+  }
+}

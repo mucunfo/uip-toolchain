@@ -45,7 +45,7 @@ Critério inclusão:
 - Cobre patterns Sicoob típicos (NApplicationCard, REFramework, CCS_* libs)
 
 Atual:
-- `importar-cadastro-avais-fiancas-honrados-performer` (REF Windows-target Sicoob canonical)
+- `contestacao-de-compras-ajuste-na-reserva-de-fraude-performer` (REF Windows-target temp project — política valida apenas em Desktop\temp\, nunca em Projects/)
 
 Expandir conforme projetos estabilizam pós-migração.
 

@@ -8,21 +8,16 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 EMPTY_RULES = ROOT / "tests" / "fixtures" / "empty_rules.yaml"
 
+# Validation policy: tests NEVER run against `Projects/` UiPath projects.
+# Only sanctioned target is the temp performer under Desktop\temp\.
 REF_PATH = Path(
-    "C:/Users/lisan/OneDrive - Sicoob/Projects/"
-    "importar-cadastro-avais-fiancas-honrados/"
-    "importar-cadastro-avais-fiancas-honrados-performer"
+    "C:/Users/lisan/Desktop/temp/"
+    "contestacao-de-compras-ajuste-na-reserva-de-fraude/"
+    "contestacao-de-compras-ajuste-na-reserva-de-fraude-performer"
 )
-DISPATCHER_PATH = Path(
-    "C:/Users/lisan/OneDrive - Sicoob/Projects/"
-    "baixar-documentos-cobranca-ajuizada/"
-    "baixar-documentos-cobranca-ajuizada-dispatcher"
-)
-PERFORMER_PATH = Path(
-    "C:/Users/lisan/OneDrive - Sicoob/Projects/"
-    "baixar-documentos-cobranca-ajuizada/"
-    "baixar-documentos-cobranca-ajuizada-performer"
-)
+# No dispatcher exists in temp; reuse performer for smoke (still valid project).
+DISPATCHER_PATH = REF_PATH
+PERFORMER_PATH = REF_PATH
 
 
 def _run_review(project_path: Path, rules_file: Path | None = None):

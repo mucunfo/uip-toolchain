@@ -17,7 +17,7 @@ Workflow:
        python -m tools.snapshot_regression --capture --force
 
 Catalog canonical (estável, Windows-target migrado, conhecidamente passa):
-  - importar-cadastro-avais-fiancas-honrados-performer
+  - contestacao-de-compras-ajuste-na-reserva-de-fraude-performer
 
 Expansão: adicionar mais projetos canonical conforme estabilizam.
 
@@ -56,13 +56,15 @@ RUNS_DIR = REPO_ROOT / ".tmp" / "snapshot_runs"
 
 # Catalog canonical Sicoob — expandir conforme projetos estabilizam.
 # Path absoluto (workspace specific). Tornar configurável via env se generalizar.
+# Validation policy: snapshots NEVER run against `Projects/` UiPath projects.
+# Only sanctioned target é o performer temp em Desktop\temp\.
 CANONICAL = [
     {
-        "slug": "importar-cadastro-avais-fiancas-honrados-performer",
+        "slug": "contestacao-de-compras-ajuste-na-reserva-de-fraude-performer",
         "path": Path(
-            "C:/Users/lisan/OneDrive - Sicoob/Projects/"
-            "importar-cadastro-avais-fiancas-honrados/"
-            "importar-cadastro-avais-fiancas-honrados-performer"
+            "C:/Users/lisan/Desktop/temp/"
+            "contestacao-de-compras-ajuste-na-reserva-de-fraude/"
+            "contestacao-de-compras-ajuste-na-reserva-de-fraude-performer"
         ),
     },
 ]

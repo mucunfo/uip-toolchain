@@ -244,10 +244,12 @@ def test_run_validate_ok_emits_info(tmp_path, monkeypatch):
 # Live smoke — canonical Sicoob project (skipped without binary)
 # ---------------------------------------------------------------------------
 
+# Validation policy: tests NEVER run against `Projects/` UiPath projects.
+# Only sanctioned target is the temp performer under Desktop\temp\.
 CANONICAL = Path(
-    r"C:\Users\lisan\OneDrive - Sicoob\Projects"
-    r"\importar-cadastro-avais-fiancas-honrados"
-    r"\importar-cadastro-avais-fiancas-honrados-performer"
+    r"C:\Users\lisan\Desktop\temp"
+    r"\contestacao-de-compras-ajuste-na-reserva-de-fraude"
+    r"\contestacao-de-compras-ajuste-na-reserva-de-fraude-performer"
 )
 
 

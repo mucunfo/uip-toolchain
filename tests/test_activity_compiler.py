@@ -31,10 +31,12 @@ from uip_engine._types import Category, Severity  # noqa: E402
 
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "activity_compiler"
+# Validation policy: tests NEVER run against `Projects/` UiPath projects.
+# Only sanctioned target is the temp performer under Desktop\temp\.
 CANONICAL_PROJECT = Path(
-    r"C:\Users\lisan\OneDrive - Sicoob\Projects"
-    r"\importar-cadastro-avais-fiancas-honrados"
-    r"\importar-cadastro-avais-fiancas-honrados-performer"
+    r"C:\Users\lisan\Desktop\temp"
+    r"\contestacao-de-compras-ajuste-na-reserva-de-fraude"
+    r"\contestacao-de-compras-ajuste-na-reserva-de-fraude-performer"
 )
 
 
