@@ -1197,6 +1197,17 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                 print(f"[PACK-GATE] cannot create temp NuGet.config: {e}",
                       file=sys.stderr)
 
+    # Snapshot project.json bytes ANTES do uipcli publish. uipcli publish NÃO
+    # é read-only: bumpa `projectVersion` (2.1.4 → 2.1.5) no SOURCE a cada
+    # invocação e normaliza keys ausentes pra defaults (ex: runtimeOptions.
+    # mustRestoreAllDependencies absent → injeta `false`). Como esse gate é
+    # dry-run de VALIDAÇÃO (output vai pra tmpdir, descartado), o source deve
+    # ficar byte-idêntico. Sem isso: (a) projectVersion drift gera git churn +
+    # quebra idempotência (rerun engine = diff espúrio), (b) uipcli pode dropar
+    # keys ENV-1 aplicadas em PHASE 1. Restore no finally garante zero side-
+    # effect. Diagnose: .uip-toolchain pilot 2026-05-27.
+    project_json_pre_bytes = project_json.read_bytes()
+
     try:
         if verbose:
             print(f"[PACK-GATE] running uipcli publish (dry-run) "
@@ -1277,6 +1288,19 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                   file=sys.stderr)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+        # Restore project.json se uipcli publish mutou o source (projectVersion
+        # bump / key normalization). Dry-run gate não pode deixar rastro.
+        try:
+            if project_json.read_bytes() != project_json_pre_bytes:
+                project_json.write_bytes(project_json_pre_bytes)
+                if verbose:
+                    print("[PACK-GATE] restored project.json "
+                          "(uipcli publish mutou source — revertido)",
+                          file=sys.stderr)
+        except OSError as e:
+            if verbose:
+                print(f"[PACK-GATE] cannot restore project.json: {e}",
+                      file=sys.stderr)
         # Cleanup temp NuGet.config: deleta SÓ se engine criou. Config pre-
         # existente no projeto (committed) fica intacta.
         if config_created_by_engine:
@@ -2087,6 +2111,8 @@ def _cmd_fix(args) -> int:
         err_files = {i.file for i in new_errs if i.file}
         rolled_back_paths: list = []
         rollback_failed: list = []
+        # GRANULAR rollback: pra cada XAML no snapshot cujo basename apareça em
+        # err_files, restaura bytes pré-loop.
         for path, pre_bytes in pre_loop_bytes.items():
             if path.name not in err_files:
                 continue
@@ -2097,6 +2123,29 @@ def _cmd_fix(args) -> int:
                 rolled_back_paths.append(path)
             except OSError as e:
                 rollback_failed.append((path.name, str(e)))
+
+        # FULL-SNAPSHOT fallback: granular rollback falhou (err_files vazio
+        # ou todos basenames ausentes do snapshot — típico de analyzer-error
+        # project-level sem FilePath, ex.: "Não foi possível realizar análise
+        # do projeto"). Engine NUNCA pode deixar projeto pior que estado
+        # pré-fix loop — restaura TODOS XAMLs modificados desde snapshot.
+        # Regression test: pilot contestacao-de-compras (5/27) — granular
+        # rollback nunca disparou pq err_files = {""} (FilePath vazio).
+        if not rolled_back_paths and new_errs:
+            print(
+                "# analyzer-gate: granular rollback inexequível "
+                "(err_files sem match no snapshot). "
+                "Iniciando FULL-SNAPSHOT rollback de XAMLs divergentes..."
+            )
+            for path, pre_bytes in pre_loop_bytes.items():
+                if path.resolve() in frozen_files:
+                    continue
+                try:
+                    if not path.exists() or path.read_bytes() != pre_bytes:
+                        path.write_bytes(pre_bytes)
+                        rolled_back_paths.append(path)
+                except OSError as e:
+                    rollback_failed.append((path.name, str(e)))
 
         if rolled_back_paths:
             print(
@@ -2111,10 +2160,10 @@ def _cmd_fix(args) -> int:
                 print(f"  ! {name}: {err}")
 
         if not rolled_back_paths:
-            # Errors em arquivos fora do snapshot (ex.: gerados pós-loop). Não dá
-            # pra reverter — sai sem retry, deixa PHASE 2 reportar.
+            # Snapshot vazio (analyzer baseline não rodou OU projeto sem XAML
+            # no momento do snapshot). Não há estado pré-loop pra restaurar.
             print(
-                "# analyzer-gate: rollback inexequível (nenhum file no snapshot). "
+                "# analyzer-gate: rollback impossível (snapshot vazio). "
                 "Estado residual: ver PHASE 2."
             )
             break
@@ -2496,11 +2545,14 @@ def _print_status(status: str, *, project: Path, apply_contextual: bool) -> None
     print()
     if status == "PASS":
         print("[PASS] projeto done.")
-    elif status == "PENDING_REVIEW":
+    elif status == "PASS_WITH_NOTES":
         if apply_contextual:
-            print("[PARTIAL] contextual aplicado, mas findings remanescentes.")
+            print("[PASS-WITH-NOTES] contextual aplicado, findings remanescentes "
+                  "exigem decisão manual. Deploy-safe.")
         else:
-            print(f"[PENDING REVIEW] aplica: uip {project} --apply-contextual")
+            print("[PASS-WITH-NOTES] sem blockers. Contextual findings são "
+                  "informacionais — projeto deploy-safe.")
+            print(f"  Opt-in fix: uip {project} --apply-contextual")
     elif status == "FAIL":
         print("[FAIL] errors/halts residuais.")
 
@@ -2527,12 +2579,14 @@ def _cmd_all(args) -> int:
         PHASE 1 deterministic fix auto-apply
         PHASE 2 gates Layer 2/3/5 via _run_review_quiet (review canonical)
         PHASE 3 contextual handling (dry-run | apply se --apply-contextual)
-        PHASE 4 decide PASS / PENDING_REVIEW / FAIL
+        PHASE 4 decide PASS / PASS_WITH_NOTES / FAIL
 
-      PASS  → exit 0
-      PENDING_REVIEW → exit 1 (decisão humana via --apply-contextual)
-      FAIL  → exit 2 (default). Com --watch: loop com watch.wait_for_change
-              aguardando edições (modo Studio dev).
+      PASS            → exit 0 (clean)
+      PASS_WITH_NOTES → exit 0 (contextual findings informacionais, deploy-safe;
+                        opt-in --apply-contextual aplica fixes manuais)
+      FAIL            → exit 2 (default — blocker: deterministic ERROR ou HALT).
+                        Com --watch: loop com watch.wait_for_change aguardando
+                        edições (modo Studio dev).
     """
     from .watch import wait_for_change
     from .engine_status import EngineStatus
@@ -2671,11 +2725,14 @@ def _cmd_all(args) -> int:
         # ---- PHASE 4: decisão ----
         # Blocker = ERROR com apply_class=deterministic (engine deve ter fixado;
         # se ainda há, é bug do fixer) OU HALT (regra crítica de policy).
-        # Errors contextual/structural NÃO bloqueiam — viram PENDING_REVIEW.
+        # Errors contextual/structural NÃO bloqueiam — viram PASS_WITH_NOTES.
+        # User policy: deploy não pode depender de --apply-contextual. Contextual
+        # findings são informacionais (decisão humana sobre refactor), não
+        # impedem deploy runtime-safe — engine retorna EXIT_OK pra CI/agentic.
         if errors_blocking > 0 or halts > 0:
             status = "FAIL"
-        elif contextual_pending and not apply_ctx:
-            status = "PENDING_REVIEW"
+        elif contextual_pending:
+            status = "PASS_WITH_NOTES"
         else:
             status = "PASS"
 
@@ -2684,25 +2741,22 @@ def _cmd_all(args) -> int:
             blocking = [f for f in result.findings
                         if f.severity in (Severity.ERROR, Severity.HALT) and not f.suppressed]
             _print_findings_table(blocking, max_rows=10, header="TOP blocking findings")
-        elif status == "PENDING_REVIEW":
+        elif status == "PASS_WITH_NOTES" and not apply_ctx:
             _print_findings_table(contextual_pending, max_rows=20,
-                                  header="Contextual findings (precisa decisão)")
+                                  header="Contextual findings (informacional — decisão humana)")
 
         _print_status(status, project=project, apply_contextual=apply_ctx)
 
-        if status == "PASS":
+        if status in ("PASS", "PASS_WITH_NOTES"):
             # Auto-clean `_BeforeMigration_*` backups quando engine completou
-            # com PASS. Backup serve só como rollback manual; engine concluiu
-            # pipeline com sucesso → backup é dead weight (50-200MB).
-            # Opt-out: UIP_TOOLCHAIN_KEEP_BACKUP=1.
+            # com PASS ou PASS_WITH_NOTES. Backup serve só como rollback manual;
+            # engine concluiu pipeline com sucesso (sem blockers) → backup é
+            # dead weight (50-200MB). Opt-out: UIP_TOOLCHAIN_KEEP_BACKUP=1.
             removed_backups = _cleanup_pre_migration_backups(project)
             for b in removed_backups:
                 print(f"[BACKUP-CLEAN] removed {b.name}", file=sys.stderr)
-            estatus.finalize("PASS")
+            estatus.finalize(status)
             return EXIT_OK
-        if status == "PENDING_REVIEW":
-            estatus.finalize("PENDING_REVIEW")
-            return EXIT_WARN
 
         # FAIL → loop com watch ou abort
         if no_watch:

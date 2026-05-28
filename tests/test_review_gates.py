@@ -158,6 +158,42 @@ def test_pack_gate_emits_finding_on_bc_error(tmp_path):
         assert f.category == "breaking"
 
 
+def test_pack_gate_restores_source_project_json_after_mutation(tmp_path):
+    """REGRESSION (pilot 2026-05-27): uipcli publish NÃO é read-only — bumpa
+    projectVersion no SOURCE + normaliza keys ausentes pra defaults. Pack-gate
+    é dry-run de validação → source deve ficar byte-idêntico. Sem restore:
+    projectVersion drift quebra idempotência (rerun = diff espúrio) + dropa
+    keys ENV-1 aplicadas em PHASE 1.
+    """
+    proj = _make_project(tmp_path)
+    pj = proj / "project.json"
+    original_bytes = pj.read_bytes()
+    result = ValidationResult()
+
+    fake_cli = MagicMock()
+    fake_cli.is_file.return_value = True
+
+    def _mutating_publish(*args, **kwargs):
+        # Simula uipcli publish: bumpa projectVersion + injeta default key
+        import json as _json
+        data = _json.loads(pj.read_text(encoding="utf-8-sig"))
+        data["projectVersion"] = "9.9.9"  # bump artificial
+        data.setdefault("runtimeOptions", {})["mustRestoreAllDependencies"] = False
+        pj.write_text(_json.dumps(data), encoding="utf-8")
+        return _fake_uipcli_result("", returncode=0)
+
+    with patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
+         patch("uip_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
+         patch("uip_engine.uipcli_runner.run_uipcli_guarded",
+               side_effect=_mutating_publish):
+        cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
+
+    # Source project.json restaurado byte-a-byte (mutação revertida).
+    assert pj.read_bytes() == original_bytes, (
+        "pack-gate deve restaurar project.json após uipcli publish mutar source"
+    )
+
+
 def test_pack_gate_fallback_on_unparseable_error(tmp_path):
     """Se uipcli retorna RC != 0 mas nada bate em regex, emit 1 finding."""
     proj = _make_project(tmp_path)

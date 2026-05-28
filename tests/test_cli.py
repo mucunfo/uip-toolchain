@@ -20,7 +20,10 @@ def test_cli_help_runs():
 def test_cli_review_empty_rules_returns_zero(tmp_path):
     proj = tmp_path / "Proj"
     proj.mkdir()
-    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    (proj / "project.json").write_text(
+        '{"studioVersion":"23.10.13","targetFramework":"Windows",'
+        '"runtimeOptions":{"mustRestoreAllDependencies":true}}'
+    )
     (proj / "Foo.xaml").write_text("<Activity/>")
 
     rules_file = tmp_path / "empty_rules.yaml"
@@ -38,7 +41,10 @@ def test_cli_review_empty_rules_returns_zero(tmp_path):
 def test_cli_review_format_json(tmp_path):
     proj = tmp_path / "Proj"
     proj.mkdir()
-    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    (proj / "project.json").write_text(
+        '{"studioVersion":"23.10.13","targetFramework":"Windows",'
+        '"runtimeOptions":{"mustRestoreAllDependencies":true}}'
+    )
     (proj / "Foo.xaml").write_text("<Activity/>")
 
     rules_file = tmp_path / "empty_rules.yaml"

@@ -22,7 +22,7 @@ def _run_hook(script: Path, payload: dict) -> subprocess.CompletedProcess:
         [sys.executable, str(script)],
         input=json.dumps(payload),
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=300,
+        timeout=900,
     )
 
 

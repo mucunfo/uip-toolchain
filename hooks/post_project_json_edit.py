@@ -8,6 +8,7 @@ Hook input (stdin, JSON):
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -43,13 +44,19 @@ def main() -> int:
 
     project_root = p.parent
 
+    # Hook = feedback rápido pós-edit (não pre-publish gate). Desabilita gates
+    # externos (uipcli analyze/nuget/pack — 180+300+600s) que estouram qualquer
+    # timeout do hook. Só detectores python. Pre-publish completo = `uip
+    # <project>` separado.
+    env = {**os.environ, "UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES": "1"}
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "uip_engine.cli", "review",
              str(project_root), "--format", "json"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(REPO_ROOT.parent),
-            timeout=180,
+            env=env,
+            timeout=300,
         )
     except Exception as e:
         print(f"[uipath-hook] uip_engine failed: {e}", file=sys.stderr)

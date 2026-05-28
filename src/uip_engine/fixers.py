@@ -2771,8 +2771,8 @@ def apply_strip_nwindow_operation(file: Path, spec: dict, dry_run: bool = True,
     r"""D-PINALERT NWindowOperation fixer: strip activity + força CloseMode="Always"
     nos NApplicationCard que continham NWindowOperation.
 
-    NWindowOperation foi introduzida em UIA 25.10.21. Pin Sicoob = 25.10.8 — não
-    existe. Activity geralmente vive aninhada dentro de `<uix:NApplicationCard>`
+    NWindowOperation foi introduzida em UIA 25.10.21. Pin canonical Sicoob (D-1b
+    em `assets/canonical_pins.yaml`) é anterior — API não existe nessa versão. Activity geralmente vive aninhada dentro de `<uix:NApplicationCard>`
     pra controlar close lifecycle quando default `CloseMode="IfOpenedByThisCard"`
     ou explícito `CloseMode="Never"` foi escolhido.
 
@@ -3722,13 +3722,16 @@ def apply_inject_missing_args(file: Path, spec: dict[str, Any], dry_run: bool = 
     content = file.read_text(encoding="utf-8-sig")
 
     # Idempotência: já declarado?
-    # Match `<x:Property Name="<arg>"` em qualquer lugar (XAML pode ter Members
-    # ou outras Property declarations — Sicoob padrão é só em Members mas o
-    # check é defensivo).
-    if re.search(rf'<x:Property\s+Name="{re.escape(arg_name)}"\s', content):
-        return False
-    # Tolera ordem: `<x:Property Type="..." Name="...">`.
-    if re.search(rf'<x:Property\s+[^>]*\bName="{re.escape(arg_name)}"\b', content):
+    # Match `<x:Property ... Name="<arg>" ...` em qualquer atributo-position.
+    # Tolera prefixos como `sap2010:Annotation.AnnotationText="..."` ou ordem
+    # arbitrária (Name antes/depois de Type). Single regex cobre todas as
+    # variações Studio emite. Regression test: pilot contestacao-de-compras
+    # (5/27) — `\b` trailing falhava em property annotada porque `"` e ` `
+    # ambos não-word chars não formam word boundary. Fix: terminator literal
+    # `"` já garante match exato; word boundary trailing era redundante e
+    # incorreto. Apenas `\b` LEADING permanece pra impedir match em prefixo
+    # (`SomeOtherName="X"` ≠ `Name="X"`).
+    if re.search(rf'<x:Property\s+[^>]*\bName="{re.escape(arg_name)}"', content):
         return False
 
     # Build new property line. Single-line, self-closed.

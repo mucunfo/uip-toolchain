@@ -152,12 +152,20 @@ def test_gate_regression_rolls_back_and_retries(
 def test_gate_persistent_regression_exits_after_retries(
     fake_project: Path, monkeypatch, capsys, disable_baseline_cache
 ):
-    """Regression persiste após rollback (errors em files diferentes ou
-    fora do snapshot) → loop sai gracefully, EXIT_OK."""
+    """Regression persiste em file fora do snapshot → FULL-SNAPSHOT fallback
+    reverte tudo modificado (engine NUNCA deixa projeto pior) → loop sai
+    gracefully, EXIT_OK.
+
+    Atualizado 2026-05-27: pré-fix esse caso simplesmente abortava com
+    'rollback inexequível'. Novo comportamento (B2 fix): granular falha →
+    fallback restaura TODO XAML divergente do snapshot. Pilot regression:
+    sem fallback, engine deixava 3 XAMLs com duplicate Property injection.
+    """
     monkeypatch.setattr(
         _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
     )
 
+    baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
     call_log: list = []
 
     def fake_run(project_root, cli_path, **kwargs):
@@ -166,7 +174,7 @@ def test_gate_persistent_regression_exits_after_retries(
         if n == 1:
             return set()
         # Post-fix sempre reporta error em file fantasma fora snapshot
-        # → rollback inexequível → break sem retry
+        # → granular rollback falha → FULL-SNAPSHOT fallback restaura Bad.xaml
         return {_make_issue("Phantom.xaml", "ST-FAKE-002", "Error")}
 
     monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
@@ -174,11 +182,53 @@ def test_gate_persistent_regression_exits_after_retries(
     rc = _cli._cmd_fix(_mk_fix_args(fake_project))
     out = capsys.readouterr().out
 
-    assert rc == _cli.EXIT_OK, "F35: EXIT_OK mesmo quando rollback inexequível"
+    assert rc == _cli.EXIT_OK, "EXIT_OK mesmo após FULL-SNAPSHOT fallback"
     assert "ANALYZER REGRESSION" in out
+    # Mensagem "granular rollback inexequível" sinaliza fallback ativo
     assert "rollback inexequível" in out
-    # baseline + 1 post-fix call (sem retry porque rollback negou)
-    assert len(call_log) == 2
+    assert "FULL-SNAPSHOT rollback" in out
+    # Bad.xaml restaurado pra estado pré-loop (engine NUNCA deixa pior)
+    assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
+
+
+def test_gate_empty_filepath_triggers_full_snapshot_rollback(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """REGRESSION (pilot contestacao-de-compras 2026-05-27): analyzer reporta
+    error PROJECT-LEVEL (FilePath vazio em uipcli JSON → AnalyzerIssue.file = "").
+    Pré-fix: err_files = {""}, granular filter nunca casa, rollback inexequível,
+    engine deixa projeto com regressões aplicadas. Fix B2: FULL-SNAPSHOT
+    fallback ativa quando granular não restaura nada AND existem new errors.
+    """
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        n = len(call_log)
+        if n == 1:
+            return set()
+        # Project-level error: FilePath vazio → basename = ""
+        # Reproduz pilot pré-fix: "Não foi possível realizar a análise do projeto"
+        return {_make_issue("", "ST-PROJECT-LEVEL", "Error",
+                            "Não foi possível realizar análise")}
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+
+    assert rc == _cli.EXIT_OK
+    assert "ANALYZER REGRESSION" in out
+    assert "FULL-SNAPSHOT rollback" in out, (
+        "Empty-FilePath analyzer error deve disparar full-snapshot fallback"
+    )
+    # Bad.xaml restaurado mesmo sem basename match
+    assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
 
 
 def test_gate_disabled_no_retry_logic(

@@ -12,7 +12,7 @@ Background:
 
   Fix obrigatório: plug activity OCR/CV no body. Sicoob default =
   `<p1:UiPathScreenOCR Image="[Image]" ... />` (pacote uipath.ocr.activities,
-  pin D-1k = 3.22.0).
+  pin canonical D-1k — ver `assets/canonical_pins.yaml`).
 
 Detector strategy:
   Scan content. Para cada propriedade `<...:Foo.{OCREngine|CVEngine}>`:

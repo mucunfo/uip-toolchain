@@ -123,6 +123,63 @@ def test_idempotent_already_declared(tmp_path):
     assert changed is False
 
 
+def test_idempotent_annotated_property(tmp_path):
+    """REGRESSION (pilot contestacao-de-compras 2026-05-27): property declarada
+    com `sap2010:Annotation.AnnotationText` prefix ANTES de `Name=` deve disparar
+    idempotência. Bug original: regex `\\bName=...\\b` falhava em trailing `\\b`
+    pq `"` + ` ` ambos non-word chars não formam word boundary → duplicate
+    `<x:Property>` injetado → Studio analyzer ArgumentException.
+    """
+    xaml = tmp_path / "InitAllApplications.xaml"
+    annotated = '''<?xml version="1.0" encoding="utf-8"?>
+<Activity x:Class="Sub"
+  xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+  xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib"
+  xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property sap2010:Annotation.AnnotationText="Dictionary structure to store config." Name="in_Config" Type="InArgument(scg:Dictionary(x:String, x:Object))" />
+  </x:Members>
+  <Sequence />
+</Activity>
+'''
+    xaml.write_text(annotated, encoding="utf-8")
+    spec = {
+        "type": "inject_missing_args",
+        "arg_name": "in_Config",
+        "inferred_type": "InArgument(scg:Dictionary(x:String, x:Object))",
+        "source": "canonical",
+    }
+    changed = apply_inject_missing_args(xaml, spec, dry_run=False)
+    assert changed is False, "Annotated property should trigger idempotency skip"
+    # File não mutado
+    assert xaml.read_text(encoding="utf-8") == annotated
+
+
+def test_idempotent_reverse_attribute_order(tmp_path):
+    """Property com Type antes de Name também deve skipar."""
+    xaml = tmp_path / "Sub.xaml"
+    reversed_order = '''<?xml version="1.0" encoding="utf-8"?>
+<Activity x:Class="Sub"
+  xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Type="InArgument(x:String)" Name="in_StFoo" />
+  </x:Members>
+  <Sequence />
+</Activity>
+'''
+    xaml.write_text(reversed_order, encoding="utf-8")
+    spec = {
+        "type": "inject_missing_args",
+        "arg_name": "in_StFoo",
+        "inferred_type": "InArgument(x:String)",
+        "source": "canonical",
+    }
+    changed = apply_inject_missing_args(xaml, spec, dry_run=False)
+    assert changed is False
+
+
 def test_inject_into_empty_members(tmp_path):
     """<x:Members></x:Members> sem properties → inject ok."""
     xaml = tmp_path / "Sub.xaml"

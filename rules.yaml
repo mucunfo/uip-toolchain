@@ -1316,33 +1316,33 @@ rules:
     detect:
       type: agent_only
 
+  - id: W-MSCORLIB-REF
+    severity: INFO
+    category: architectural
+    target: windows
+    title: "<AssemblyReference>mscorlib</AssemblyReference> em XAML (legacy artifact)"
+    description: |
+      Activity Migrator pós Legacy→Windows converte `xmlns:` corretamente
+      pra `System.Private.CoreLib` mas deixa `<AssemblyReference>mscorlib`
+      no bloco `TextExpression.ReferencesForImplementation`. Bench reference
+      tem esse padrão em todos XAMLs e compila/executa OK.
+
+      Não bloqueia compile + runtime. Reportado como INFO pra rastreabilidade
+      e eventual cleanup batch (não auto-aplicado: removal pode requerer
+      Modern UI Studio refresh).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+    detect:
+      type: regex
+      pattern: "<AssemblyReference>mscorlib</AssemblyReference>"
+
 # ---- J — project.json ----
 
-  - id: J-1
-    severity: ERROR
-    category: breaking
-    target: all
-    title: "studioVersion deve ser \"23.10.13\""
-    description: |
-      Diretriz Sicoob: Studio alvo é 2023.10.13 (LTS). Toda criação ou edição
-      de `project.json` deve gravar `"studioVersion": "23.10.13"`. Outras
-      versões (21.x, 24.x, 25.x) = violação. Reavaliar somente quando o
-      usuário sinalizar mudança de diretriz, não com base em versão local.
-    applies_to:
-      include: ["project.json"]
-    detect:
-      type: json_field_check
-      params:
-        path: studioVersion
-        expected: "23.10.13"
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_json_field
-        path: studioVersion
-        value: "23.10.13"
-      prose: |
-        Editar `project.json` setando `"studioVersion": "23.10.13"`.
+  # J-1 (studioVersion pin) sintetizado em parse-time pelo loader a partir
+  # de `assets/canonical_pins.yaml::studio.version`. Ver `canonical.py`.
 
   - id: J-4
     severity: ERROR
@@ -1734,6 +1734,61 @@ rules:
         Reescrever `project.json::arguments.input/output[*].type` pra short
         form sem assembly clause (.NET Framework v4 refs). Studio resolve via
         project deps em Windows target.
+
+  - id: J-MUST-RESTORE-ALL
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "runtimeOptions.mustRestoreAllDependencies == true"
+    description: |
+      `mustRestoreAllDependencies=true` força Studio/Robot a restaurar TODAS
+      as deps declaradas em `project.json` (não cherry-pick). Garante que
+      pin canonical (D-1*) reflete grafo real do .nuspec gerado por pack.
+      Default Sicoob obrigatório. Bench reference tem true; pilot deve
+      espelhar.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: json_field_check
+      params:
+        path: runtimeOptions.mustRestoreAllDependencies
+        expected: true
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: set_json_field
+        path: runtimeOptions.mustRestoreAllDependencies
+        value: true
+      prose: |
+        Setar `runtimeOptions.mustRestoreAllDependencies = true` em
+        `project.json`.
+
+  - id: J-PIN-BRACKETS
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "dependencies devem usar formato [X.Y.Z] estrito"
+    description: |
+      Toda dependency em `project.json::dependencies` deve usar `[X.Y.Z]`
+      (pin estrito) — não `"X.Y.Z"` (range flutuante NuGet) nem range
+      complexo (`[1.0,2.0)`, `1.0.*`). Range flutuante deixa NuGet pegar
+      versão diferente em re-restore, quebrando determinismo Sicoob.
+
+      Caso real: pilot tem `"UiPath.ComputerVision.LocalServer": "21.10.1"`
+      sem brackets. Engine wrap automaticamente.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.pin_brackets
+        function: detect_pin_brackets
+    fix:
+      apply_class: deterministic
+      prose: |
+        Trocar valor de dependency pra formato `[X.Y.Z]`. Engine resolve
+        automaticamente para pin simples `"X.Y.Z"`; ranges complexos
+        exigem decisão manual sobre qual versão pinar.
 
 # ---- X — Compile/runtime preventers (extraídos de lints atuais) ----
 
@@ -2846,7 +2901,7 @@ rules:
 
       Fix: inserir activity OCR/CV no body do ActivityFunc. Para Sicoob,
       default é `<p1:UiPathScreenOCR>` do pacote `UiPath.OCR.Activities`
-      (pin D-1k = 3.24.0). xmlns canônico:
+      (pin canonical D-1k — ver `assets/canonical_pins.yaml`). xmlns canônico:
       `http://schemas.uipath.com/workflow/activities/ocr`.
 
       Por ser structural (depende de decidir qual engine plugar — pode ser
@@ -2876,7 +2931,8 @@ rules:
         ```
         Adicionar `xmlns:p1="http://schemas.uipath.com/workflow/activities/ocr"`
         no root do XAML se ausente. Confirmar `UiPath.OCR.Activities` em
-        `project.json::dependencies` (pin D-1k = 3.24.0).
+        `project.json::dependencies` (pin canonical D-1k — ver
+        `assets/canonical_pins.yaml`).
 
   - id: S-19
     severity: ERROR
@@ -3997,339 +4053,99 @@ rules:
 
 # ---- D — Dependencies ----
 
-  - id: D-1a
-    severity: ERROR
-    category: breaking
+# D-1a..D-1<N> + J-STUDIO-PIN são sintetizados em parse-time pelo loader
+# a partir de `assets/canonical_pins.yaml` (source-of-truth única dos pins
+# Sicoob). Adicionar pin novo = editar canonical_pins.yaml. Loader pega
+# automaticamente. Ver `src/uip_engine/canonical.py`.
+
+  - id: CFG-BINDING-REDIRECT-IGNORED
+    severity: WARN
+    category: architectural
     target: windows
-    title: "UiPath.System.Activities == [25.4.4]"
+    title: ".config bindingRedirect ignorado em .NET 6+"
     description: |
-      Pin EXATO Sicoob: `UiPath.System.Activities` `[25.4.4]`.
-      Versões anteriores não corrigem WorkerProcess.exe .NET 6 detection.
-      Versões posteriores (latest stable injetado por Activity Migrator)
-      podem introduzir APIs exclusivas que quebram quando engine realinha
-      ao pin. Drift em qualquer direção (maior OU menor) é violação policy.
+      `<bindingRedirect>` em App.config / *.exe.config / *.dll.config é
+      **silenciosamente ignorado em .NET 6+**. UiPath Windows target roda
+      em .NET 6+ runtime; configs com redirects pré-existentes (.NET
+      Framework era) deixam dev acreditando que binding está garantido
+      quando NuGet escolheu lowest-applicable transitive.
+
+      .NET 6+ resolve binding via `runtimeconfig.json` + `.deps.json` —
+      NÃO via `<bindingRedirect>`. Pinar versões em project.json é o path
+      correto pra forçar resolver versão específica.
     applies_to:
       include: ["project.json"]
     detect:
-      type: nuget_version_check
+      type: python
       params:
-        package: UiPath.System.Activities
-        exact: "25.4.4"
+        module: uip_engine.heuristics.binding_redirect
+        function: detect_binding_redirect
     fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.System.Activities
-        version: "[25.4.4]"
+      apply_class: structural
       prose: |
-        Pinar `dependencies."UiPath.System.Activities" = "[25.4.4]"`.
+        Remover `<bindingRedirect>` do .config (não tem efeito). Se há
+        conflito transitive real, pinar versão em `project.json::dependencies`
+        — NuGet escolhe a versão pinada como floor.
 
-  - id: D-1b
+  - id: D-TRANSITIVE-CONFLICT
     severity: ERROR
     category: breaking
     target: windows
-    title: "UiPath.UIAutomation.Activities == [25.10.8]"
+    title: "Transitive dependency conflict / downgrade skew"
     description: |
-      Pin EXATO Sicoob: `UiPath.UIAutomation.Activities` `[25.10.8]`.
-      Versões anteriores não têm fixes Modern activities (Find Elements,
-      ScreenPlay). Versões posteriores (ex: 25.10.21 injetado por Activity
-      Migrator) trazem APIs exclusivas (RetryScope.LogRetriedExceptions,
-      CopyFile.DestinationResource, NWindowOperation) que quebram quando
-      engine realinha ao pin. Drift em qualquer direção é violação policy.
+      Detecta duas classes de problema em `.local/AllDependencies.json`:
+
+      **(1) Duplicate identity**: mesmo package nome resolvido em 2+ versões
+      sob mesmo TFM. Raro em single-target NuGet restore — anomalia.
+
+      **(2) Downgrade skew**: package A declara `dependencies.B >= Y.Y.Y`,
+      mas graph resolve B em versão `< Y.Y.Y`. NuGet pega lowest-applicable
+      transitive; pode dropar API requerida por A → `MissingMethodException`
+      runtime.
+
+      Caso típico Sicoob: UIA + Excel + CCS_* compartilham `Newtonsoft.Json`
+      mas declaram versions diferentes. NuGet escolhe uma; outras travam
+      em runtime.
     applies_to:
       include: ["project.json"]
     detect:
-      type: nuget_version_check
+      type: python
       params:
-        package: UiPath.UIAutomation.Activities
-        exact: "25.10.8"
+        module: uip_engine.heuristics.transitive_dep
+        function: detect_transitive_conflict
     fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.UIAutomation.Activities
-        version: "[25.10.8]"
+      apply_class: structural
       prose: |
-        Pinar `dependencies."UiPath.UIAutomation.Activities" = "[25.10.8]"`.
+        Resolver via pin explícito em `project.json::dependencies` da versão
+        mais alta requerida no graph. Sem fix mecânico — drift de versão
+        transitiva exige decisão arquitetural (qual versão honrar).
 
-  - id: D-1c
+  - id: D-1q-CCS-AUTO
     severity: ERROR
     category: breaking
     target: windows
-    title: "UiPath.Excel.Activities == [3.1.2]"
+    title: "CCS_* deve pinar versão mais recente em .nupkgs/"
     description: |
-      Pin EXATO Sicoob: `UiPath.Excel.Activities` `[3.1.2]`. Drift em
-      qualquer direção (maior OU menor) é violação policy — Activity
-      Migrator pode injetar latest stable; engine realinha ao pin.
+      Pacotes CCS_* Sicoob são distribuídos via `.nupkgs/` local
+      (`C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.nupkgs`). Detector
+      resolve dinamicamente a versão mais recente por pacote (max semver
+      de filenames `CCS_X.Y.Z.nupkg`) e exige que `project.json::dependencies`
+      reflita esse valor.
+
+      Sem canonical_pins.yaml: versão muda quando dev solta novo `.nupkg`,
+      latest-on-disk evita atualizar YAML manualmente.
     applies_to:
       include: ["project.json"]
     detect:
-      type: nuget_version_check
+      type: python
       params:
-        package: UiPath.Excel.Activities
-        exact: "3.1.2"
+        module: uip_engine.heuristics.ccs_latest_pin
+        function: detect_ccs_latest_pin
     fix:
       apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.Excel.Activities
-        version: "[3.1.2]"
       prose: |
-        Pinar `dependencies."UiPath.Excel.Activities" = "[3.1.2]"`.
-
-  - id: D-1d
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.Database.Activities == [1.10.1]"
-    description: |
-      Pin EXATO Sicoob: `UiPath.Database.Activities` `[1.10.1]`.
-      Pré-1.10.0 tinha bug Try/Catch em Windows que corrompia routing
-      BusinessException × SystemException. Drift em qualquer direção
-      (maior OU menor) é violação policy.
-    applies_to:
-      include: ["project.json"]
-    detect:
-      type: nuget_version_check
-      params:
-        package: UiPath.Database.Activities
-        exact: "1.10.1"
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.Database.Activities
-        version: "[1.10.1]"
-      prose: |
-        Pinar `dependencies."UiPath.Database.Activities" = "[1.10.1]"`.
-
-  - id: D-1e
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.WebAPI.Activities == [1.20.1]"
-    description: |
-      Pin EXATO Sicoob: `UiPath.WebAPI.Activities` `[1.20.1]`. v1.20.0 foi
-      withdrawn. v1.20.1 corrige UTF-8 file download corruption. Drift em
-      qualquer direção (maior OU menor) é violação policy — Activity
-      Migrator pode injetar latest stable; engine realinha ao pin.
-    applies_to:
-      include: ["project.json"]
-    detect:
-      type: nuget_version_check
-      params:
-        package: UiPath.WebAPI.Activities
-        exact: "1.20.1"
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.WebAPI.Activities
-        version: "[1.20.1]"
-      prose: |
-        Pinar `dependencies."UiPath.WebAPI.Activities" = "[1.20.1]"`.
-
-  # D-1f..o: pacotes adicionais pinados (Migração - Legacy.xlsx Dependências)
-  - id: D-1f
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.Cryptography.Activities == [1.4.2]"
-    description: |
-      Pin EXATO Sicoob: `[1.4.2]` (Migração Legacy). Drift em qualquer
-      direção (maior OU menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.Cryptography.Activities, exact: "1.4.2" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.Cryptography.Activities
-        version: "[1.4.2]"
-      prose: 'Pinar `dependencies."UiPath.Cryptography.Activities" = "[1.4.2]"`.'
-
-  - id: D-1g
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.DocumentUnderstanding.OCR.LocalServer == [1.5.1]"
-    description: |
-      Pin EXATO Sicoob: `[1.5.1]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.DocumentUnderstanding.OCR.LocalServer, exact: "1.5.1" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.DocumentUnderstanding.OCR.LocalServer
-        version: "[1.5.1]"
-      prose: 'Pinar `dependencies."UiPath.DocumentUnderstanding.OCR.LocalServer" = "[1.5.1]"`.'
-
-  - id: D-1h
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.IntelligentOCR.Activities == [6.24.0]"
-    description: |
-      Pin EXATO Sicoob: `[6.24.0]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.IntelligentOCR.Activities, exact: "6.24.0" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.IntelligentOCR.Activities
-        version: "[6.24.0]"
-      prose: 'Pinar `dependencies."UiPath.IntelligentOCR.Activities" = "[6.24.0]"`.'
-
-  - id: D-1i
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.Mail.Activities == [1.24.2]"
-    description: |
-      Pin EXATO Sicoob: `[1.24.2]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.Mail.Activities, exact: "1.24.2" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.Mail.Activities
-        version: "[1.24.2]"
-      prose: 'Pinar `dependencies."UiPath.Mail.Activities" = "[1.24.2]"`.'
-
-  - id: D-1j
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.MicrosoftOffice365.Activities == [2.7.24]"
-    description: |
-      Pin EXATO Sicoob: `[2.7.24]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.MicrosoftOffice365.Activities, exact: "2.7.24" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.MicrosoftOffice365.Activities
-        version: "[2.7.24]"
-      prose: 'Pinar `dependencies."UiPath.MicrosoftOffice365.Activities" = "[2.7.24]"`.'
-
-  - id: D-1k
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.OCR.Activities == [3.24.0]"
-    description: |
-      Pin EXATO Sicoob: `[3.24.0]`. Drift em qualquer direção (maior OU
-      menor) é violação policy. Alinhado com peer dependency de
-      UIA.Runtime 25.10.29 (requer OCR.Activities >= 3.24.0).
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.OCR.Activities, exact: "3.24.0" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.OCR.Activities
-        version: "[3.24.0]"
-      prose: 'Pinar `dependencies."UiPath.OCR.Activities" = "[3.24.0]"`.'
-
-  - id: D-1l
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.PDF.Activities == [3.22.1]"
-    description: |
-      Pin EXATO Sicoob: `[3.22.1]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.PDF.Activities, exact: "3.22.1" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.PDF.Activities
-        version: "[3.22.1]"
-      prose: 'Pinar `dependencies."UiPath.PDF.Activities" = "[3.22.1]"`.'
-
-  - id: D-1m
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPath.Testing.Activities == [24.10.4]"
-    description: |
-      Pin EXATO Sicoob: `[24.10.4]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPath.Testing.Activities, exact: "24.10.4" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPath.Testing.Activities
-        version: "[24.10.4]"
-      prose: 'Pinar `dependencies."UiPath.Testing.Activities" = "[24.10.4]"`.'
-
-  - id: D-1n
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UiPathTeam.SharePoint.Activities == [2.0.3]"
-    description: |
-      Pin EXATO Sicoob: `[2.0.3]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UiPathTeam.SharePoint.Activities, exact: "2.0.3" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UiPathTeam.SharePoint.Activities
-        version: "[2.0.3]"
-      prose: 'Pinar `dependencies."UiPathTeam.SharePoint.Activities" = "[2.0.3]"`.'
-
-  - id: D-1o
-    severity: ERROR
-    category: breaking
-    target: windows
-    title: "UipathTeam.XML.Activities == [1.1.0]"
-    description: |
-      Pin EXATO Sicoob: `[1.1.0]`. Drift em qualquer direção (maior OU
-      menor) é violação policy.
-    applies_to: { include: ["project.json"] }
-    detect:
-      type: nuget_version_check
-      params: { package: UipathTeam.XML.Activities, exact: "1.1.0" }
-    fix:
-      apply_class: deterministic
-      mechanical:
-        type: set_dependency_pin
-        package: UipathTeam.XML.Activities
-        version: "[1.1.0]"
-      prose: 'Pinar `dependencies."UipathTeam.XML.Activities" = "[1.1.0]"`.'
+        Pinar `dependencies."CCS_*"` na versão `[X.Y.Z]` mais recente em
+        `.nupkgs/`. Engine resolve automaticamente — `fix --apply` aplica.
 
   - id: D-PINALERT
     severity: ERROR

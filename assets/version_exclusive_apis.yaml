@@ -3,6 +3,13 @@
 # Consumido por heuristic `uip_engine.heuristics.pin_alert.detect_pin_alert`
 # (rule D-PIN-ALERT em rules.yaml).
 #
+# Status manual atual. Roadmap Tier 3 substitui catálogo por harvester
+# automático via `runners/api_probe/` (Cecil / System.Reflection.Metadata
+# sobre `.nupkg` pinados em canonical_pins.yaml). Quando harvester ship'ar:
+#  - Engine carrega catálogo gerado em `.uip-toolchain/.tmp/api_surface_<pkg>_<ver>.json`
+#  - Diff entre pin canonical e versões superiores popula introduced_in
+#  - Este YAML continua como override manual pra casos refinados (mechanical: ...)
+#
 # Para cada package, lista APIs/atributos/elementos XAML que só existem em
 # versões >= `introduced_in`. Quando `project.json::dependencies[<package>]`
 # tem versão pinada < `introduced_in` AND algum XAML do projeto contém o

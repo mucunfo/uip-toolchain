@@ -1,0 +1,103 @@
+# Source-of-truth dos pins Sicoob.
+#
+# - Esta é a única lista canônica de versões. Loader (`uip_engine.loader`)
+#   sintetiza regras D-1a..D-1<N> e J-STUDIO-PIN automaticamente a partir
+#   deste arquivo em parse-time.
+# - Adicionar pin novo = adicionar entry em `pins:`. Pronto.
+# - Atualizar pin existente = trocar `exact:`. Pronto.
+# - Pacotes CCS_* NÃO entram aqui — versão resolvida dinamicamente do
+#   path `.nupkgs/` (rule D-1q-CCS-AUTO + `heuristics/ccs_latest_pin.py`).
+#
+# Schema:
+#   studio.version           pin exato Studio
+#   pins[].id                Rule ID gerado (D-1a..D-1z, depois D-1aa..)
+#   pins[].package           nome NuGet
+#   pins[].exact             versão semver sem brackets
+#   pins[].rationale         (opcional) override do template generic
+
+version: 1
+
+studio:
+  version: "23.10.13"
+
+pins:
+  - id: D-1a
+    package: UiPath.System.Activities
+    exact: "25.4.4"
+    rationale: |
+      Versões anteriores não corrigem WorkerProcess.exe .NET 6 detection.
+      Versões posteriores (latest stable injetado por Activity Migrator)
+      podem introduzir APIs exclusivas que quebram quando engine realinha
+      ao pin.
+
+  - id: D-1b
+    package: UiPath.UIAutomation.Activities
+    exact: "25.10.8"
+    rationale: |
+      Versões anteriores não têm fixes Modern activities (Find Elements,
+      ScreenPlay). Versões posteriores (ex: 25.10.21 injetado por Activity
+      Migrator) trazem APIs exclusivas (RetryScope.LogRetriedExceptions,
+      CopyFile.DestinationResource, NWindowOperation) que quebram quando
+      engine realinha ao pin.
+
+  - id: D-1c
+    package: UiPath.Excel.Activities
+    exact: "3.1.2"
+
+  - id: D-1d
+    package: UiPath.Database.Activities
+    exact: "1.10.1"
+    rationale: |
+      Pré-1.10.0 tinha bug Try/Catch em Windows que corrompia routing
+      BusinessException × SystemException.
+
+  - id: D-1e
+    package: UiPath.WebAPI.Activities
+    exact: "1.20.1"
+    rationale: |
+      v1.20.0 foi withdrawn. v1.20.1 corrige UTF-8 file download corruption.
+
+  - id: D-1f
+    package: UiPath.Cryptography.Activities
+    exact: "1.4.2"
+    rationale: "Migração Legacy."
+
+  - id: D-1g
+    package: UiPath.DocumentUnderstanding.OCR.LocalServer
+    exact: "1.5.1"
+
+  - id: D-1h
+    package: UiPath.IntelligentOCR.Activities
+    exact: "6.24.0"
+
+  - id: D-1i
+    package: UiPath.Mail.Activities
+    exact: "1.24.2"
+
+  - id: D-1j
+    package: UiPath.MicrosoftOffice365.Activities
+    exact: "2.7.24"
+
+  - id: D-1k
+    package: UiPath.OCR.Activities
+    exact: "3.22.0"
+
+  - id: D-1l
+    package: UiPath.PDF.Activities
+    exact: "3.22.1"
+
+  - id: D-1m
+    package: UiPath.Testing.Activities
+    exact: "24.10.4"
+
+  - id: D-1n
+    package: UiPathTeam.SharePoint.Activities
+    exact: "2.0.3"
+
+  - id: D-1o
+    package: UipathTeam.XML.Activities
+    exact: "1.1.0"
+
+  - id: D-1p
+    package: UiPath.ComputerVision.LocalServer
+    exact: "21.10.1"

@@ -56,8 +56,17 @@ def load_rules(
     path: Path | str,
     registered_detectors: set[str] | None = None,
     registered_fixers: set[str] | None = None,
+    inject_canonical: bool = True,
 ) -> list[Rule]:
-    """Parse YAML and validate schema. Raises SchemaError on any violation."""
+    """Parse YAML and validate schema. Raises SchemaError on any violation.
+
+    `inject_canonical=True` (default) sintetiza D-1* + J-1 a partir de
+    `assets/canonical_pins.yaml` e prepende em `rules_raw` (idempotente:
+    skip ID já presente). Production code usa default.
+
+    Testes que carregam fixtures isoladas (rules_sample.yaml, empty.yaml)
+    passam `inject_canonical=False` pra evitar contaminação.
+    """
     p = Path(path)
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
 
@@ -69,6 +78,25 @@ def load_rules(
     rules_raw = raw.get("rules", [])
     if not isinstance(rules_raw, list):
         raise SchemaError(f"{p}: rules must be a list")
+
+    # Injeta regras D-1* + J-1 sintetizadas do canonical_pins.yaml.
+    # Idempotente: skip ID já presente em rules.yaml (coexistência durante
+    # transição). Quando rules.yaml não contém mais blocos D-1* verbose,
+    # injection vira a única fonte.
+    if inject_canonical:
+        from .canonical import synthesize_canonical_rules
+        explicit_ids: set[str] = {
+            r["id"] for r in rules_raw
+            if isinstance(r, dict) and isinstance(r.get("id"), str)
+        }
+        try:
+            injected = [
+                r for r in synthesize_canonical_rules()
+                if r["id"] not in explicit_ids
+            ]
+        except Exception as e:
+            raise SchemaError(f"canonical_pins.yaml: {e}") from e
+        rules_raw = injected + rules_raw
 
     rules: list[Rule] = []
     seen_ids: set[str] = set()

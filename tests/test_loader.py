@@ -7,28 +7,28 @@ FIX = Path(__file__).parent / "fixtures"
 
 
 def test_load_sample_rules_returns_list():
-    rules = load_rules(FIX / "rules_sample.yaml")
+    rules = load_rules(FIX / "rules_sample.yaml", inject_canonical=False)
     assert len(rules) == 2
     ids = {r.id for r in rules}
     assert ids == {"X-1", "A-3"}
 
 
 def test_load_sets_severity_enum():
-    rules = load_rules(FIX / "rules_sample.yaml")
+    rules = load_rules(FIX / "rules_sample.yaml", inject_canonical=False)
     by_id = {r.id: r for r in rules}
     assert by_id["X-1"].severity == Severity.ERROR
     assert by_id["A-3"].severity == Severity.WARN
 
 
 def test_load_validates_category():
-    rules = load_rules(FIX / "rules_sample.yaml")
+    rules = load_rules(FIX / "rules_sample.yaml", inject_canonical=False)
     by_id = {r.id: r for r in rules}
     assert by_id["X-1"].category == Category.BREAKING
     assert by_id["A-3"].category == Category.ARCHITECTURAL
 
 
 def test_load_validates_target():
-    rules = load_rules(FIX / "rules_sample.yaml")
+    rules = load_rules(FIX / "rules_sample.yaml", inject_canonical=False)
     for r in rules:
         assert r.target in Target.VALID
 
@@ -92,5 +92,5 @@ rules:
 def test_load_empty_rules_file(tmp_path):
     empty = tmp_path / "empty.yaml"
     empty.write_text("version: 1\nrules: []\n")
-    rules = load_rules(empty)
+    rules = load_rules(empty, inject_canonical=False)
     assert rules == []

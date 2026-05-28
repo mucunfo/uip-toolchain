@@ -41,9 +41,10 @@ _MIGRATOR_BIN_NAMES = (
 
 # Whitelist Sicoob: activities Classic onde Migrator UiPath reporta
 # `UIAUTOMATION-ACTIVITY-MIGRATION-ERROR-MigrationNotImplemented` MAS a activity
-# é runtime-compat com UIA Modern 25.10.8 (pin Sicoob D-1b). Migrator decide
-# não bumpar `targetFramework` por causa desses errors; engine força bump
-# quando TODAS as activities not-implemented estão aqui.
+# é runtime-compat com UIA Modern (pin canonical D-1b — ver
+# `assets/canonical_pins.yaml`). Migrator decide não bumpar `targetFramework`
+# por causa desses errors; engine força bump quando TODAS as activities
+# not-implemented estão aqui.
 #
 # Adicionar entry só após validar manualmente: (a) activity preservada em REF
 # Sicoob migrado (ex: importar-cadastro-avais-fiancas-honrados-performer),
@@ -459,6 +460,22 @@ def cmd_migrate_windows(args) -> int:
         cmd.extend(["--output-path", str(out)])
     if getattr(args, "ignore_missing_dependencies", False):
         cmd.append("--ignore-missing-dependencies")
+
+    # Inject canonical UIA + O365 pins. Migrator default UIA=25.10.21 / O365=3.6.10
+    # (floors) — Sicoob canonical é abaixo desses floors. Passamos os pins
+    # esperando Migrator honrar quando viável; se Migrator overrider para floor,
+    # D-1* post-fix realinha em PHASE 3. Honest best-effort.
+    try:
+        from .canonical import canonical_pin_for
+        uia_pin = canonical_pin_for("UiPath.UIAutomation.Activities")
+        o365_pin = canonical_pin_for("UiPath.MicrosoftOffice365.Activities")
+    except Exception:
+        uia_pin, o365_pin = None, None
+    if uia_pin:
+        cmd.extend(["--uia-package-version", uia_pin])
+    if o365_pin:
+        cmd.extend(["--mail-o365-package-version", o365_pin])
+
     extra = (args.migrator_args or "").split()
     cmd.extend(extra)
     print(f"# cmd    : {' '.join(cmd)}\n")
@@ -510,8 +527,9 @@ def cmd_migrate_windows(args) -> int:
         # Migrator pode reportar exit=0 + criar _Migrated/ mas NÃO bumpar tf
         # quando há `MigrationNotImplemented` errors. Algumas activities Classic
         # marcadas not-implemented (ex: SaveImage) são runtime-compat com UIA
-        # Modern (pin Sicoob D-1b 25.10.8). Engine força bump quando todas
-        # not-implemented são benignas (whitelist Sicoob).
+        # Modern (pin canonical D-1b — ver `assets/canonical_pins.yaml`).
+        # Engine força bump quando todas not-implemented são benignas
+        # (whitelist Sicoob).
         not_impl_types = _parse_migration_not_implemented_types(res.stdout or "")
         if not_impl_types:
             non_benign = not_impl_types - _BENIGN_MIGRATION_NOT_IMPLEMENTED
@@ -521,7 +539,7 @@ def cmd_migrate_windows(args) -> int:
                     print(
                         f"# tf-force: bump tf=Windows aplicado. "
                         f"MigrationNotImplemented em {sorted(not_impl_types)} "
-                        f"todas na whitelist Sicoob (compat UIA Modern 25.10.8).",
+                        f"todas na whitelist Sicoob (compat UIA Modern pin canonical D-1b).",
                         file=sys.stderr,
                     )
                     new_tf = "Windows"

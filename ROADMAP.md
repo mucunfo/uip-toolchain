@@ -25,7 +25,7 @@ Se métricas divergem → investigar antes de avançar.
 - `.uipath-rules/` → `.uip-toolchain/` (pasta + GitHub repo)
 - Pacote Python `rule_engine` → `uip_engine`
 - Pip dist `rule-engine` → `uip-toolchain`
-- Layout PEP 518 `src/`: `src/uip_engine/`, `tools/`, `hooks/`, `evals/`, `experiments/`, `migrator/`
+- Layout PEP 518 `src/`: `src/uip_engine/`, `tools/`, `hooks/`, `experiments/`, `migrator/`
 - Env vars `UIPATH_RULES_*` + `RULE_ENGINE_*` → `UIP_TOOLCHAIN_*` (19 vars)
 - `.factory/` umbrella criado pra 4 seeds Sicoob (activities/cli/orchestrator/studio-research)
 - Backup branch: `origin/backup/pre-uip-toolchain-rename` SHA 9e099bcf04cf894f386daeaa027308f2e4bb2b47
