@@ -23,14 +23,6 @@ sys.path.insert(0, str(ROOT))
 
 from uip_engine import cli as cli_mod  # noqa: E402
 from uip_engine._types import Finding, Severity, ValidationResult  # noqa: E402
-from uip_engine.runtime_loadtest import _binary_path as _rlt_binary_path  # noqa: E402
-
-# O gate runtime_loadtest (4o gate do `all`) precisa do binario .NET
-# runtime_loadtest.exe. CI / hosts sem `dotnet build` não o têm — igual a
-# nuget/uipcli (ver docstring do módulo). Tests que exercem o pipeline `all`
-# REAL (sem stub desse gate) skipam quando o binario está ausente, em vez de
-# falhar com RT-LOAD-INFRA (rc=1). Mesma política do skipif de test_hooks.
-_RLT_BINARY_MISSING = _rlt_binary_path() is None
 
 
 # ---------------------------------------------------------------------------
@@ -312,18 +304,15 @@ class _ReviewArgs:
         self.pack_gate_timeout = 60
 
 
-@pytest.mark.skipif(
-    _RLT_BINARY_MISSING,
-    reason="runtime_loadtest.exe não buildado (gate env-dependent; CI não faz "
-           "dotnet build). Sem stub desse gate, RT-LOAD-INFRA torna rc=1.",
-)
 def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, monkeypatch):
-    """Sem --no-analyzer-gate, review chama _inject_analyzer_findings.
+    """Sem --no-analyzer-gate, review invoca os 4 gates externos.
 
-    Verifica que a função é INVOCADA (mesmo se uipcli ausente skipa).
     Conftest seta UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 — aqui deletamos p/
-    testar o caminho real (com stubs). Skipa se runtime_loadtest.exe ausente
-    (4o gate não-stubado emitiria RT-LOAD-INFRA → rc=1).
+    testar o caminho real. Os 4 gates são STUBADOS (incl. runtime_loadtest),
+    então o teste roda no CI sem precisar dos binarios .NET (uipcli/nuget/
+    runtime_loadtest.exe) — verifica o WIRING (cada gate é chamado) + rc=OK,
+    sem depender do ambiente. (Cobertura real de cada gate = seus testes
+    dedicados.)
     """
     monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
 
@@ -331,7 +320,8 @@ def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, mo
     rf = tmp_path / "empty_rules.yaml"
     rf.write_text("version: 1\nrules: []\n", encoding="utf-8")
 
-    invoked = {"analyzer": False, "nuget": False, "pack": False}
+    invoked = {"analyzer": False, "nuget": False, "pack": False,
+               "loadtest": False, "compile": False}
 
     def _stub_analyzer(*a, **kw):
         invoked["analyzer"] = True
@@ -342,16 +332,30 @@ def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, mo
     def _stub_pack(*a, **kw):
         invoked["pack"] = True
 
+    def _stub_loadtest(*a, **kw):
+        invoked["loadtest"] = True
+
+    def _stub_compile(*a, **kw):
+        invoked["compile"] = True
+
     args = _ReviewArgs(str(proj), str(rf))
 
+    # Stuba TODOS os gates externos env-dependentes (cada um emite *-INFRA WARN
+    # quando seu binario .NET esta ausente — analyzer/uipcli/nuget/
+    # runtime_loadtest.exe/ActivityCompiler). No CI nenhum existe; stubando, o
+    # teste verifica o WIRING dos 5 gates + rc=OK sem depender do ambiente.
     with patch.object(cli_mod, "_inject_analyzer_findings", side_effect=_stub_analyzer), \
          patch.object(cli_mod, "_run_nuget_restore_gate", side_effect=_stub_nuget), \
-         patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_stub_pack):
+         patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_stub_pack), \
+         patch.object(cli_mod, "_run_runtime_loadtest_gate", side_effect=_stub_loadtest), \
+         patch.object(cli_mod, "_run_activity_compile_gate", side_effect=_stub_compile):
         rc = cli_mod._cmd_review(args)
 
     assert invoked["analyzer"], "analyzer gate não foi invocado"
     assert invoked["nuget"], "nuget gate não foi invocado"
     assert invoked["pack"], "pack gate não foi invocado"
+    assert invoked["loadtest"], "runtime_loadtest gate não foi invocado"
+    assert invoked["compile"], "activity_compile gate não foi invocado"
     assert rc == cli_mod.EXIT_OK
 
 
