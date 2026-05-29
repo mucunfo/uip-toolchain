@@ -1,15 +1,20 @@
-﻿"""CCS-1 detector tests — emite rename_attribute fix em casing mismatch.
+"""Audit CCS-1 — detector emite mech type novo + element scope.
 
-F36 safety guard REMOVIDO 2026-05-21: empiricamente Studio 23.10 reporta
-`Cannot set unknown member` independente de SecureString sibling. Engine
-cascade rollback gate (analyzer-gate F35) isola ST-SEC-008 regression
-per-file caso aconteça. Guard só deferia fix manual que nunca era feito.
+AUDIT_2026-05-28 finding CCS-1 (HIGH, detector!=fixer surface): o mech
+`rename_attribute` é no-op pra attribute NAMES (fixer skip-by-design via
+_is_attribute_name_context). Fix prescrito: detector passa a emitir
+`rename_attribute_name_in_tag` + `element` (o tag de invocação
+`<prefix:Workflow>`) pro novo fixer renomear o atributo NAME escopado ao
+open tag daquela invocação.
 
-Tests cobrem:
-  - Casing mismatch SEM SecureString sibling → fix_mechanical present
-  - Casing mismatch COM SecureString sibling → fix_mechanical STILL present
-    (mensagem inclui aviso sobre rollback gate)
-  - Casing exato → 0 findings (idempotente)
+Estes testes asseguram APENAS o lado detector (lane ccs_contract):
+  - mech type == "rename_attribute_name_in_tag"
+  - mech contém "element" == "<prefix>:<wf_name>"
+  - from/to continuam corretos (attr errado → casing do contract)
+  - casing correto → 0 findings (sem regressão de ruído)
+
+NÃO edita test_ccs_contract_securestring_guard.py (que ainda assere o type
+antigo) — aquele quebra de propósito e é reconciliado no Phase 3.
 """
 from __future__ import annotations
 
@@ -51,7 +56,6 @@ def _mk_project(tmp_path: Path) -> tuple[Path, ProjectContext]:
 
 
 def _write_xaml(proj: Path, body: str, name: str = "Foo.xaml") -> FileContext:
-    """Wrap body em activity com xmlns:c CCS_SipagDirect + xmlns:ss SecureString."""
     f = proj / name
     f.write_text(
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -68,7 +72,6 @@ def _write_xaml(proj: Path, body: str, name: str = "Foo.xaml") -> FileContext:
 
 @pytest.fixture(autouse=True)
 def _stub_ccs_contracts(monkeypatch):
-    """Mock _load_ccs_contracts — não depender de .nupkgs/ real."""
     fake_catalog = {
         "CCS_SipagDirect": {
             "Login": [
@@ -81,8 +84,8 @@ def _stub_ccs_contracts(monkeypatch):
     yield
 
 
-def test_ccs1_emits_rename_when_no_securestring(tmp_path):
-    """Login invocation sem SecureString sibling → fix_mechanical=rename_attribute."""
+def test_ccs1_mech_type_is_rename_attribute_name_in_tag(tmp_path):
+    """Post-audit: mech type troca de rename_attribute → rename_attribute_name_in_tag."""
     proj, pc = _mk_project(tmp_path)
     body = (
         '  <c:Login in_Url="http://x" in_Usuario="u" in_JanelaAnonima="False"\n'
@@ -91,20 +94,48 @@ def test_ccs1_emits_rename_when_no_securestring(tmp_path):
     )
     fc = _write_xaml(proj, body)
     findings = cc.detect_ccs_contract_check(_mk_rule(), fc, pc)
-    # 2 findings: in_Url + out_UiESipagDirect
+    # 2 findings: in_Url (→ in_URL) + out_UiESipagDirect (→ out_UIESipagDirect)
     assert len(findings) == 2
     for f in findings:
         assert f.fix_mechanical is not None
         assert f.fix_mechanical.get("type") == "rename_attribute_name_in_tag"
-        assert "NEEDS_REVIEW" not in f.message
 
 
-def test_ccs1_emits_rename_when_securestring_sibling(tmp_path):
-    """Login invocation com SecureString-bound sibling → fix_mechanical STILL present.
+def test_ccs1_mech_carries_element_scope(tmp_path):
+    """Mech inclui `element` = <prefix>:<wf_name> da invocação alvo."""
+    proj, pc = _mk_project(tmp_path)
+    body = (
+        '  <c:Login in_Url="http://x" in_Usuario="u" in_JanelaAnonima="False"\n'
+        '           out_UiESipagDirect="{x:Null}"\n'
+        '           in_Senha="senha_plain_text" />\n'
+    )
+    fc = _write_xaml(proj, body)
+    findings = cc.detect_ccs_contract_check(_mk_rule(), fc, pc)
+    assert len(findings) == 2
+    for f in findings:
+        assert f.fix_mechanical is not None
+        assert f.fix_mechanical.get("element") == "c:Login"
 
-    F36 guard removido: engine cascade rollback gate isola ST-SEC-008
-    regression caso rename dispare. Mensagem mantém aviso pra auditoria.
-    """
+
+def test_ccs1_mech_from_to_casing(tmp_path):
+    """from = attr errado; to = casing do contract; mapeados por finding."""
+    proj, pc = _mk_project(tmp_path)
+    body = (
+        '  <c:Login in_Url="http://x" in_Usuario="u" in_JanelaAnonima="False"\n'
+        '           out_UiESipagDirect="{x:Null}"\n'
+        '           in_Senha="senha_plain_text" />\n'
+    )
+    fc = _write_xaml(proj, body)
+    findings = cc.detect_ccs_contract_check(_mk_rule(), fc, pc)
+    pairs = {
+        (f.fix_mechanical["from"], f.fix_mechanical["to"]) for f in findings
+    }
+    assert ("in_Url", "in_URL") in pairs
+    assert ("out_UiESipagDirect", "out_UIESipagDirect") in pairs
+
+
+def test_ccs1_element_scope_with_securestring_sibling(tmp_path):
+    """Mesmo com SecureString sibling, mech mantém novo type + element."""
     proj, pc = _mk_project(tmp_path)
     body = (
         '  <Sequence>\n'
@@ -118,46 +149,15 @@ def test_ccs1_emits_rename_when_securestring_sibling(tmp_path):
     )
     fc = _write_xaml(proj, body)
     findings = cc.detect_ccs_contract_check(_mk_rule(), fc, pc)
-    # 2 findings com fix_mechanical present (sem guard)
     assert len(findings) == 2
     for f in findings:
-        assert f.fix_mechanical is not None, (
-            f"F36 removido — fix_mechanical SHOULD be present mesmo com "
-            f"SecureString sibling. got {f.fix_mechanical}"
-        )
+        assert f.fix_mechanical is not None
         assert f.fix_mechanical.get("type") == "rename_attribute_name_in_tag"
-        # Mensagem inclui aviso sobre rollback gate
-        assert "SecureString" in f.message
-        assert "vSsSenha" in f.message
-        assert "rollback" in f.message.lower()
-
-
-def test_ccs1_emits_rename_when_securestring_unrelated_invocation(tmp_path):
-    """SecureString var existe no doc mas Login invocation NÃO referencia
-    → fix_mechanical permanece (sem regressão potencial)."""
-    proj, pc = _mk_project(tmp_path)
-    body = (
-        '  <Sequence>\n'
-        '    <Sequence.Variables>\n'
-        '      <Variable x:TypeArguments="ss:SecureString" Name="vSsOutra"/>\n'
-        '    </Sequence.Variables>\n'
-        '    <c:Login in_Url="http://x" in_Usuario="u" in_JanelaAnonima="False"\n'
-        '             out_UiESipagDirect="{x:Null}"\n'
-        '             in_Senha="senha_literal" />\n'
-        '  </Sequence>\n'
-    )
-    fc = _write_xaml(proj, body)
-    findings = cc.detect_ccs_contract_check(_mk_rule(), fc, pc)
-    assert len(findings) == 2
-    for f in findings:
-        assert f.fix_mechanical is not None, (
-            "SecureString var NÃO referenciada por Login — fix_mechanical "
-            "deveria permanecer"
-        )
+        assert f.fix_mechanical.get("element") == "c:Login"
 
 
 def test_ccs1_no_findings_when_casing_correct(tmp_path):
-    """Casing exato match contract → 0 findings (não emite ruído)."""
+    """Casing exato match contract → 0 findings (não emite mech algum)."""
     proj, pc = _mk_project(tmp_path)
     body = (
         '  <c:Login in_URL="http://x" in_Usuario="u" in_JanelaAnonima="False"\n'

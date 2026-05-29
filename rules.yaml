@@ -8,7 +8,7 @@ metadata:
     Single source of truth for UiPath rules at Sicoob.
     Edit this file to add/modify/remove rules.
     See ARCHITECTURE.md for schema reference.
-  rule_count: 0  # auto-update at validation
+  rule_count: 0  # informativo apenas (nenhum código atualiza este campo)
 rules:
 
 # ============================================================
@@ -81,14 +81,16 @@ rules:
       include: ["**/*.xaml"]
     detect:
       type: regex
-      pattern: '<ui:Assign[\s>](?!Operation)'
+      # `[\s>]` já garante o boundary (não casa AssignOperation/MultipleAssign nem
+      # property-elements <ui:Assign.To>); o antigo (?!Operation) era dead code.
+      pattern: '<ui:Assign[\s>]'
     fix:
       mechanical:
         type: regex_replace
-        pattern: '<ui:Assign(\s|>)'
-        replacement: '<Assign\1'
+        pattern: '(</?)ui:(Assign)(?=[\s/>])'
+        replacement: '\1\2'
       prose: |
-        Remover prefixo `ui:` em `Assign`. Manter em `MultipleAssign`/`AssignOperation`.
+        Remover prefixo `ui:` em `Assign` (open + close tag). Manter em `MultipleAssign`/`AssignOperation`.
 
 # ---- W — Windows target migration breaking ----
 
@@ -218,6 +220,14 @@ rules:
         pattern: '\bNew\s+(?:Net\.)?NetworkCredential\s*\('
         replacement: 'New System.Net.NetworkCredential('
 
+# ---- W-11 AssemblyReference family — severity criterion ----
+# Todas compartilham category=breaking + insert_assembly_reference (deterministic).
+# Critério de severidade: regras a..h catalogam refs forwarded cuja AUSÊNCIA produz
+# erro de compile DURO (BC30652 "Reference required" / BC31424 "has been forwarded"),
+# logo são ERROR uniformemente (a/b já eram ERROR; c..h padronizadas p/ ERROR).
+# W-11x/W-11y permanecem WARN: são baselines best-effort/per-xmlns (não verificam uso
+# real do tipo), philosophy distinta — fora do escopo desta padronização.
+
   - id: W-11a
     severity: ERROR
     category: breaking
@@ -279,7 +289,7 @@ rules:
         ao bloco refs. Necessário pra SecureString, COM, P/Invoke.
 
   - id: W-11c
-    severity: WARN
+    severity: ERROR
     category: breaking
     target: windows
     title: "XAML falta AssemblyReference System.ComponentModel.TypeConverter"
@@ -314,7 +324,7 @@ rules:
         ao bloco `<sco:Collection x:TypeArguments="AssemblyReference">`.
 
   - id: W-11d
-    severity: WARN
+    severity: ERROR
     category: breaking
     target: windows
     title: "XAML falta AssemblyReference System.Data.Common"
@@ -347,7 +357,7 @@ rules:
         bloco refs. Evita `BC31424` design-time.
 
   - id: W-11e
-    severity: WARN
+    severity: ERROR
     category: breaking
     target: windows
     title: "XAML falta AssemblyReference System.Collections"
@@ -379,7 +389,7 @@ rules:
         Adicionar `<AssemblyReference>System.Collections</AssemblyReference>`.
 
   - id: W-11f
-    severity: WARN
+    severity: ERROR
     category: breaking
     target: windows
     title: "XAML falta AssemblyReference System.Linq"
@@ -409,7 +419,7 @@ rules:
         Adicionar `<AssemblyReference>System.Linq</AssemblyReference>`.
 
   - id: W-11g
-    severity: WARN
+    severity: ERROR
     category: breaking
     target: windows
     title: "XAML falta AssemblyReference System.Net.Primitives"
@@ -481,7 +491,7 @@ rules:
         pra cada xmlns assembly declarado mas não referenciado.
 
   - id: W-11h
-    severity: WARN
+    severity: ERROR
     category: breaking
     target: windows
     title: "XAML falta AssemblyReference System.Text.RegularExpressions"
@@ -908,7 +918,7 @@ rules:
         OR replace conforme padrão Sicoob i18n.
 
   - id: W-33
-    severity: ERROR
+    severity: WARN
     category: breaking
     target: windows
     title: "VB legacy syntax incompat Roslyn .NET 6"
@@ -1388,11 +1398,12 @@ rules:
     severity: WARN
     category: breaking
     target: all
-    title: "studioVersion vs packages — consistência semver"
+    title: "studioVersion abaixo do mínimo (23.10)"
     description: |
-      Pacotes pinados em D-1 são compatíveis com Studio 23.10.13.
-      Se `studioVersion` < 23.10 e packages 25.x são usados, há risco
-      de incompat. REF tem studio 21.x e packages 25.x — provável bug.
+      `studioVersion` em project.json deve ser >= 23.10.0 (baseline LTS Sicoob).
+      Detector compara apenas o campo `studioVersion` contra o mínimo; NÃO
+      inspeciona versões de pacotes. studioVersion < 23.10 indica projeto
+      criado em Studio antigo que precisa upgrade antes da migração Windows.
     applies_to:
       include: ["project.json"]
     detect:
@@ -2062,7 +2073,9 @@ rules:
       exclude: ["Framework/**", "Tests/**", "DB2/**", "Orquestradora/**", "Orquestrador/**"]
     detect:
       type: regex
-      pattern: 'Exception="\[New\s+\w*Exception\("([^"]{4,})"'
+      # XAML serializa aspas internas como &quot; (raw " quebraria o attr).
+      # Match ambas as formas; exclui in_Config(...) (sem aspas iniciais).
+      pattern: 'Exception="\[New\s+\w*Exception\((?:&quot;|")([^&"]{4,})(?:&quot;|")'
 
   - id: A-13b
     severity: ERROR
@@ -2144,7 +2157,8 @@ rules:
       include: ["DB2/**/*.xaml", "Orquestrador/**/*.xaml", "Orquestradora/**/*.xaml", "Process/**/*.xaml"]
     detect:
       type: regex
-      pattern: '<ui:(?:NApplicationCard|NClick|NTypeInto|NGetText|NHover|NCheck|NSelectItem)\b'
+      # Studio v25.10 (Windows target) serializa modern UIA sob `uix:`; cobrir ambos.
+      pattern: '<(?:ui|uix):(?:NApplicationCard|NClick|NTypeInto|NGetText|NHover|NCheck|NSelectItem)\b'
 
   - id: A-19
     severity: ERROR
@@ -2511,7 +2525,6 @@ rules:
           - Get
           - Set
           - Path
-          - Data
           - Source
           - Target
           - Value
@@ -3230,18 +3243,26 @@ rules:
       `in_TransactionItem.Reference + " - "` e propaga.
     applies_to:
       include: ["**/*.xaml"]
-      exclude: ["Framework/**", "Tests/**"]
+      exclude: ["Framework/**", "Tests/**", "**/Main.xaml", "**/main.xaml"]
     detect:
       type: python
       params:
         module: uip_engine.heuristics.logs
         function: detect_n3_log_prefixo
         prefixo_arg_name: in_StPrefixoLog
-        exclude_paths: &chain_exclude_paths
+        transaction_var_name: TransactionItem
+        transaction_arg_name: in_TransactionItem
+        # N-3 tem exclude_paths PRÓPRIO (não o anchor &chain_exclude_paths) pois
+        # exclui Main.xaml — prefixo só padroniza após receber TransactionItem
+        # (Performer Process↓). N-5/N-9/N-10 (trace/anticipatory logs) seguem
+        # aplicando a Main, então mantêm o anchor compartilhado.
+        exclude_paths:
           - "framework/"
           - "tests/"
           - "/launch.xaml"
           - "launch.xaml"
+          - "/main.xaml"
+          - "main.xaml"
     fix:
       apply_class: deterministic
       mechanical:
@@ -3259,6 +3280,65 @@ rules:
         `prefix_complex_log_message` faz wrap `[in_StPrefixoLog & (<expr>)]`
         com guards de tipo (só wrap se expr é String-y: contém literal,
         .ToString, vbLf, etc.).
+
+  - id: N-3B
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Binding in_StPrefixoLog vazio em InvokeWorkflowFile — seed valor"
+    description: |
+      O workflow dono da transação (tipicamente Framework/Process.xaml) invoca
+      callees que recebem `in_StPrefixoLog` mas passa o binding com valor VAZIO
+      (`in_StPrefixoLog=""`). Em runtime os LogMessages do callee logam com
+      prefixo vazio. N-3 (declaração+consumo) NÃO cobre o VALOR do binding —
+      N-3B preenche/atualiza o binding conforme o modelo:
+
+        * workflow declara in_StPrefixoLog         -> HERDA  [in_StPrefixoLog]
+        * tem arg in_TransactionItem (sem prefixo)  -> DERIVA [in_TransactionItem.Reference + " - "]
+        * tem Variable TransactionItem (sem prefixo)-> DERIVA [TransactionItem.Reference + " - "]
+        * nenhum dos acima                          -> não há fonte (skip)
+
+      Severidade WARN: binding vazio compila (não-breaking) mas degrada
+      rastreabilidade em produção — log sem prefixo de TransactionItem.Reference
+      impede correlacionar entrada na fila ↔ linhas de log. Defeito de
+      observabilidade real, acima de INFO, abaixo de ERROR.
+
+      Roda em Framework/Process.xaml (o site de seeding) — applies_to PRÓPRIO
+      que NÃO exclui Framework. Exclui Tests, Main e *Launch (workflows
+      pré-transação sem handle de transação). Performer-only via gate no
+      detector. UPGRADE-only: nunca sobrescreve valor não-vazio hand-set;
+      idempotente.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Tests/**", "**/Main.xaml", "**/main.xaml", "**/*Launch.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.logs
+        function: detect_n3_prefixo_binding
+        prefixo_arg_name: in_StPrefixoLog
+        transaction_var_name: TransactionItem
+        transaction_arg_name: in_TransactionItem
+    fix:
+      apply_class: deterministic
+      mechanical:
+        # NOTA: o spec efetivo (value_expr/mode) é emitido DINAMICAMENTE pelo
+        # detector via fix_mechanical. Este bloco existe só p/ satisfazer o
+        # gate de registro do loader (fixer precisa estar em REGISTRY) — o
+        # arg_name aqui é inerte em runtime.
+        type: seed_prefixo_binding
+        params:
+          arg_name: in_StPrefixoLog
+      prose: |
+        Fixer `seed_prefixo_binding` reescreve o VALOR de cada binding
+        `in_StPrefixoLog` vazio dentro de `<ui:InvokeWorkflowFile.Arguments>`
+        para o valor computado pelo detector:
+          - HERDA  [in_StPrefixoLog]                       (já recebe o prefixo)
+          - DERIVA [in_TransactionItem.Reference + " - "]  (dono via arg)
+          - DERIVA [TransactionItem.Reference + " - "]     (dono via Variable)
+        UPGRADE-only: só toca bindings vazios ("" / self-closed / <Literal
+        Value=""/>). Nunca sobrescreve expressão hand-set não-vazia.
+        Idempotente. BOM preservado, XML well-formed via gate.
 
   - id: N-4
     severity: INFO
@@ -3311,7 +3391,15 @@ rules:
       params:
         module: uip_engine.heuristics.logs
         function: detect_n5_trace_log_significant
-        exclude_paths: *chain_exclude_paths
+        # Anchor &chain_exclude_paths definido aqui (N-3 deixou de usá-lo ao
+        # adicionar exclusão própria de Main). Aliases em N-9/N-10 resolvem
+        # contra esta definição. NÃO inclui main.xaml — N-5/N-9/N-10 aplicam
+        # a Main (trace/anticipatory logs valem no entry point).
+        exclude_paths: &chain_exclude_paths
+          - "framework/"
+          - "tests/"
+          - "/launch.xaml"
+          - "launch.xaml"
         proximity_window: 600
         trace_level: Trace
         include_default_activities:
@@ -3989,9 +4077,10 @@ rules:
     target: all
     title: "TC InvokeWorkflowFile com x:Key não declarado no callee"
     description: |
-      Test case invocando workflow real deve passar exatamente os
-      argumentos declarados pelo callee. x:Key extra ou faltando =
-      bug de teste.
+      Test case invocando workflow real não deve passar argumentos que o
+      callee não declara. x:Key extra (não declarado no callee) = bug de
+      teste (load error). Omitir um argumento opcional é válido em UiPath
+      (cai no default), portanto intencionalmente não é detectado.
     applies_to:
       include: ["Tests/**/*.xaml"]
     detect:
@@ -4179,17 +4268,20 @@ rules:
         module: uip_engine.heuristics.pin_alert
         function: detect_pin_alert
     fix:
-      # Mixed: attribute strips (LogRetriedExceptions, DestinationResource, etc)
-      # têm mechanical=strip_xml_attribute → deterministic per-finding.
-      # Element replaces (NWindowOperation) sem mechanical → contextual per-finding
-      # via classifier refinement em check_perfect.py.
+      # Findings carregam mechanical per-finding (de version_exclusive_apis.yaml):
+      # - attribute strips (LogRetriedExceptions, DestinationResource, etc) →
+      #   mechanical=strip_xml_attribute → auto-aplicado (deterministic).
+      # - element replace NWindowOperation → mechanical=strip_nwindow_operation →
+      #   TAMBÉM auto-aplicado sob a classe deterministic (com gates de rollback).
+      # Refinamento per-finding (deterministic + fix_mechanical=None → contextual)
+      # vive em uip_engine/cli.py:_effective_apply_class.
       apply_class: deterministic
       prose: |
         Ver `fix:` específico no message do finding. Tipicamente:
         - Atributo XAML exclusivo de versão > pin: REMOVER do XAML (auto via strip_xml_attribute).
-        - Activity exclusiva de versão > pin: substituir por equivalente
-          Modern presente na pin (ex: NWindowOperation → NApplicationCard
-          CloseMode="Always"). MANUAL — element replace exige context.
+        - Activity exclusiva de versão > pin: NWindowOperation é auto-aplicada
+          via strip_nwindow_operation (deterministic): vira NApplicationCard
+          equivalente com CloseMode="Always", protegido por gates de rollback.
         Após edit, re-rodar review p/ confirmar que UIPATH:LOAD não dispara mais.
 
   - id: D-2
@@ -4446,13 +4538,15 @@ rules:
     target: windows
     title: "Nunca ContinueOnError=True em HTTP Request POST/PUT/PATCH/DELETE"
     description: |
-      ContinueOnError default=True engole 4xx/5xx silenciosamente.
-      Em endpoints não-idempotentes mascara falhas.
+      Default de ContinueOnError é False (correto, ver SYS-5 — source of truth).
+      O perigo é um ContinueOnError="True" EXPLÍCITO em verbo não-idempotente:
+      engole 4xx/5xx silenciosamente e mascara falhas.
     applies_to:
       include: ["**/*.xaml"]
     detect:
       type: regex
-      pattern: '<ui:HttpClient\b[^>]*Method="(?:POST|PUT|PATCH|DELETE)"[^>]*ContinueOnError="True"'
+      # Order-independent: UiPath serializa ContinueOnError (base-class) ANTES de Method.
+      pattern: '<ui:HttpClient\b(?=[^>]*\bMethod="(?:POST|PUT|PATCH|DELETE)")(?=[^>]*\bContinueOnError="True")[^>]*>'
 
   - id: API-2
     severity: ERROR
@@ -5027,7 +5121,7 @@ rules:
       type: nuget_version_check
       params:
         package: UiPathTeam.SharePoint.Activities
-        min: "2.0.3"
+        exact: "2.0.3"
 
   - id: SP-2
     severity: ERROR
@@ -5099,7 +5193,7 @@ rules:
       type: nuget_version_check
       params:
         package: UiPathTeam.XML.Activities
-        min: "1.1.0"
+        exact: "1.1.0"
 
   - id: XML-2
     severity: ERROR
@@ -5963,14 +6057,26 @@ rules:
 
       Single-encode correto: `&amp;gt;` (XAML decode → `>`, VB vê operador).
 
-      Detector é fileset-wide pra pegar pattern em qualquer attribute
-      (regex não consegue ancorar atributo VB de forma confiável em XAML
-      multilinha). False positive aceitável só se XAML tem texto display-
-      only com literal `&amp;gt;` — pathológico, suprimir individualmente.
+      ESCOPO REAL (honesto): detector+fixer cobrem só `Condition`/`Expression`/
+      `ExpressionText` (anchor VB confiável, auto-fix de gt/lt seguro). Os
+      demais attrs listados acima (`Message`/`OutputMessageFormat`/`Value`/
+      default de InArgument/`Code`) são GAP conhecido — ver comentário no
+      bloco `detect`. Resumo: o auto-fix cego de `&amp;quot;` é inseguro
+      (gera aspa solta, regride compile), então não alargamos o regex; esses
+      casos precisam de detector context-aware (follow-up). False positive
+      no escopo atual é pathológico (texto display-only com `&amp;gt;` literal).
     applies_to:
       include: ["**/*.xaml"]
     detect:
       type: regex
+      # Escopo deterministico: attrs Condition/Expression/ExpressionText (anchor VB
+      # confiavel + auto-fix seguro). GAP conhecido (silent-miss, follow-up TODO):
+      # Message/OutputMessageFormat/Value/default-de-InArgument e corpo <Code> tambem
+      # carregam VB, mas alargar o regex_replace cego para eles REGREDIU projetos —
+      # o auto-fix de `&amp;quot;` e' inseguro (vira `&quot;`->`"` = aspa solta que
+      # quebra parse VB fora de contexto string; != gt/lt que viram operadores >/<).
+      # Cobrir esses attrs exige detector context-aware que separe gt|lt (auto-fix)
+      # de quot (manual/contextual) + parse multilinha/CDATA. NAO alargar este regex.
       pattern: '(?:Condition|Expression|ExpressionText)="[^"]*&amp;(?:gt|lt|quot);[^"]*"'
     fix:
       apply_class: deterministic
@@ -6715,6 +6821,81 @@ rules:
       prose: |
         Adicionar TCs por variação de input significativa. Ou usar
         Data Service / Test Data Queues p/ parametrizar (TEST-6).
+
+# ============================================================
+# Batch E — Error-handling anti-patterns atados a FALHA REAL de producao
+# (sustentacao Sicoob: known_patterns.yaml throw_falha_tecnica_opaca +
+#  nre_in_max_retry_check — os 2 unicos padroes de falha de producao que
+#  sao estaticamente detectaveis). Deteccao-only (WARN, sem auto-fix:
+#  reescrever Throw/Catch mecanicamente e' inseguro).
+# ============================================================
+
+  - id: E-1
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Throw em Catch descarta a exception capturada (falha tecnica opaca)"
+    description: |
+      Padrao #1 Sicoob (sustentacao: throw_falha_tecnica_opaca). Dentro de um
+      <Catch>, um <Throw> que constroi `New <T>Exception(<msg>)` com UM unico
+      argumento descarta a exception capturada — stack trace + inner exception
+      perdidos. Sintoma em producao: log so' mostra a mensagem generica
+      (ex: in_Config("StatusDetalheFalhaSistema")) e a causa raiz some, custando
+      tempo de sustentacao.
+
+      So' dispara quando o Throw esta FISICAMENTE dentro do <Catch> (a var
+      capturada esta em escopo). Throw em fluxo normal (validacao) NAO dispara.
+      New Exception(msg, exception) (2 args) e <Rethrow/> preservam o inner →
+      nao disparam.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.exception_handling
+        function: detect_e1_throw_swallows_inner
+    fix:
+      prose: |
+        Preservar a exception original: usar `<Rethrow />` (re-lanca a capturada)
+        OU passar a capturada como innerException:
+        `[New Exception(<msg>, exception)]`. NUNCA reconstruir so' a partir de
+        `.Message` (perde stack + inner). Manter o Status de negocio em variavel
+        separada — nunca como unico Reason do Throw.
+    examples:
+      bad: '<Throw Exception="[New Exception(in_Config(&quot;StatusDetalheFalhaSistema&quot;).ToString)]" />'
+      good: '<Throw Exception="[New Exception(in_Config(&quot;StatusDetalheFalhaSistema&quot;).ToString, exception)]" />'
+
+  - id: E-2
+    severity: WARN
+    category: architectural
+    target: all
+    title: "LogMessage usa <exc>.Message em Catch sem guard IsNot Nothing"
+    description: |
+      Padrao #2 Sicoob (sustentacao: nre_in_max_retry_check). Dentro de um
+      <Catch>, um <LogMessage> que acessa `<exc>.Message` (exception.Message,
+      in_BusinessException.Message, etc.) sem guard `IsNot Nothing` proximo.
+      Se a var for Nothing → NRE no Catch global mascara o erro real e o Job
+      vira Faulted em vez de Failed (retried), quebrando o retry da REFramework.
+
+      So' dispara quando o LogMessage esta dentro do <Catch> e a var e'
+      "exception-ish" (exception/ex/in_*Exception/...). Guard
+      `If(<var> IsNot Nothing, ...)` nos ~250 chars anteriores → nao dispara.
+      `.Message` em var nao-exception (responseObj.Message) → nao dispara.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.exception_handling
+        function: detect_e2_log_message_no_exc_guard
+    fix:
+      prose: |
+        Guardar o acesso: `[If(<var> IsNot Nothing, <var>.Message, "<fallback
+        contextual>")]`. Garante que o Catch global logue mensagem util sem NRE,
+        preservando o estado Failed (retried) do Job.
+    examples:
+      bad: '<ui:LogMessage Level="Error" Message="[exception.Message]" />'
+      good: '<ui:LogMessage Level="Error" Message="[If(exception IsNot Nothing, exception.Message, &quot;erro sem detalhe&quot;)]" />'
 
 # ============================================================
 # Batch — Selector audit (Stream E — sicoob-studio-research §02-03)

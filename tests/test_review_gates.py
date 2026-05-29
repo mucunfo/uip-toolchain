@@ -23,6 +23,14 @@ sys.path.insert(0, str(ROOT))
 
 from uip_engine import cli as cli_mod  # noqa: E402
 from uip_engine._types import Finding, Severity, ValidationResult  # noqa: E402
+from uip_engine.runtime_loadtest import _binary_path as _rlt_binary_path  # noqa: E402
+
+# O gate runtime_loadtest (4o gate do `all`) precisa do binario .NET
+# runtime_loadtest.exe. CI / hosts sem `dotnet build` não o têm — igual a
+# nuget/uipcli (ver docstring do módulo). Tests que exercem o pipeline `all`
+# REAL (sem stub desse gate) skipam quando o binario está ausente, em vez de
+# falhar com RT-LOAD-INFRA (rc=1). Mesma política do skipif de test_hooks.
+_RLT_BINARY_MISSING = _rlt_binary_path() is None
 
 
 # ---------------------------------------------------------------------------
@@ -304,12 +312,18 @@ class _ReviewArgs:
         self.pack_gate_timeout = 60
 
 
+@pytest.mark.skipif(
+    _RLT_BINARY_MISSING,
+    reason="runtime_loadtest.exe não buildado (gate env-dependent; CI não faz "
+           "dotnet build). Sem stub desse gate, RT-LOAD-INFRA torna rc=1.",
+)
 def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, monkeypatch):
     """Sem --no-analyzer-gate, review chama _inject_analyzer_findings.
 
     Verifica que a função é INVOCADA (mesmo se uipcli ausente skipa).
     Conftest seta UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 — aqui deletamos p/
-    testar o caminho real (com stubs).
+    testar o caminho real (com stubs). Skipa se runtime_loadtest.exe ausente
+    (4o gate não-stubado emitiria RT-LOAD-INFRA → rc=1).
     """
     monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
 

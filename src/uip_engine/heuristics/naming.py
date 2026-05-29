@@ -65,6 +65,11 @@ def detect_s4_acronyms(rule, fc, pc):
     return findings
 
 
+# x:Class / this: tag local-name precisa ser identificador XAML valido.
+# Filenames numerados/com espaco (ex: "1.1 ObtemEstrutura") NAO sao validos.
+_RE_VALID_XCLASS = re.compile(r"^[A-Za-z_]\w*$")
+
+
 def detect_s6_xclass_filename(rule, fc, pc):
     content = fc.content
     m = _RE_XCLASS.search(content[:3000])
@@ -74,6 +79,27 @@ def detect_s6_xclass_filename(rule, fc, pc):
     actual = m.group(1)
     if actual == expected:
         return []
+    # Se o filename NAO e' identificador valido (espaco, ponto, digito inicial —
+    # ex: "1.1 ObtemEstruturaEmailTabRegras"), o rename mecanico geraria
+    # `<this:1.1 ObtemEstrutura...>` = XML nao-well-formed (rollback garantido).
+    # O fix real e' renomear o ARQUIVO. Emite contextual (sem mech) p/ o fixer
+    # nao tentar+rollbackar repetidamente.
+    if not _RE_VALID_XCLASS.match(expected):
+        return [Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=(
+                f"{rule.title}: x:Class='{actual}' diverge filename '{expected}' "
+                f"— filename nao e' identificador valido; renomear o ARQUIVO "
+                f"(rename mecanico de x:Class nao se aplica)"
+            ),
+            fix_mechanical=None,
+            fix_prose=(
+                "Renomear o .xaml para identificador valido (sem espaco/ponto/"
+                "digito inicial) e ajustar x:Class. Rename mecanico de x:Class "
+                "produziria XML invalido aqui."
+            ),
+        )]
     return [Finding(
         rule_id=rule.id, severity=rule.severity, category=rule.category,
         file=str(fc.path), line=_line_for(content, m.start()),
