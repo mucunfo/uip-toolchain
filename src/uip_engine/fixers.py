@@ -38,11 +38,24 @@ def _write_preserving_bom(path: Path, content: str, had_bom: bool) -> None:
         path.write_text(content, encoding="utf-8")
 
 
-def _format_property_element_value(prop_type: str | None, default) -> str:
-    """Generate `<InArgument x:TypeArguments="T">{default}</InArgument>` content.
+def _format_property_element_value(prop_type: str | None, default,
+                                    direction: str = "In") -> str:
+    """Generate `<{In|Out|InOut}Argument x:TypeArguments="T">{default}</...>` content.
 
-    For unknown types, wraps in raw InArgument. Default value is template-only;
-    runtime XAML parser converts string to target type if compatible.
+    M-2 contract:
+      - direction selects the argument wrapper element:
+            In    -> <InArgument>    (default; preserves historical behavior)
+            Out   -> <OutArgument>
+            InOut -> <InOutArgument>
+      - Out/InOut emit NO default literal (an Out/InOut target must bind to a
+        variable reference, not a seeded literal). They always self-close.
+      - The x:TypeArguments value is XML-escaped (a generic type containing a
+        literal `<`, e.g. `IList<T>`, must be escaped or the attribute is not
+        well-formed XML and the safety gate silently rolls back the fix).
+
+    For unknown types, wraps in raw argument element. Default value (In only) is
+    template-only; runtime XAML parser converts string to target type if
+    compatible.
     """
     bare = (prop_type or "x:Object").split("`")[0]
     if not bare.startswith("System.") and bare != "x:Object":
@@ -59,11 +72,25 @@ def _format_property_element_value(prop_type: str | None, default) -> str:
         "System.DateTime": "x:DateTime",
         "x:Object": "x:Object",
     }.get(bare_full, bare_full)
+    # XML-escape the TypeArguments value (generics with literal `<`/`>`/`&`).
+    type_safe = (type_alias.replace("&", "&amp;")
+                           .replace("<", "&lt;").replace(">", "&gt;"))
+
+    wrapper = {
+        "In": "InArgument",
+        "Out": "OutArgument",
+        "InOut": "InOutArgument",
+    }.get(direction or "In", "InArgument")
+
+    # Out/InOut never seed a literal default — emit self-closed wrapper.
+    if wrapper != "InArgument":
+        return f'<{wrapper} x:TypeArguments="{type_safe}" />'
+
     if default is None or default == "":
-        return f'<InArgument x:TypeArguments="{type_alias}" />'
+        return f'<{wrapper} x:TypeArguments="{type_safe}" />'
     # Escape XML
     safe = str(default).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f'<InArgument x:TypeArguments="{type_alias}">{safe}</InArgument>'
+    return f'<{wrapper} x:TypeArguments="{type_safe}">{safe}</{wrapper}>'
 
 
 def _arg_already_provided(open_tag: str, content: str, tag_start: int, tag_end: int,
@@ -104,6 +131,7 @@ def apply_add_property_element(file: Path, spec: dict[str, Any], dry_run: bool =
     prop_name = spec.get("prop_name")
     prop_type = spec.get("prop_type")
     default = spec.get("default")
+    direction = spec.get("direction") or "In"
     if not (prefix and activity and prop_name):
         return False
 
@@ -124,7 +152,7 @@ def apply_add_property_element(file: Path, spec: dict[str, Any], dry_run: bool =
                                   prefix, activity, prop_name):
             continue
 
-        pe_inner = _format_property_element_value(prop_type, default)
+        pe_inner = _format_property_element_value(prop_type, default, direction)
         pe_block = (f'<{prefix}:{activity}.{prop_name}>'
                     f'{pe_inner}'
                     f'</{prefix}:{activity}.{prop_name}>')
@@ -331,6 +359,79 @@ def apply_rename_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool
     return True
 
 
+@register("rename_attribute_name_in_tag")
+def apply_rename_attribute_name_in_tag(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """CCS-1 fixer: rename the attribute NAME (case-correction) inside the open
+    tag(s) of a specific invocation element.
+
+    Unlike `rename_attribute` (which skips attribute-name contexts by design —
+    see `_is_attribute_name_context` — so it would no-op on the very attribute
+    CCS-1 targets), this fixer rewrites the attribute NAME within the matched
+    `<element ...>` open tag only. Scoped to the element to avoid touching
+    homonym attributes on unrelated activities.
+
+    Spec:
+        from    : current (wrong-cased) attribute name (e.g. 'out_UiESipagDirect')
+        to      : correct attribute name (e.g. 'out_UIESipagDirect')
+        element : qualified invocation element name (e.g. 'c:Login'). Required —
+                  without it we would risk a file-wide attribute rename.
+
+    Safety:
+      - Only rewrites within `<element ...>` / `<element ... />` OPEN tags.
+      - Whole-word attribute-name match (`\\bfrom=`) so substrings/values are
+        never touched.
+      - Idempotent: no-op if `from` not present as an attribute name in any
+        matched open tag.
+      - Preserves BOM.
+    """
+    from_name = spec.get("from")
+    to_name = spec.get("to")
+    element = spec.get("element")
+    if not from_name or not to_name or not element:
+        return False
+    if from_name == to_name:
+        return False
+    # Validate identifiers (XML attribute names + qualified element local).
+    if not re.fullmatch(r"[A-Za-z_][\w.\-]*(?::[A-Za-z_][\w.\-]*)?", element):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.\-]*", from_name):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.\-]*", to_name):
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+
+    # Match open tags (self-close or paired) of exactly this element.
+    open_tag_re = re.compile(
+        rf'<{re.escape(element)}\b(?P<body>[^>]*?)(?P<sc>/?)>',
+        re.DOTALL,
+    )
+    # Attribute-name occurrence inside a tag body: whitespace-led, followed by `=`.
+    attr_name_re = re.compile(
+        rf'(?P<lead>\s){re.escape(from_name)}(?P<eq>\s*=)'
+    )
+
+    changed = [False]
+
+    def _rewrite_tag(m: re.Match) -> str:
+        body = m.group("body")
+        sc = m.group("sc")
+        new_body, n = attr_name_re.subn(
+            lambda am: f'{am.group("lead")}{to_name}{am.group("eq")}', body
+        )
+        if n == 0 or new_body == body:
+            return m.group(0)
+        changed[0] = True
+        return f'<{element}{new_body}{sc}>'
+
+    new_content = open_tag_re.sub(_rewrite_tag, content)
+    if not changed[0] or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
 @register("rename_argument")
 def apply_rename_argument(
     file: Path, spec: dict, dry_run: bool = True, project_root: Path | None = None
@@ -472,6 +573,12 @@ def apply_rename_xclass(
     from_name = spec.get("from") or current
     to_name = spec.get("to") or file.stem
     if from_name == to_name:
+        return False
+    # GUARD: to_name precisa ser identificador XAML valido. Filenames numerados/
+    # com espaco (ex: "1.1 ObtemEstrutura") gerariam `<this:1.1 ...>` = XML
+    # nao-well-formed. Nesse caso o rename de x:Class nao se aplica (o fix real
+    # e' renomear o arquivo) — skip em vez de produzir XML invalido (rollback).
+    if not re.match(r"^[A-Za-z_]\w*$", to_name):
         return False
 
     # 1. x:Class attribute itself
@@ -1319,7 +1426,9 @@ def _n5_unique_display_name(content: str, base: str) -> str:
 
 def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
                              arg_name: str, default_expr: str = '""',
-                             dry_run: bool = True) -> int:
+                             dry_run: bool = True,
+                             transaction_var_name: str = "TransactionItem",
+                             transaction_arg_name: str = "in_TransactionItem") -> int:
     """Cross-file cascade: scan all XAMLs in project_root that invoke
     callee_file via <ui:InvokeWorkflowFile WorkflowFileName="..."/> and
     insert `<InArgument x:Key="<arg_name>">...</InArgument>` se ausente.
@@ -1335,6 +1444,19 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
     """
     if project_root is None or not project_root.exists():
         return 0
+
+    # N-3 derivação: callee que recebe in_TransactionItem permite que o caller
+    # (tipicamente Main, com Variable TransactionItem) semeie o prefixo de
+    # TransactionItem.Reference no binding. Sem o arg de transação no callee,
+    # não há de onde derivar → cai na propagação/fallback.
+    try:
+        callee_content = callee_file.read_text(encoding="utf-8-sig")
+    except OSError:
+        callee_content = ""
+    callee_has_txn_arg = bool(
+        re.search(rf'<x:Property\b[^>]*Name="{re.escape(transaction_arg_name)}"',
+                  callee_content)
+    )
 
     callee_basename = callee_file.name  # e.g. PreProcessamento.xaml
     # Path patterns a procurar em WorkflowFileName — / ou \\ separator
@@ -1358,8 +1480,18 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
         # Find all <ui:InvokeWorkflowFile ...WorkflowFileName="...callee..."...>...</ui:InvokeWorkflowFile>
         # Process each Invoke block independently.
         new_ctext = ctext
-        # Determine default-expr para esse caller (uma vez).
-        if re.search(rf'<x:Property\b[^>]*Name="{re.escape(arg_name)}"', ctext):
+        # Determine default-expr para esse caller (uma vez). Ordem de precedência:
+        # 0. Derivação transação (Main→Process): callee tem arg in_TransactionItem
+        #    E caller tem Variable TransactionItem. Sem guard — REFramework só roda
+        #    o Process state após TransactionItem recebido (Reference non-null).
+        # 1. caller declara <arg_name> (in_StPrefixoLog) → propaga [<arg_name>].
+        # 2. caller tem Variable v<Short> → [v<Short>].
+        # 3. fallback default_expr ("").
+        if callee_has_txn_arg and re.search(
+            rf'<Variable\b[^>]*\bName="{re.escape(transaction_var_name)}"', ctext
+        ):
+            caller_default = f'[{transaction_var_name}.Reference + " - "]'
+        elif re.search(rf'<x:Property\b[^>]*Name="{re.escape(arg_name)}"', ctext):
             caller_default = f"[{arg_name}]"
         else:
             # Variable v + capitalized arg_name without leading prefix
@@ -1458,6 +1590,8 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
     prefixo) NÃO é coberto aqui — cascade via re-detect próxima iter.
     """
     prefixo_arg = spec.get("prefixo_arg") or "in_StPrefixoLog"
+    txn_var = spec.get("transaction_var_name") or "TransactionItem"
+    txn_arg = spec.get("transaction_arg_name") or "in_TransactionItem"
     content = file.read_text(encoding="utf-8-sig")
 
     # Idempotent: se já declara, **ainda assim cascade nos callers** (defesa).
@@ -1470,6 +1604,7 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
             modified = _cascade_arg_to_callers(
                 project_root, file, prefixo_arg, default_expr='""',
                 dry_run=dry_run,
+                transaction_var_name=txn_var, transaction_arg_name=txn_arg,
             )
             return modified > 0
         return False
@@ -1558,10 +1693,93 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
         modified = _cascade_arg_to_callers(
             project_root, file, prefixo_arg, default_expr='""',
             dry_run=dry_run,
+            transaction_var_name=txn_var, transaction_arg_name=txn_arg,
         )
         cascade_changed = (modified > 0)
 
     return callee_changed or cascade_changed
+
+
+@register("seed_prefixo_binding")
+def apply_seed_prefixo_binding(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """N-3B fixer: UPGRADE empty in_StPrefixoLog invoke-bindings to value_expr.
+
+    Spec:
+        arg_name   : binding key (default "in_StPrefixoLog")
+        value_expr : computed value, e.g. '[in_TransactionItem.Reference + " - "]'
+                     (DERIVE) or '[in_StPrefixoLog]' (INHERIT). Policy lives in
+                     o detector (detect_n3_prefixo_binding); este fixer é mecânico.
+
+    Scope: reescreve SÓ o VALOR de bindings in_StPrefixoLog dentro de
+    <ui:InvokeWorkflowFile.Arguments> cujo valor atual é vazio ("" / whitespace
+    / self-closed / <Literal Value=""/>). NUNCA sobrescreve valor não-vazio
+    hand-set. Idempotente: binding já == value_expr fica intocado;
+    `new_content == content` => return False.
+
+    Output sempre element-content form preservando o attrs blob original
+    (x:TypeArguments, x:Key, ordem). value_expr é XML-escapado p/ element content
+    (& < >); `"` raw é legal em element text e casa com a serialização do repo.
+    """
+    arg_name = spec.get("arg_name") or "in_StPrefixoLog"
+    value_expr = spec.get("value_expr")
+    if not value_expr:
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+    if "InvokeWorkflowFile" not in content or arg_name not in content:
+        return False
+
+    # XML-escape p/ element-content. Mantém `"` raw (legal em element text,
+    # casa com serialização existente). Ordem importa: & primeiro.
+    safe_value = (
+        value_expr.replace("&", "&amp;")
+                  .replace("<", "&lt;")
+                  .replace(">", "&gt;")
+    )
+
+    binding_re = re.compile(
+        r'<InArgument\b(?P<attrs>[^>]*?\bx:Key="' + re.escape(arg_name) + r'"[^>]*?)'
+        r'(?:/>|>(?P<value>.*?)</InArgument>)',
+        re.DOTALL,
+    )
+    args_block_re = re.compile(
+        r'<ui:InvokeWorkflowFile\.Arguments\s*>.*?</ui:InvokeWorkflowFile\.Arguments\s*>',
+        re.DOTALL,
+    )
+
+    def _value_is_empty(value):
+        if value is None:
+            return True
+        stripped = value.strip()
+        if stripped in ("", '""', '&quot;&quot;', '[""]', '[&quot;&quot;]'):
+            return True
+        if re.fullmatch(r'<Literal\b[^>]*\bValue=""[^>]*/>', stripped):
+            return True
+        return False
+
+    def _rewrite_binding(bm):
+        attrs = bm.group("attrs")
+        value = bm.group("value")
+        # Idempotente: já correto → no-op.
+        if value is not None and value.strip() in (safe_value, value_expr):
+            return bm.group(0)
+        # Nunca clobber valor não-vazio hand-set.
+        if not _value_is_empty(value):
+            return bm.group(0)
+        # attrs.strip() (ambos lados) + single space no template → exatamente
+        # `<InArgument x:... >` sem double-space (byte-clean diff).
+        return f'<InArgument {attrs.strip()}>{safe_value}</InArgument>'
+
+    def _rewrite_block(block_m):
+        return binding_re.sub(_rewrite_binding, block_m.group(0))
+
+    new_content = args_block_re.sub(_rewrite_block, content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
 
 
 @register("guard_linq_arg_ref")
@@ -1734,6 +1952,60 @@ def apply_rename_poor_log_displayname(file: Path, spec: dict, dry_run: bool = Tr
 
     new_content = pat2.sub(_rewrite2, new_content)
 
+    # N-17 (audit): pass 3 — rewrite the poor DisplayName INDEPENDENTLY of
+    # whether Message is an attribute. The detector flags a LogMessage purely on
+    # a poor DisplayName attribute and does NOT require a Message attribute;
+    # passes 1/2 only fire when BOTH are attributes, so a LogMessage whose
+    # Message is in property-ELEMENT form (`<ui:LogMessage.Message>...</...>`,
+    # the traceable form Sicoob prefers) was previously a deterministic no-op.
+    # Here we rewrite the DisplayName attribute alone, pulling context from the
+    # element-form Message when available. Poor-detection mirrors the detector
+    # EXACTLY (_POOR_DN_EXACT + _POOR_DN_PATTERNS surrogate) to stay idempotent.
+    dn_only_re = re.compile(r'<ui:LogMessage\b[^>]*\bDisplayName="([^"]*)"', re.DOTALL)
+
+    def _detector_poor(dn: str) -> bool:
+        d = dn.strip()
+        if not d:
+            return False
+        if d in {"Log Message", "Log", "LogMessage", "Message"}:
+            return True
+        for rx in (r'^\s*Trace\s*:', r'^\s*Log\s*:', r'^\s*Log Message\s*-\s*$'):
+            if re.match(rx, d):
+                return True
+        return False
+
+    pass3_src = new_content
+
+    def _rewrite_dn_only(m):
+        nonlocal changed
+        full = m.group(0)
+        dn_val = m.group(1)
+        if not _detector_poor(dn_val):
+            return full
+        # Locate element-form Message context after this open tag, if present.
+        # Index into the SAME string the regex iterated (pass3_src), not the
+        # original content — offsets are relative to pass3_src.
+        msg_ctx = ""
+        tail = pass3_src[m.end():m.end() + 2000]
+        em = re.search(
+            r'<ui:LogMessage\.Message\b[^>]*>(.*?)</ui:LogMessage\.Message>',
+            tail, re.DOTALL,
+        )
+        if em:
+            inner = em.group(1)
+            lit = re.search(r'\[([^\]]+)\]', inner)
+            msg_ctx = lit.group(1) if lit else inner
+        new_dn = _improve_log_displayname(dn_val, msg_ctx)
+        if new_dn == dn_val or _detector_poor(new_dn):
+            return full
+        changed += 1
+        safe = (new_dn.replace("&", "&amp;").replace("<", "&lt;")
+                     .replace(">", "&gt;").replace('"', "&quot;"))
+        # Replace ONLY the DisplayName attribute value inside this open tag.
+        return full.replace(f'DisplayName="{dn_val}"', f'DisplayName="{safe}"', 1)
+
+    new_content = dn_only_re.sub(_rewrite_dn_only, new_content)
+
     if changed == 0 or new_content == content:
         return False
     if not dry_run:
@@ -1757,7 +2029,15 @@ def apply_strip_annotation_text(file: Path, spec: dict, dry_run: bool = True,
                       annotations cujo texto começa por esse prefixo
                       (comportamento S-5b, restrito a markers do Migrator).
 
-    Idempotent: file unchanged if no annotation attr present.
+    Forms cobertas (S-5 audit):
+      - ATTRIBUTE: `sap2010:Annotation.AnnotationText="..."`
+      - ELEMENT  : `<sap2010:Annotation.AnnotationText>...</sap2010:Annotation.AnnotationText>`
+        (Studio/Migrator emite element-form pra texto longo/multiline). Antes do
+        fix S-5, o detector flagava element-form mas o fixer só removia attr-form
+        → no-op silencioso (deterministic não convergia). text_prefix gating
+        (S-5b) aplica às DUAS formas.
+
+    Idempotent: file unchanged if no annotation present.
     Cross-file scope: NO. Local-only file edit.
     """
     params = spec.get("params") if isinstance(spec.get("params"), dict) else {}
@@ -1767,6 +2047,13 @@ def apply_strip_annotation_text(file: Path, spec: dict, dry_run: bool = True,
     # Match attribute (with surrounding whitespace) — works for single and
     # multi-line annotation text (XML preserves newlines as &#xA;).
     attr_re = re.compile(r'\s+sap2010:Annotation\.AnnotationText="([^"]*)"')
+    # Match property-ELEMENT form (open+close, with surrounding whitespace).
+    # Inner text captured for text_prefix gating (raw, no unescape).
+    elem_re = re.compile(
+        r'\s*<sap2010:Annotation\.AnnotationText\b[^>]*>(.*?)'
+        r'</sap2010:Annotation\.AnnotationText>',
+        re.DOTALL,
+    )
 
     if text_prefix:
         # XML attributes têm `[` literal; comparamos contra texto cru do
@@ -1775,9 +2062,15 @@ def apply_strip_annotation_text(file: Path, spec: dict, dry_run: bool = True,
         def _replace(m: re.Match) -> str:
             attr_text = m.group(1)
             return "" if attr_text.startswith(text_prefix) else m.group(0)
+
+        def _replace_elem(m: re.Match) -> str:
+            inner = m.group(1).lstrip()
+            return "" if inner.startswith(text_prefix) else m.group(0)
         new = attr_re.sub(_replace, content)
+        new = elem_re.sub(_replace_elem, new)
     else:
         new = attr_re.sub("", content)
+        new = elem_re.sub("", new)
 
     if new == content:
         return False
@@ -1876,6 +2169,14 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
         return False
     target_invoke_idref = params.get("invoke_idref") or spec.get("invoke_idref")
     default_expr = params.get("default_expr") or spec.get("default_expr")
+    # A-19b contract: detector forwards the callee arg's declared DIRECTION
+    # ("In"/"Out"/"InOut") and INNER_TYPE (the x:TypeArguments value, e.g.
+    # 'ui:QueueItem', 'x:Int32', 'sd:DataTable'). When absent (older detector /
+    # irresolvable type), FALL BACK to the historical hardcoded
+    # `<InArgument x:TypeArguments="x:String">` so this fixer stays safe in
+    # isolation.
+    direction = params.get("direction") or spec.get("direction")
+    inner_type = params.get("inner_type") or spec.get("inner_type")
 
     callee_basename = Path(callee_path).name if callee_path else None
     content = file.read_text(encoding="utf-8-sig")
@@ -1912,10 +2213,33 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
                 return m.group(0)
         if re.search(rf'\bx:Key="{re.escape(arg_name)}"', body):
             return m.group(0)
-        new_in_arg = (
-            f'\n          <InArgument x:TypeArguments="x:String" '
-            f'x:Key="{arg_name}">{default_expr}</InArgument>'
-        )
+        # Direction-aware emission (A-19b contract). Fallback = legacy
+        # <InArgument x:TypeArguments="x:String">[default] when direction/
+        # inner_type absent (keeps fixer safe if detector did not forward them).
+        if direction and inner_type:
+            wrapper = {
+                "In": "InArgument",
+                "Out": "OutArgument",
+                "InOut": "InOutArgument",
+            }.get(direction, "InArgument")
+            type_safe = (str(inner_type).replace("&", "&amp;")
+                         .replace("<", "&lt;").replace(">", "&gt;"))
+            if wrapper == "InArgument":
+                new_in_arg = (
+                    f'\n          <InArgument x:TypeArguments="{type_safe}" '
+                    f'x:Key="{arg_name}">{default_expr}</InArgument>'
+                )
+            else:
+                # Out/InOut: no default literal — target binds to a variable.
+                new_in_arg = (
+                    f'\n          <{wrapper} x:TypeArguments="{type_safe}" '
+                    f'x:Key="{arg_name}" />'
+                )
+        else:
+            new_in_arg = (
+                f'\n          <InArgument x:TypeArguments="x:String" '
+                f'x:Key="{arg_name}">{default_expr}</InArgument>'
+            )
         args_re = re.compile(
             r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
             re.DOTALL,
@@ -2606,9 +2930,42 @@ def apply_retarget_project_argument_types(file: Path, spec: dict, dry_run: bool 
         return False
 
     changed = False
-    legacy_pat = re.compile(
-        r'^(\S+),\s*(mscorlib|System|System\.Core|System\.Drawing|System\.Xml|System\.Data),\s*Version=4\.\d+\.\d+\.\d+,'
+    # Trailing OUTERMOST legacy assembly clause, e.g.
+    #   ", mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+    # Anchored at end-of-string ($). For a non-generic type the bare name is left.
+    # For a generic type the bracketed `[[...]]` generic args (which contain
+    # their OWN inner assembly clauses) are preserved — only the top-level
+    # trailing clause after the final `]]` is stripped.
+    _LEGACY_ASMS = (
+        r'mscorlib|System|System\.Core|System\.Drawing|System\.Xml|System\.Data'
     )
+    legacy_tail_pat = re.compile(
+        rf',\s*(?:{_LEGACY_ASMS}),\s*Version=4\.\d+\.\d+\.\d+'
+        r'(?:,\s*Culture=[^,\]]+)?(?:,\s*PublicKeyToken=[^,\]]+)?\s*$'
+    )
+
+    def _strip_outer_assembly_clause(tp: str) -> str | None:
+        """Strip the outermost trailing legacy assembly clause, preserving any
+        bracketed generic type arguments. Returns the rewritten short type, or
+        None if no top-level legacy clause is present.
+
+        Generic types serialize as `Outer`N[[arg1, asm, Version=...],[arg2, ...]],
+        asm, Version=...`. The `^(\\S+),` approach truncated at the first comma
+        (inside the first generic arg). Here we only remove the trailing clause
+        that sits OUTSIDE the bracketed args.
+        """
+        m = legacy_tail_pat.search(tp)
+        if not m:
+            return None
+        # Guard: the match must be at the TOP level, i.e. not inside `[[...]]`.
+        # Since the pattern is anchored at `$` and the generic args close with
+        # `]]`, the only way the tail follows balanced brackets is if every `[`
+        # before m.start() is matched by a `]`. Verify bracket balance of the
+        # prefix to avoid stripping inside an unbalanced (malformed) generic.
+        prefix = tp[: m.start()]
+        if prefix.count("[") != prefix.count("]"):
+            return None
+        return prefix
 
     def _rewrite_items(items):
         nonlocal changed
@@ -2620,9 +2977,9 @@ def apply_retarget_project_argument_types(file: Path, spec: dict, dry_run: bool 
             tp = item.get("type")
             if not isinstance(tp, str):
                 continue
-            m = legacy_pat.match(tp)
-            if m:
-                item["type"] = m.group(1)
+            short = _strip_outer_assembly_clause(tp)
+            if short is not None and short != tp:
+                item["type"] = short
                 changed = True
 
     # Top-level `arguments.input/output`
@@ -3001,24 +3358,63 @@ def apply_insert_namespace_import(file: Path, spec: dict, dry_run: bool = True,
         re.DOTALL,
     )
     m = ns_block_pat.search(content)
-    if not m:
-        return False
+    if m:
+        body = m.group(3)
+        close_indent = m.group(4)
 
-    body = m.group(3)
-    close_indent = m.group(4)
+        # Indent dos x:String: pega do primeiro existente; fallback close_indent + 2 spaces
+        str_indent_m = re.search(r"\n([ \t]*)<x:String>", body)
+        if str_indent_m:
+            indent = "\n" + str_indent_m.group(1)
+        else:
+            indent = close_indent + "  "
 
-    # Indent dos x:String: pega do primeiro existente; fallback close_indent + 2 spaces
-    str_indent_m = re.search(r"\n([ \t]*)<x:String>", body)
-    if str_indent_m:
-        indent = "\n" + str_indent_m.group(1)
+        insert = f"{indent}<x:String>{name}</x:String>"
+        new_content = (
+            content[:m.start(4)] + insert + close_indent
+            + m.group(5) + m.group(6) + content[m.end():]
+        )
     else:
-        indent = close_indent + "  "
-
-    insert = f"{indent}<x:String>{name}</x:String>"
-    new_content = (
-        content[:m.start(4)] + insert + close_indent
-        + m.group(5) + m.group(6) + content[m.end():]
-    )
+        # ENV-3 fallback (audit): the scg:List wrapper shape varies (different
+        # collection prefix/attr ordering, no newline before </scg:List>, etc.).
+        # The detector only requires the NamespacesForImplementation block, so
+        # fail-safe by inserting an <x:String> just before its close tag using
+        # the same surface the detector inspects. Fail-safe: only act if the
+        # block exists AND contains at least one collection wrapper (so we don't
+        # inject into a malformed/empty block).
+        block_re = re.compile(
+            r'<TextExpression\.NamespacesForImplementation>'
+            r'(?P<body>.*?)'
+            r'(?P<close>\s*</TextExpression\.NamespacesForImplementation>)',
+            re.DOTALL,
+        )
+        bm = block_re.search(content)
+        if not bm:
+            return False
+        body = bm.group("body")
+        # Indent: derive from an existing <x:String>, else default 2-space bump
+        # from the close-tag indent.
+        str_indent_m = re.search(r"\n([ \t]*)<x:String>", body)
+        if str_indent_m:
+            indent = "\n" + str_indent_m.group(1)
+        else:
+            close_indent_m = re.search(r'(\n[ \t]*)</TextExpression\.NamespacesForImplementation>', content)
+            close_indent = close_indent_m.group(1) if close_indent_m else "\n  "
+            indent = close_indent + "  "
+        insert = f"{indent}<x:String>{name}</x:String>"
+        # Insert before any trailing collection close + the block close.
+        # Locate the last </...List>/</...Collection> close inside the block,
+        # if present, to keep the new entry inside the collection; else insert
+        # right before the block close tag.
+        coll_close_m = None
+        for cm in re.finditer(r'</[A-Za-z_][\w]*:[A-Za-z_][\w]*>', body):
+            coll_close_m = cm
+        if coll_close_m is not None:
+            abs_pos = bm.start() + len("<TextExpression.NamespacesForImplementation>") + coll_close_m.start()
+            new_content = content[:abs_pos] + insert + content[abs_pos:]
+        else:
+            insert_pos = bm.start("close")
+            new_content = content[:insert_pos] + insert + content[insert_pos:]
 
     if new_content == content:
         return False
@@ -3044,6 +3440,14 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
         LogRetriedExceptions, RetriedExceptionsLogLevel,
         DestinationResource, PathResource (UIA 25.10.21+).
 
+    Spec opcional:
+        element : nome qualificado da activity (ex: 'uma:Office365ApplicationScope').
+                  Quando presente, o strip é restrito às OPEN TAGS desse element
+                  — atributos homônimos (ex: `Folder=` genérico em CreateDirectory,
+                  MoveFile, mail, FTP) em activities NÃO relacionadas ficam
+                  INTACTOS. Quando ausente, mantém comportamento file-wide
+                  (compat legado).
+
     Safety: regex limita match a attribute pattern legítimo XAML — quoted
     value, palavra-completa antes do `=`. Não toca substrings.
     """
@@ -3053,6 +3457,12 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.\-]*", attr):
         return False  # safety: nome atributo malformado
 
+    element = (spec or {}).get("element")
+    if element is not None and not re.fullmatch(
+        r"[A-Za-z_][\w.\-]*(?::[A-Za-z_][\w.\-]*)?", element
+    ):
+        return False  # safety: nome de element malformado
+
     content = file.read_text(encoding="utf-8-sig")
 
     # Pattern: word boundary + opt namespace prefix + attribute name + ="..."
@@ -3060,7 +3470,26 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
     pat = re.compile(
         rf'(\s+)(?:[A-Za-z_][\w]*:)?{re.escape(attr)}\s*=\s*"[^"]*"'
     )
-    new_content, n = pat.subn("", content)
+
+    if element:
+        # Element-scoped: só remove o atributo dentro das open tags do element.
+        # Evita data loss em activities homônimas (ver D-PINALERT audit Folder=).
+        open_tag_re = re.compile(
+            rf'<{re.escape(element)}\b[^>]*?/?>', re.DOTALL
+        )
+        n_total = 0
+
+        def _strip_in_tag(mm: re.Match) -> str:
+            nonlocal n_total
+            tag = mm.group(0)
+            new_tag, n = pat.subn("", tag)
+            n_total += n
+            return new_tag
+
+        new_content = open_tag_re.sub(_strip_in_tag, content)
+        n = n_total
+    else:
+        new_content, n = pat.subn("", content)
     if n == 0 or new_content == content:
         return False
     if not dry_run:
@@ -3105,22 +3534,31 @@ def apply_normalize_visualbasic_settings(
     had_bom = _file_has_bom(file)
     content = file.read_text(encoding="utf-8-sig")
 
+    # ENV-4 (audit): leading newline+indent capture is OPTIONAL so a settings
+    # element NOT at line-start (e.g. inline after a sibling on the same line)
+    # still normalizes. When absent, the replacement derives indent defensively
+    # and omits the leading newline.
     pat_text = re.compile(
-        r"(\n([ \t]*))<mva:VisualBasic\.Settings>[^<]*</mva:VisualBasic\.Settings>"
+        r"(?:(\n)([ \t]*))?<mva:VisualBasic\.Settings>[^<]*</mva:VisualBasic\.Settings>"
     )
     pat_self_closing = re.compile(
-        r"(\n([ \t]*))<mva:VisualBasic\.Settings\s*/>"
+        r"(?:(\n)([ \t]*))?<mva:VisualBasic\.Settings\s*/>"
     )
 
     def _canonical_replacement(m: "re.Match[str]") -> str:
-        leading = m.group(1)
-        indent = m.group(2)
+        nl = m.group(1)  # "\n" when at line-start, else None
+        indent = m.group(2) or ""
+        leading = (nl + indent) if nl is not None else ""
         child_indent = indent + "  "
-        return (
-            f"{leading}<VisualBasic.Settings>"
-            f"\n{child_indent}<x:Null />"
-            f"\n{indent}</VisualBasic.Settings>"
-        )
+        if nl is not None:
+            return (
+                f"{leading}<VisualBasic.Settings>"
+                f"\n{child_indent}<x:Null />"
+                f"\n{indent}</VisualBasic.Settings>"
+            )
+        # Not at line-start: keep it compact (no synthetic leading newline that
+        # would shift a sibling onto its own malformed indent).
+        return "<VisualBasic.Settings><x:Null /></VisualBasic.Settings>"
 
     new_content, n1 = pat_text.subn(_canonical_replacement, content)
     new_content, n2 = pat_self_closing.subn(_canonical_replacement, new_content)
@@ -3573,18 +4011,48 @@ def apply_replace_hostile_unicode_chars(
 
     Idempotente: skip se nenhum char hostil.
 
+    Scope guard (W-30 audit): NÃO muta texto dentro de attribute values
+    user-facing — `DisplayName`, `Annotation`, `AnnotationText` e
+    `sap2010:Annotation*` (incl. `sap2010:Annotation.AnnotationText`). Smart
+    quotes (curly) são legítimas nesses textos exibidos/logados; reescrevê-las
+    pra &quot;/&apos; é perda silenciosa de dado user-facing. Normalização HARD
+    aplica somente fora desses spans (expressões VB, código, etc.).
+
     Safety: XML well-formedness validada pós-write.
     """
     bom = _file_has_bom(file)
     content = file.read_text(encoding="utf-8-sig")
 
-    new_content = content
-    for src, dst in _HOSTILE_UNICODE_MAP.items():
-        new_content = new_content.replace(src, dst)
+    # Compute protected spans = attribute values of user-facing attributes that
+    # must keep their original (possibly smart-quoted) text. Match the attribute
+    # NAME (whole-word, optional namespace prefix) followed by ="...". We protect
+    # the VALUE region (chars between the quotes) only.
+    _PROTECTED_ATTR_RE = re.compile(
+        r'(?:[A-Za-z_][\w]*:)?'
+        r'(?:DisplayName|AnnotationText|Annotation)\s*=\s*"([^"]*)"'
+    )
+    protected: list[tuple[int, int]] = [
+        (m.start(1), m.end(1)) for m in _PROTECTED_ATTR_RE.finditer(content)
+    ]
 
-    # U+FEFF: strip apenas se aparecer mid-file (não tocar BOM pos 0, já
-    # consumido pelo encoding utf-8-sig).
-    new_content = new_content.replace("﻿", "")
+    def _in_protected(idx: int) -> bool:
+        for s, e in protected:
+            if s <= idx < e:
+                return True
+        return False
+
+    # Build the new content char-by-char span-wise: apply replacements only to
+    # the non-protected regions; copy protected regions verbatim.
+    _SUBST_MAP = dict(_HOSTILE_UNICODE_MAP)
+    _SUBST_MAP["﻿"] = ""  # mid-file BOM strip (folded into same pass)
+
+    out: list[str] = []
+    for i, ch in enumerate(content):
+        if ch in _SUBST_MAP and not _in_protected(i):
+            out.append(_SUBST_MAP[ch])
+        else:
+            out.append(ch)
+    new_content = "".join(out)
 
     if new_content == content:
         return False
@@ -3645,7 +4113,20 @@ def apply_strip_property_element_with_attribute(
             if tail_ws and tail_ws.group(0):
                 out_parts[-1] = out_parts[-1][: -len(tail_ws.group(0))]
         else:
-            out_parts.append(f'<{elem}>{inner}</{elem}>')
+            # Case B: strip only the redundant activity-property attributes,
+            # PRESERVING XAML directive attributes (x:/xml:-prefixed) such as
+            # x:TypeArguments / x:Key. Dropping x:TypeArguments off a generic
+            # property element (e.g. <scg:List.Items x:TypeArguments="x:String">)
+            # produces well-formed-but-broken XAML that the ET.fromstring gate
+            # cannot catch (X-2 audit).
+            attrs_blob = m.group("attrs")
+            directive_attrs = "".join(
+                am.group(0)
+                for am in re.finditer(
+                    r'\s+(?:x|xml):[A-Za-z_][\w]*="[^"]*"', attrs_blob
+                )
+            )
+            out_parts.append(f'<{elem}{directive_attrs}>{inner}</{elem}>')
         last = m.end()
         changed = True
     if not changed:

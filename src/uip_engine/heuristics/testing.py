@@ -72,24 +72,25 @@ _D1_VERSIONS_CACHE: dict[str, str] | None = None
 
 
 def _load_d1_pinned_versions() -> dict[str, str]:
-    """Lê D-1* rules em rules.yaml e retorna {package_name: version}.
-    Cache em memória; carregado uma vez por processo."""
+    """Retorna {package_name: exact_version} dos pins canonical Sicoob.
+
+    Os D-1* rules NÃO vivem em rules.yaml: são sintetizados em parse-time
+    por `canonical.py::_synthesize_d1_rule` a partir de
+    `assets/canonical_pins.yaml`, e o param emitido é `exact` (não `min`).
+    Re-parsear rules.yaml procurando `min` retornava dict vazio permanente
+    (auto-add dead code). Lemos a MESMA fonte-de-verdade que os D-1*
+    sintetizados — `uip_engine.canonical.load_canonical` — garantindo
+    package→exact-version consistente. Cache em memória; uma vez por processo."""
     global _D1_VERSIONS_CACHE
     if _D1_VERSIONS_CACHE is not None:
         return _D1_VERSIONS_CACHE
-    from pathlib import Path
-    import yaml as _yaml
-    rules_file = Path(__file__).resolve().parents[3] / "rules.yaml"
     versions: dict[str, str] = {}
     try:
-        data = _yaml.safe_load(rules_file.read_text(encoding="utf-8"))
-        for r in data.get("rules", []):
-            rid = r.get("id", "")
-            if not rid.startswith("D-1"):
-                continue
-            params = (r.get("detect") or {}).get("params", {})
-            pkg = params.get("package")
-            ver = params.get("min")
+        from uip_engine.canonical import load_canonical
+        data = load_canonical()
+        for entry in data.get("pins", []) or ():
+            pkg = entry.get("package")
+            ver = entry.get("exact")
             if pkg and ver:
                 versions[pkg] = ver
     except Exception:

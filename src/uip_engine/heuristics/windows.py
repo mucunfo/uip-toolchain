@@ -111,17 +111,21 @@ def detect_w16_isnullorempty(rule, fc, pc):
             continue
         if _last_segment(chain).lower() in skip_last:
             continue
+        # Multi-part chain (obj.Field.IsNullOrEmpty): fixer regex só cobre bare
+        # identifier — emitir mech aqui mente sobre auto-fix (silent no-op).
+        # Mirror W-12/W-2: route multi-part p/ manual (contextual).
+        mech_for_this = None if "." in chain else (rule.fix or {}).get("mechanical")
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
             message=f"{rule.title}: {chain}.IsNullOrEmpty",
-            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_mechanical=mech_for_this,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings
 
 
-_RE_W12_ARRAYROW = re.compile(r'ArrayRow="\[\{(?!New\s)[^"]*\}\]"')
+_RE_W12_ARRAYROW = re.compile(r'ArrayRow="\[\{(?!New\s)[^"}]+\}\]"')
 _RE_W12_EMPTY = re.compile(r'>\[\{\}\]<|"\[\{\}\]"')
 
 
@@ -202,11 +206,15 @@ def detect_w17_toint32(rule, fc, pc):
             continue
         if _last_segment(chain).lower() in skip_last:
             continue
+        # Multi-part chain (obj.Field.ToInt32): fixer regex só cobre bare
+        # identifier — emitir mech aqui mente sobre auto-fix (silent no-op).
+        # Mirror W-12/W-2: route multi-part p/ manual (contextual).
+        mech_for_this = None if "." in chain else (rule.fix or {}).get("mechanical")
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
             message=f"{rule.title}: {chain}.ToInt32",
-            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_mechanical=mech_for_this,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings
@@ -241,6 +249,29 @@ def _is_zero_delay(value: str) -> bool:
         return False
 
 
+def _is_numeric_delay(value: str) -> bool:
+    """True se valor é literal numérico reducível (`500`, `[500]`, `0.0`).
+
+    False p/ binding expression VB não-reducível (`[in_Config(...)]`),
+    `{x:Null}`, ou qualquer coisa que float() não consegue avaliar. Nesses
+    casos force-"0" determinístico apagaria valor config-bound — deve ser
+    contextual (humano decide).
+    """
+    if value is None:
+        return False
+    v = value.strip()
+    if not v:
+        return False
+    # Strip outer [...] bind expression (mirror _is_zero_delay)
+    if v.startswith("[") and v.endswith("]"):
+        v = v[1:-1].strip()
+    try:
+        float(v)
+        return True
+    except ValueError:
+        return False
+
+
 def detect_ui7_simulate_delays(rule, fc, pc):
     """UI-7: activities UIA com InteractionMode=Simulate + DelayBefore/After != 0.
 
@@ -265,16 +296,23 @@ def detect_ui7_simulate_delays(rule, fc, pc):
                 continue
             if _is_zero_delay(attrs[delay_attr]):
                 continue
-            fix_mech = {
-                "type": "force_attribute_in_activity_with_guard",
-                "prefix": prefix,
-                "activity_local": local,
-                "guard_attr": "InteractionMode",
-                "guard_value": "Simulate",
-                "attr_name": delay_attr,
-                "target_value": "0",
-                "tag_line": line,
-            }
+            # Só force-"0" determinístico p/ literal numérico não-zero.
+            # Binding expression não-reducível (`[in_Config(...)]`) ou
+            # `{x:Null}` => contextual (fix_mechanical=None): force-"0"
+            # apagaria valor config-bound (data loss). Humano decide.
+            if _is_numeric_delay(attrs[delay_attr]):
+                fix_mech = {
+                    "type": "force_attribute_in_activity_with_guard",
+                    "prefix": prefix,
+                    "activity_local": local,
+                    "guard_attr": "InteractionMode",
+                    "guard_value": "Simulate",
+                    "attr_name": delay_attr,
+                    "target_value": "0",
+                    "tag_line": line,
+                }
+            else:
+                fix_mech = None
             findings.append(Finding(
                 rule_id=rule.id,
                 severity=rule.severity,

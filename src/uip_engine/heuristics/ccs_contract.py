@@ -272,9 +272,10 @@ def detect_ccs_contract_check(rule, fc, pc):
                             line=line,
                             message=finding_msg,
                             fix_mechanical={
-                                "type": "rename_attribute",
+                                "type": "rename_attribute_name_in_tag",
                                 "from": attr,
                                 "to": expected_case,
+                                "element": f"{prefix}:{wf_name}",
                             },
                             fix_prose=(
                                 f"Renomear `{attr}` → `{expected_case}` em "

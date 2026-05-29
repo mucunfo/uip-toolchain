@@ -152,6 +152,69 @@ def _arg_direction(arg_type: str) -> str:
     return ""
 
 
+def _direction_word(arg_type: str) -> str | None:
+    """Map a `<dir>Argument(...)` prop type to the XAML element word.
+
+    Returns "InOut" | "Out" | "In", or None if the prefix is unrecognized.
+    Order matters: InOut before In so it is not shadowed.
+    """
+    if arg_type.startswith("InOutArgument"):
+        return "InOut"
+    if arg_type.startswith("OutArgument"):
+        return "Out"
+    if arg_type.startswith("InArgument"):
+        return "In"
+    return None
+
+
+def _extract_inner_type(arg_type: str) -> str | None:
+    """Extract the inner type-arg of `<dir>Argument(<inner>)` with balanced
+    parens (inner may itself be a nested generic, e.g.
+    `Dictionary(x:String, s:Tuple(...))`). Returns the raw inner string
+    (namespace prefix preserved, e.g. `ui:QueueItem`, `x:String`), or None
+    if no parens / unbalanced.
+    """
+    open_idx = arg_type.find("(")
+    if open_idx < 0:
+        return None
+    depth = 0
+    for i in range(open_idx, len(arg_type)):
+        ch = arg_type[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                inner = arg_type[open_idx + 1:i].strip()
+                return inner or None
+    return None
+
+
+# Bare generic type parameter (e.g. `T`, `TResult`) — has no namespace prefix,
+# no dot, starts with uppercase T followed by end/uppercase/digit. Such a type
+# cannot be materialized into a real x:TypeArguments value.
+_RE_BARE_TYPE_PARAM = re.compile(r'^T([A-Z0-9].*)?$')
+
+
+def _is_unresolvable_inner(inner: str | None) -> bool:
+    """True when `inner` cannot be safely emitted as an x:TypeArguments value.
+
+    Unresolvable: missing, `?`, or a bare generic type parameter (`T`,
+    `TResult`, ...) with no namespace prefix / no dot. Concrete namespaced
+    or nested-generic types (`ui:QueueItem`, `scg:Dictionary(...)`) ARE
+    resolvable — XAML uses paren syntax for generics, so they stay.
+    """
+    if not inner:
+        return True
+    s = inner.strip()
+    if s == "?":
+        return True
+    # Bare generic type param: no prefix, no dot, matches T-param shape.
+    if ":" not in s and "." not in s and "(" not in s and _RE_BARE_TYPE_PARAM.match(s):
+        return True
+    return False
+
+
 def _jaccard(a: list[str], b: list[str]) -> float:
     sa, sb = set(a), set(b)
     if not sa and not sb:
@@ -374,10 +437,12 @@ def detect_a19b_in_args_missing(rule, fc, pc):
 
         props = _parse_callee_props(callee_content)
         # Required = In ou InOut. NOT Out.
-        required = {
-            n for n, t in props
+        # Track type por arg p/ propagar direction + inner_type ao fixer.
+        required_types = {
+            n: t for n, t in props
             if t.startswith("InArgument") or t.startswith("InOutArgument")
         }
+        required = set(required_types)
         if not required:
             continue
         # Args com default-value NON-EMPTY via `this:<Class>.<arg>` block.
@@ -426,14 +491,25 @@ def detect_a19b_in_args_missing(rule, fc, pc):
         for arg_name in sorted(missing):
             mech_per_finding = None
             if base_mech:
-                mech_per_finding = dict(base_mech)
-                mech_per_finding["params"] = {
-                    **(base_mech.get("params") or {}),
-                    "callee_path": target,
-                    "arg_name": arg_name,
-                }
-                if invoke_idref:
-                    mech_per_finding["params"]["invoke_idref"] = invoke_idref
+                arg_type = required_types.get(arg_name, "")
+                direction = _direction_word(arg_type)
+                inner_type = _extract_inner_type(arg_type)
+                # Tipo irresolvível (?, bare generic param, sem inner, ou
+                # direção desconhecida) → downgrade p/ contextual (mech=None),
+                # NUNCA auto-aplicar binding errado (vide AUDIT A-19b).
+                if direction is None or _is_unresolvable_inner(inner_type):
+                    mech_per_finding = None
+                else:
+                    mech_per_finding = dict(base_mech)
+                    mech_per_finding["params"] = {
+                        **(base_mech.get("params") or {}),
+                        "callee_path": target,
+                        "arg_name": arg_name,
+                        "direction": direction,
+                        "inner_type": inner_type,
+                    }
+                    if invoke_idref:
+                        mech_per_finding["params"]["invoke_idref"] = invoke_idref
             findings.append(Finding(
                 rule_id=rule.id, severity=rule.severity, category=rule.category,
                 file=str(fc.path), line=_line_for(content, invoke.start()),

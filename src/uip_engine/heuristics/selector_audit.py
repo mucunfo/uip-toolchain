@@ -129,6 +129,42 @@ def _parse_search_steps_value(raw: str | None) -> int:
     return bitmask
 
 
+def _scan_serialized_search_steps(elem: ET.Element) -> int:
+    """Recover a SearchSteps bitflag from a property element whose value is
+    non-text markup (e.g. `<x:Static Member="...SemanticSelector"/>`).
+
+    The text-only parser cannot decode this form (child.text is empty), which
+    would silently under-match the breaking cloud-leak rule. We serialize the
+    element's inner XML and scan it for the enum NAMES as whole words. This is
+    deliberately conservative: it only recovers the enum names the engine cares
+    about (Semantic / SemanticSelector and the brittle healing strategies), so
+    a hand-edited / static-reference SearchSteps still triggers the compliance
+    check instead of passing silently.
+
+    Returns 0 when no known enum name is found (safe no-op).
+    """
+    try:
+        serialized = ET.tostring(elem, encoding="unicode")
+    except (TypeError, ValueError):
+        return 0
+
+    bitmask = 0
+    # Longer names first so "SemanticSelector" is not double-counted via the
+    # word-boundary match on "Semantic" (word boundaries make them distinct
+    # tokens anyway, but ordering keeps intent explicit).
+    for name, flag in (
+        ("SemanticSelector", SS_SEMANTIC_SELECTOR),
+        ("Semantic", SS_SEMANTIC),
+        ("Image", SS_IMAGE),
+        ("TextOcr", SS_TEXT_OCR),
+        ("TextNative", SS_TEXT_NATIVE),
+        ("CV", SS_CV),
+    ):
+        if re.search(r"\b" + re.escape(name) + r"\b", serialized):
+            bitmask |= flag
+    return bitmask
+
+
 def _localname(tag: str) -> str:
     """Return localname stripping `{namespace}` prefix from ElementTree tag."""
     if "}" in tag:
@@ -224,13 +260,16 @@ def _iter_target_anchorables(xaml_path: Path) -> Iterator[tuple[int, str, int]]:
         # be parsed by ElementTree as the .NET property-element pattern. In
         # XAML that's `<ui:TargetAnchorable><ui:TargetAnchorable.SearchSteps>...`
         # We look at children for that pattern.
+        ss_child: ET.Element | None = None
         if raw_value is None:
             for child in elem:
                 if _localname(child.tag).endswith("." + _SS_LOCALNAME):
                     raw_value = (child.text or "").strip()
+                    ss_child = child
                     break
                 if _localname(child.tag) == _SS_LOCALNAME:
                     raw_value = (child.text or "").strip()
+                    ss_child = child
                     break
 
         line_no = _line_of_element_in_text(content, _TA_LOCALNAME,
@@ -242,6 +281,18 @@ def _iter_target_anchorables(xaml_path: Path) -> Iterator[tuple[int, str, int]]:
             continue
 
         value_int = _parse_search_steps_value(raw_value)
+
+        # Property-element form where the value is non-text markup (e.g.
+        # `<uix:TargetAnchorable.SearchSteps><x:Static Member="...SemanticSelector"/>`)
+        # yields empty child.text -> value_int == 0, a silent under-match for a
+        # breaking compliance rule. When the SearchSteps element actually has
+        # child element(s) we could not parse as text, scan its serialized inner
+        # XML for the enum names so the cloud-leak check is not silently bypassed.
+        if value_int == 0 and ss_child is not None and len(ss_child) > 0:
+            value_int = _scan_serialized_search_steps(ss_child)
+            if value_int and not raw_value:
+                raw_value = "<unparsed markup>"
+
         yield (line_no, raw_value, value_int)
 
 
@@ -335,7 +386,7 @@ def detect_semantic_leak(*args, **kwargs) -> list[Finding]:
     rule_id = getattr(rule, "id", "S-SEMANTIC_LEAK") if rule is not None else "S-SEMANTIC_LEAK"
     from .._types import Severity as _S
     severity = getattr(rule, "severity", _S.ERROR) if rule is not None else _S.ERROR
-    category = getattr(rule, "category", "security") if rule is not None else "security"
+    category = getattr(rule, "category", "breaking") if rule is not None else "breaking"
     fix_prose = ((rule.fix or {}).get("prose")
                  if rule is not None and getattr(rule, "fix", None) else None)
 

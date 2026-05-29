@@ -50,6 +50,44 @@ def _parse_v(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in re.findall(r"\d+", v))
 
 
+# Pattern do catálogo sempre ancora em `<[prefix:]ElementName\b` (ou no
+# fim/atributo logo após). Extrai o tag-name completo (com prefixo) pra
+# escopar o strip ao elemento ofensor — ver D-PINALERT CONTRACT.
+_ELEMENT_FROM_PATTERN = re.compile(r"^<((?:[\w.]+:)?[\w.]+)\\b")
+
+
+def _element_from_pattern(pat: str) -> str | None:
+    """Deriva o nome do elemento (ex 'uma:Office365ApplicationScope',
+    'ui:CopyFile') a partir do regex pattern `<prefix:Name\\b...`.
+
+    Retorna None se o pattern não começar com a âncora de tag esperada
+    (ex element-only patterns sem `\\b`), caso em que o strip permanece
+    file-wide (comportamento legado seguro)."""
+    m = _ELEMENT_FROM_PATTERN.match(pat)
+    if not m:
+        return None
+    return m.group(1)
+
+
+def _scoped_mech(mech_spec, pat):
+    """Para mechs `strip_xml_attribute`, injeta `element` (tag-name do
+    pattern) numa CÓPIA do dict — nunca muta o `_CACHE` do YAML — pra que
+    o fixer remova o atributo SÓ dentro do open tag do elemento ofensor.
+    Outros tipos de mech passam inalterados."""
+    if not isinstance(mech_spec, dict):
+        return mech_spec
+    if mech_spec.get("type") != "strip_xml_attribute":
+        return mech_spec
+    if "element" in mech_spec:
+        return mech_spec  # já especificado no catálogo — respeitar
+    element = _element_from_pattern(pat)
+    if not element:
+        return mech_spec  # sem âncora confiável → file-wide legado
+    scoped = dict(mech_spec)
+    scoped["element"] = element
+    return scoped
+
+
 def detect_pin_alert(rule, fc, pc):
     if pc is None:
         return []
@@ -83,7 +121,7 @@ def detect_pin_alert(rule, fc, pc):
             intro_v = _parse_v(intro_raw)
             if pinned_v >= intro_v:
                 continue  # pin já cobre — sem alerta
-            mech_spec = api.get("mechanical")
+            mech_spec = _scoped_mech(api.get("mechanical"), pat)
             for match in re.finditer(pat, content):
                 line = content[: match.start()].count("\n") + 1
                 fix_text = api.get("fix", "")
@@ -116,7 +154,7 @@ def detect_pin_alert(rule, fc, pc):
             rem_v = _parse_v(rem_raw)
             if pinned_v < rem_v:
                 continue  # pin ainda inclui API — sem alerta
-            mech_spec = api.get("mechanical")
+            mech_spec = _scoped_mech(api.get("mechanical"), pat)
             for match in re.finditer(pat, content):
                 line = content[: match.start()].count("\n") + 1
                 fix_text = api.get("fix", "")

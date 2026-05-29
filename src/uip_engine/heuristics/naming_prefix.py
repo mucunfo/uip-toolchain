@@ -566,6 +566,15 @@ def _check_argument(rule, fc, content, name, type_str, offset,
 
     bad = False
     if not name.startswith(expected_dir):
+        # N-2/N-11 ownership split: an argument with NO valid direction prefix
+        # at all (e.g. `parametro`) is owned EXCLUSIVELY by N-11 (breaking),
+        # which renames it to `in_/out_/io_<Nome>`. N-2 (architectural) must not
+        # also fire here — both emitting a `rename_argument` deterministic fix
+        # with DIFFERENT targets would collide in a single --apply pass. N-2
+        # only owns the case where a valid direction prefix IS present but the
+        # type prefix is wrong/missing.
+        if _strip_direction(name) == name:
+            return None
         bad = True
     elif inner_type:
         expected_prefix = _expected_prefix(inner_type, type_pairs)

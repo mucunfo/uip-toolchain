@@ -45,12 +45,35 @@ def _is_in_chain(fc, pc, exclude_paths) -> bool:
     return True
 
 
+def _is_performer_project(pc) -> bool:
+    """True se o projeto é um Performer REFramework.
+
+    Primário: project.json.name termina com '_Performer' (canonical Orchestrator
+    mapping — name é fonte de verdade, pasta kebab-case não é).
+    Fallback estrutural: Framework/Process.xaml E Framework/GetTransactionData.xaml
+    existem (esqueleto REFramework Performer; Dispatcher só monta fila, não tem).
+    """
+    if pc is None:
+        return False
+    name = (pc.project_json.get("name") or "").strip()
+    if name.lower().endswith("_performer"):
+        return True
+    fw = pc.root / "Framework"
+    return (fw / "Process.xaml").is_file() and (fw / "GetTransactionData.xaml").is_file()
+
+
 def detect_n3_log_prefixo(rule, fc, pc):
     """N-3: Workflow na cadeia Process com LogMessage deve declarar e usar
-    o argumento de prefixo de log declarado em params."""
+    o argumento de prefixo de log declarado em params.
+
+    Aplica SOMENTE a Performers (Dispatcher monta fila, sem TransactionItem →
+    prefixo de Reference não se aplica). Main excluído via exclude_paths +
+    applies_to (logs pré-transação não padronizam prefixo)."""
     p = _params(rule)
     excl = _exclude_paths(p)
     prefixo_arg = p.get("prefixo_arg_name") or "in_StPrefixoLog"
+    if not _is_performer_project(pc):
+        return []
     if not _is_in_chain(fc, pc, excl):
         return []
     content = fc.active_content
@@ -64,6 +87,8 @@ def detect_n3_log_prefixo(rule, fc, pc):
         fix_mech_spec = {
             "type": "add_prefixo_arg",
             "prefixo_arg": prefixo_arg,
+            "transaction_var_name": p.get("transaction_var_name") or "TransactionItem",
+            "transaction_arg_name": p.get("transaction_arg_name") or "in_TransactionItem",
         }
         return [Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
@@ -542,6 +567,9 @@ _S10_TAG_RE = re.compile(
     r'<(?P<slash>/?)\s*(?P<name>[A-Za-z_][\w:.\-]*)\b(?P<attrs>[^>]*?)(?P<self>/?)>',
     re.DOTALL,
 )
+# Self-closed LogMessage shape. Retained for reference only — the
+# restrictive-parent recorder no longer gates on self-close (both self-closed
+# and expanded open+close LogMessage forms are recorded; audit 2026-05-28).
 _S10_LOG_RE = re.compile(r'<ui:LogMessage\b[^>]*?/>', re.DOTALL)
 
 # Restritivos: tag aceita exatamente 1 filho activity (handler / branch / argument).
@@ -628,7 +656,15 @@ def detect_s10_logmessage_in_restrictive_parent(rule, fc, pc):
         if _s10_is_qualified_property_of(parent_name, child_name):
             return
         parent[2] += 1
-        if child_name == "ui:LogMessage" and is_self_close and _S10_LOG_RE.match(full_tag):
+        # Record the LogMessage child regardless of self-close (audit 2026-05-28).
+        # Previously only the SELF-CLOSED form (`<ui:LogMessage .../>`) was
+        # captured, so the EXPANDED open+close form
+        # (`<ui:LogMessage ...><ui:LogMessage.Message>...</ui:LogMessage.Message>
+        # </ui:LogMessage>` — the traceable form Sicoob prefers for complex VB
+        # Message expressions) was silently missed in a restrictive parent,
+        # leaking a breaking Studio compile error. Use the offset of the OPEN
+        # tag for the finding line in both forms.
+        if child_name == "ui:LogMessage":
             if _s10_is_restrictive(parent_name, parent_attrs):
                 parent[3].append(pos)
 
@@ -755,6 +791,39 @@ _RE_LOGMSG_ATTR = re.compile(
     re.DOTALL,
 )
 
+# N-15 FP-reduction (audit 2026-05-28): the single-letter `presente` suffix
+# bucket (a/e/i) is inherently ambiguous — most PT-BR words ending in -a/-e/-i
+# are NOUNS/adjectives (Conta, Linha, Senha, Base, Chave, Lote, Pagina), not
+# present-indicative verbs. Pure terminal-letter matching over-flags them,
+# contradicting the rule's stated VERB-only intent. So for the `presente`
+# bucket ONLY we additionally require the first word to match a known PT-BR
+# verb form (3rd-person present indicative) before flagging. Multi-char
+# forbidden buckets (gerundio -ando/-endo/-indo, passado -ou/-eu/-iu/-ei/
+# -ava/-ia) stay terminal-letter only — they are unambiguous verb endings.
+#
+# The verb list mirrors N-13's curated `verbs` (naming.detect_n13_verb_infinitive):
+# present-indicative 3rd-person forms that SHOULD be infinitive. Accent-folded +
+# lowercased for matching. Drop the presente bucket's noise without losing the
+# genuine "Busca dados" / "Atualiza TAG" verb-leading messages.
+_N15_PRESENTE_BUCKET = frozenset({"a", "e", "i"})
+_N15_KNOWN_VERB_STEMS = frozenset({
+    "busca", "atualiza", "carrega", "extrai", "recupera", "verifica",
+    "valida", "anexa", "salva", "lista", "obtem", "executa", "envia",
+    "cria", "conecta", "calcula", "processa", "trata", "converte",
+    "vincula", "captura", "encerra", "inicia", "reinicia", "limpa",
+    "recebe", "monta",
+})
+
+
+def _n15_fold_accents(word: str) -> str:
+    """Lowercase + strip common PT-BR accents for verb-stem matching."""
+    low = word.lower()
+    table = str.maketrans(
+        "áàâãäéèêëíìîïóòôõöúùûüç",
+        "aaaaaeeeeiiiiooooouuuuc",
+    )
+    return low.translate(table)
+
 
 def _extract_first_word(msg_attr_value: str) -> str | None:
     """Extract first alphabetic word from a Message attr value.
@@ -861,6 +930,12 @@ def detect_n15_log_infinitive(rule, fc, pc):
         for kind, suffixes in forbidden.items():
             for suf in suffixes:
                 if low.endswith(suf) and len(low) > len(suf):
+                    # `presente` bucket (single-letter a/e/i) over-matches PT-BR
+                    # nouns. Require a known verb form before flagging — keeps the
+                    # rule's VERB-only intent and kills the noun false positives.
+                    if set(suffixes) == _N15_PRESENTE_BUCKET:
+                        if _n15_fold_accents(first) not in _N15_KNOWN_VERB_STEMS:
+                            continue
                     violated = (kind, suf)
                     break
             if violated:
@@ -876,3 +951,137 @@ def detect_n15_log_infinitive(rule, fc, pc):
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings
+
+
+# ===========================================================================
+# N-3B — invoke-binding seed for in_StPrefixoLog (2026-05-28)
+# ===========================================================================
+#
+# Corrected binding-seed model: N-3 cobre DECLARAÇÃO+consumo de in_StPrefixoLog;
+# N-3B cobre o VALOR passado nos bindings <ui:InvokeWorkflowFile.Arguments>.
+# Dono da transação (Process) deriva [in_TransactionItem.Reference + " - "];
+# quem recebe o prefixo herda [in_StPrefixoLog]; vazios ("") são UPGRADED.
+
+# Bloco InvokeWorkflowFile.Arguments (ui-prefixed). Group 1 = inner body.
+_RE_INVOKE_ARGS_BLOCK = re.compile(
+    r'<ui:InvokeWorkflowFile\.Arguments\s*>(.*?)</ui:InvokeWorkflowFile\.Arguments\s*>',
+    re.DOTALL,
+)
+
+
+def _binding_re(arg_name):
+    """InArgument binding p/ arg_name, attribute-order agnostic. Captura attrs
+    e (forma element-content) o valor interno; forma self-closed não tem valor."""
+    return re.compile(
+        r'<InArgument\b(?P<attrs>[^>]*?\bx:Key="' + re.escape(arg_name) + r'"[^>]*?)'
+        r'(?:/>|>(?P<value>.*?)</InArgument>)',
+        re.DOTALL,
+    )
+
+
+def _prefixo_value_is_empty(value):
+    """True se o valor do InArgument deve ser UPGRADED (vazio/whitespace/literal).
+
+    `value` é None p/ binding self-closed (sem grupo value), senão o texto raw
+    do element-content. Formas vazias: '', whitespace, literal VB `""`,
+    entity-encoded, ou <Literal ... Value="" />."""
+    if value is None:
+        return True
+    stripped = value.strip()
+    if stripped in ("", '""', '&quot;&quot;', '[""]', '[&quot;&quot;]'):
+        return True
+    if re.fullmatch(r'<Literal\b[^>]*\bValue=""[^>]*/>', stripped):
+        return True
+    return False
+
+
+def _empty_prefixo_binding_sites(content, arg_name, value_expr):
+    """Offsets de bindings in_StPrefixoLog (dentro de InvokeWorkflowFile.Arguments)
+    cujo valor é vazio/upgradeable e NÃO já == value_expr. A presença do binding
+    implica que o callee declara o arg (Studio só serializa binding p/ arg
+    declarado), então não é preciso resolver o callee."""
+    binding_re = _binding_re(arg_name)
+    sites = []
+    for block in _RE_INVOKE_ARGS_BLOCK.finditer(content):
+        body = block.group(1)
+        body_start = block.start(1)
+        for bm in binding_re.finditer(body):
+            value = bm.group("value")
+            if value is not None and value.strip() == value_expr:
+                continue  # já correto — idempotente
+            if _prefixo_value_is_empty(value):
+                sites.append(body_start + bm.start())
+    return sites
+
+
+def detect_n3_prefixo_binding(rule, fc, pc):
+    """N-3B: seed/upgrade o VALOR de bindings in_StPrefixoLog dentro de
+    <ui:InvokeWorkflowFile.Arguments>.
+
+    Modelo (workflow SEEDING atual):
+      * declara in_StPrefixoLog arg             -> HERDA  [in_StPrefixoLog]
+      * tem in_TransactionItem arg (sem prefixo) -> DERIVA [in_TransactionItem.Reference + " - "]
+      * tem Variable TransactionItem (sem prefixo)-> DERIVA [TransactionItem.Reference + " - "]
+      * nenhum                                    -> não há fonte (skip)
+
+    Flag por binding vazio/ausente (a presença do binding implica callee declara
+    o arg). Emite UM finding por arquivo (fixer faz upgrade de todos). Performer-
+    only. Roda em Framework/Process.xaml — applies_to da N-3B NÃO exclui Framework.
+    """
+    p = _params(rule)
+    prefixo_arg = p.get("prefixo_arg_name") or "in_StPrefixoLog"
+    txn_var = p.get("transaction_var_name") or "TransactionItem"
+    txn_arg = p.get("transaction_arg_name") or "in_TransactionItem"
+
+    if not _is_performer_project(pc):
+        return []
+
+    content = fc.active_content
+    if not content or "InvokeWorkflowFile" not in content:
+        return []
+
+    declares_prefixo = bool(
+        re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content)
+    )
+    declares_txn_arg = bool(
+        re.search(rf'<x:Property\b[^>]*Name="{re.escape(txn_arg)}"', content)
+    )
+    has_txn_var = bool(
+        re.search(rf'<Variable\b[^>]*\bName="{re.escape(txn_var)}"', content)
+    )
+
+    if declares_prefixo:
+        value_expr = f"[{prefixo_arg}]"
+        mode = "inherit"
+    elif declares_txn_arg:
+        value_expr = f'[{txn_arg}.Reference + " - "]'
+        mode = "derive-arg"
+    elif has_txn_var:
+        value_expr = f'[{txn_var}.Reference + " - "]'
+        mode = "derive-var"
+    else:
+        return []
+
+    binding_sites = _empty_prefixo_binding_sites(content, prefixo_arg, value_expr)
+    if not binding_sites:
+        return []
+
+    fix_mech_spec = {
+        "type": "seed_prefixo_binding",
+        "arg_name": prefixo_arg,
+        "value_expr": value_expr,
+        "mode": mode,
+        "transaction_var_name": txn_var,
+        "transaction_arg_name": txn_arg,
+    }
+    return [Finding(
+        rule_id=rule.id, severity=rule.severity, category=rule.category,
+        file=str(fc.path), line=_line_for(content, binding_sites[0]),
+        message=(
+            f"{rule.title}: {len(binding_sites)} binding(s) de {prefixo_arg} "
+            f"vazio/ausente em InvokeWorkflowFile.Arguments — seed "
+            f"{value_expr} ({mode})"
+        ),
+        fix_mechanical=fix_mech_spec,
+        fix_prose=(rule.fix or {}).get("prose"),
+    )]

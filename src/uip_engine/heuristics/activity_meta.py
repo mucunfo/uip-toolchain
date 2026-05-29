@@ -375,6 +375,28 @@ def _emit(rule, fc, line: int, msg: str, fix_mechanical=None) -> Finding:
     )
 
 
+def _emit_no_mech(rule, fc, line: int, msg: str) -> Finding:
+    """Como `_emit` mas força fix_mechanical=None (sem fallback p/ o
+    mechanical declarado na rule).
+
+    Usado quando o detector decide que o caso específico NÃO tem fix mecânico
+    seguro (ex: M-2 com tipo generic/unresolvable). `_effective_apply_class`
+    em cli.py lê `finding.fix_mechanical` diretamente: None → deterministic
+    degrada p/ contextual (PENDING_REVIEW manual) em vez de FAIL com um fixer
+    que produziria XAML inválido. Mantém fix_prose pro humano seguir.
+    """
+    return Finding(
+        rule_id=rule.id,
+        severity=rule.severity,
+        category=rule.category,
+        file=str(fc.path),
+        line=line,
+        message=f"{rule.title}: {msg}",
+        fix_mechanical=None,
+        fix_prose=(rule.fix or {}).get("prose"),
+    )
+
+
 def _check_unknown(rule, fc, schema, refs) -> list[Finding]:
     """M-1: emite só para xmlns canônicos UiPath conhecidos.
 
@@ -850,6 +872,37 @@ def _check_redundant_default(rule, fc, schema, refs) -> list[Finding]:
     return findings
 
 
+def _is_mech_unresolvable_type(prop_type: object) -> bool:
+    """True se o tipo do arg não pode virar um x:TypeArguments válido.
+
+    Casos que invalidam o auto-fix mecânico de M-2 (add_property_element):
+      - generic não-fechado / aberto: contém "<" (ex: 'IList<T>') — geraria
+        `x:TypeArguments="...<T>"` que NÃO é XML well-formed (rollback no gate)
+        ou, se escapado, um tipo .NET inválido.
+      - placeholder desconhecido: "?" (schema não resolveu o tipo).
+      - type parameter genérico: exatamente "T" ou nome de type-param (começa
+        com "T" seguido de maiúscula/dígito, ex: 'T1', 'TResult') — não é um
+        tipo concreto, geraria `x:TypeArguments="System.T..."` inválido.
+
+    Quando True, o detector emite M-2 SEM fix_mechanical (degrada para finding
+    manual/contextual) em vez de produzir XAML quebrado.
+    """
+    if not prop_type:
+        # None/"" → fixer usa fallback x:Object (válido); mantém mecânico.
+        return False
+    t = str(prop_type).strip()
+    if "<" in t:
+        return True
+    if t == "?":
+        return True
+    if t == "T":
+        return True
+    # Type parameter convention: "T" seguido de Upper/dígito (TResult, T1, TKey).
+    if len(t) >= 2 and t[0] == "T" and (t[1].isupper() or t[1].isdigit()):
+        return True
+    return False
+
+
 def _check_required_missing(rule, fc, schema, refs) -> list[Finding]:
     """Required arg ausente.
 
@@ -857,6 +910,11 @@ def _check_required_missing(rule, fc, schema, refs) -> list[Finding]:
     uma combinação válida. Se >=1 group teve TODOS seus required satisfeitos,
     os requireds dos outros groups NÃO precisam estar preenchidos.
     Args required sem group são sempre obrigatórios.
+
+    Cada finding carrega fix_mechanical (add_property_element) EXCETO quando o
+    tipo do arg é generic/unresolvable (ver `_is_mech_unresolvable_type`) — aí
+    fix_mechanical=None para não emitir x:TypeArguments inválido. O mech inclui
+    `direction` (In/Out/InOut) pro fixer escolher o wrapper correto.
     """
     findings = []
     for ref in refs:
@@ -886,6 +944,14 @@ def _check_required_missing(rule, fc, schema, refs) -> list[Finding]:
         # 4a. Args sem group: sempre required
         for a in required_no_group:
             if a.name not in provided:
+                msg = (
+                    f"<{ref.prefix}:{ref.local_name}> falta arg required "
+                    f"'{a.name}' (tipo {a.type})"
+                )
+                if _is_mech_unresolvable_type(a.type):
+                    # generic/unresolvable → SEM fix mecânico (manual)
+                    findings.append(_emit_no_mech(rule, fc, ref.line, msg))
+                    continue
                 fix_mech = {
                     "type": "add_property_element",
                     "prefix": ref.prefix,
@@ -893,25 +959,54 @@ def _check_required_missing(rule, fc, schema, refs) -> list[Finding]:
                     "prop_name": a.name,
                     "prop_type": a.type,
                     "default": a.default,
+                    "direction": a.direction,
                     "tag_line": ref.line,
                 }
                 findings.append(_emit(
-                    rule, fc, ref.line,
-                    f"<{ref.prefix}:{ref.local_name}> falta arg required '{a.name}' (tipo {a.type})",
-                    fix_mechanical=fix_mech,
+                    rule, fc, ref.line, msg, fix_mechanical=fix_mech,
                 ))
-        # 4b. Args com group: só emite se NENHUM group satisfeito
+        # 4b. Args com group — overload semantics com ENGAJAMENTO.
+        # Um group e' "engajado" se o user forneceu >=1 arg DESSE group — inclusive
+        # args r:false que apenas SELECIONAM o group (ex: CloseWindow.UseWindow,
+        # g="Use Window", r:false vs Selector, g="Find Window", r:true). Se o user
+        # engajou algum group, so' exigimos os required dos groups ENGAJADOS (a
+        # combinacao escolhida); groups alternativos nao-engajados NAO sao cobrados
+        # — senao M-2 falsamente exige Selector de um CloseWindow que usa UseWindow.
+        # Sem nenhum group engajado e nenhum satisfeito -> ambiguo -> fallback p/
+        # o group menos incompleto (best_group).
+        engaged_groups = {
+            a.overload_group for a in adef.args
+            if a.overload_group and a.name in provided
+        }
         if required_by_group and not any_group_satisfied:
-            best_group = None
-            best_score = -1
-            for group_name, args in required_by_group.items():
-                score = sum(1 for a in args if a.name in provided)
-                if score > best_score:
-                    best_score = score
-                    best_group = group_name
-            if best_group:
-                for a in required_by_group[best_group]:
+            if engaged_groups:
+                demand_groups = [g for g in required_by_group if g in engaged_groups]
+            else:
+                best_group = None
+                best_score = -1
+                for group_name, args in required_by_group.items():
+                    score = sum(1 for a in args if a.name in provided)
+                    if score > best_score:
+                        best_score = score
+                        best_group = group_name
+                demand_groups = [best_group] if best_group else []
+            for group_name in demand_groups:
+                alts = ", ".join(
+                    g for g in required_by_group if g != group_name
+                ) or "nenhuma"
+                for a in required_by_group[group_name]:
                     if a.name not in provided:
+                        msg = (
+                            f"<{ref.prefix}:{ref.local_name}> falta arg required "
+                            f"'{a.name}' (tipo {a.type}, group={group_name}; "
+                            f"alternativas: {alts})"
+                        )
+                        if _is_mech_unresolvable_type(a.type):
+                            # generic/unresolvable → SEM fix mecânico (manual)
+                            findings.append(
+                                _emit_no_mech(rule, fc, ref.line, msg)
+                            )
+                            continue
                         fix_mech = {
                             "type": "add_property_element",
                             "prefix": ref.prefix,
@@ -919,14 +1014,11 @@ def _check_required_missing(rule, fc, schema, refs) -> list[Finding]:
                             "prop_name": a.name,
                             "prop_type": a.type,
                             "default": a.default,
+                            "direction": a.direction,
                             "tag_line": ref.line,
                         }
                         findings.append(_emit(
-                            rule, fc, ref.line,
-                            f"<{ref.prefix}:{ref.local_name}> falta arg required '{a.name}' "
-                            f"(tipo {a.type}, group={best_group}; alternativas: "
-                            f"{', '.join(g for g in required_by_group if g != best_group) or 'nenhuma'})",
-                            fix_mechanical=fix_mech,
+                            rule, fc, ref.line, msg, fix_mechanical=fix_mech,
                         ))
     return findings
 
