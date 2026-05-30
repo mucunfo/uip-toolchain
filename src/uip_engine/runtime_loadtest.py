@@ -105,8 +105,11 @@ def run_loadtest(project_root: Path, timeout: int = 180) -> tuple[int, list[Find
         s = str(p)
         if "_BeforeMigration_" in s:
             continue
-        # Skip nupkg extract folders (uipcli pack output em .tmp/)
-        if ".tmp" in p.parts:
+        # Skip cache/build dirs: .tmp (uipcli pack output), .local (cache
+        # local do Studio — deps, expr dlls, Triggers.Generated.xaml stub
+        # vazio), bin/obj (build output). XAML aqui = artefato gerado pelo
+        # Studio/build, não código do projeto → não validar.
+        if {".tmp", ".local", "bin", "obj"} & set(p.parts):
             continue
         xamls.append(s)
     xamls.sort()
