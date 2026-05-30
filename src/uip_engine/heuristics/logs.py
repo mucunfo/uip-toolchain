@@ -62,6 +62,23 @@ def _is_performer_project(pc) -> bool:
     return (fw / "Process.xaml").is_file() and (fw / "GetTransactionData.xaml").is_file()
 
 
+def _is_main_entry(fc, pc) -> bool:
+    """True se fc é o workflow de entrada (Main) do projeto.
+
+    Fonte de verdade: project.json::main (canonical — Studio aponta o entry
+    aqui). Fallback: basename Main.xaml. Identifica o ÚNICO site onde o prefixo
+    de log é DERIVADO de TransactionItem.Reference (seed Main→Process). Em todo
+    o resto da cadeia o prefixo é HERDADO (propagado como [in_StPrefixoLog])."""
+    if pc is None:
+        return False
+    main_rel = (pc.project_json.get("main") or "Main.xaml").strip().replace("\\", "/")
+    try:
+        rel = str(fc.path.relative_to(pc.root)).replace("\\", "/")
+    except Exception:
+        rel = fc.path.name
+    return rel.lower() == main_rel.lower()
+
+
 def detect_n3_log_prefixo(rule, fc, pc):
     """N-3: Workflow na cadeia Process com LogMessage deve declarar e usar
     o argumento de prefixo de log declarado em params.
@@ -1014,55 +1031,60 @@ def _empty_prefixo_binding_sites(content, arg_name, value_expr):
     return sites
 
 
+def _wrong_prefixo_binding_sites(content, arg_name, value_expr):
+    """Offsets de bindings in_StPrefixoLog (dentro de InvokeWorkflowFile.Arguments)
+    cujo valor NÃO é exatamente value_expr (vazio OU derivação errada OU qualquer
+    outro). Política Sicoob da CADEIA (não-Main): só há UM valor legítimo —
+    a herança [in_StPrefixoLog]. Tudo diferente é upgradeável (overwrite-always).
+    A presença do binding implica que o callee declara o arg."""
+    binding_re = _binding_re(arg_name)
+    sites = []
+    for block in _RE_INVOKE_ARGS_BLOCK.finditer(content):
+        body = block.group(1)
+        body_start = block.start(1)
+        for bm in binding_re.finditer(body):
+            value = bm.group("value")
+            if value is not None and value.strip() == value_expr:
+                continue  # já correto — idempotente
+            sites.append(body_start + bm.start())
+    return sites
+
+
 def detect_n3_prefixo_binding(rule, fc, pc):
-    """N-3B: seed/upgrade o VALOR de bindings in_StPrefixoLog dentro de
-    <ui:InvokeWorkflowFile.Arguments>.
+    """N-3B (modelo Sicoob de propagação): em workflows da CADEIA (NÃO-Main —
+    applies_to exclui Main/Tests/Launch), todo binding in_StPrefixoLog dentro de
+    <ui:InvokeWorkflowFile.Arguments> deve HERDAR [in_StPrefixoLog].
 
-    Modelo (workflow SEEDING atual):
-      * declara in_StPrefixoLog arg             -> HERDA  [in_StPrefixoLog]
-      * tem in_TransactionItem arg (sem prefixo) -> DERIVA [in_TransactionItem.Reference + " - "]
-      * tem Variable TransactionItem (sem prefixo)-> DERIVA [TransactionItem.Reference + " - "]
-      * nenhum                                    -> não há fonte (skip)
+    Política (3 regras Sicoob):
+      1. O prefixo é DERIVADO de TransactionItem.Reference UMA única vez, no seed
+         Main→Process (tratado pelo cascade do add_prefixo_arg, escopo do Main —
+         único arquivo com `<Variable Name="TransactionItem">`). N-3B NÃO roda no
+         Main (applies_to exclui), então nunca toca/sobrescreve o seed.
+      2. Process e TODOS os invokes filhos carregam o MESMO prefixo herdado →
+         só há um valor legítimo na cadeia: [in_StPrefixoLog]. Qualquer binding
+         diferente (vazio, derivação re-feita `[*.Reference + " - "]`, ou outro)
+         é upgradeável SEMPRE (overwrite-always) — fixer recebe overwrite=True.
 
-    Flag por binding vazio/ausente (a presença do binding implica callee declara
-    o arg). Emite UM finding por arquivo (fixer faz upgrade de todos). Performer-
-    only. Roda em Framework/Process.xaml — applies_to da N-3B NÃO exclui Framework.
+    Emite UM finding por arquivo (fixer faz upgrade de todos os bindings).
+    Performer-only. Roda em Framework/Process.xaml (applies_to NÃO exclui
+    Framework). A declaração do arg no propagador é coberta pela N-3D.
     """
     p = _params(rule)
     prefixo_arg = p.get("prefixo_arg_name") or "in_StPrefixoLog"
-    txn_var = p.get("transaction_var_name") or "TransactionItem"
-    txn_arg = p.get("transaction_arg_name") or "in_TransactionItem"
 
     if not _is_performer_project(pc):
+        return []
+    # Defesa-em-profundidade: jamais derivar/sobrescrever no Main (seed-owner).
+    # applies_to já exclui Main, mas o gate explícito protege contra include solto.
+    if _is_main_entry(fc, pc):
         return []
 
     content = fc.active_content
     if not content or "InvokeWorkflowFile" not in content:
         return []
 
-    declares_prefixo = bool(
-        re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content)
-    )
-    declares_txn_arg = bool(
-        re.search(rf'<x:Property\b[^>]*Name="{re.escape(txn_arg)}"', content)
-    )
-    has_txn_var = bool(
-        re.search(rf'<Variable\b[^>]*\bName="{re.escape(txn_var)}"', content)
-    )
-
-    if declares_prefixo:
-        value_expr = f"[{prefixo_arg}]"
-        mode = "inherit"
-    elif declares_txn_arg:
-        value_expr = f'[{txn_arg}.Reference + " - "]'
-        mode = "derive-arg"
-    elif has_txn_var:
-        value_expr = f'[{txn_var}.Reference + " - "]'
-        mode = "derive-var"
-    else:
-        return []
-
-    binding_sites = _empty_prefixo_binding_sites(content, prefixo_arg, value_expr)
+    value_expr = f"[{prefixo_arg}]"  # CADEIA: sempre herança, nunca derivação
+    binding_sites = _wrong_prefixo_binding_sites(content, prefixo_arg, value_expr)
     if not binding_sites:
         return []
 
@@ -1070,18 +1092,111 @@ def detect_n3_prefixo_binding(rule, fc, pc):
         "type": "seed_prefixo_binding",
         "arg_name": prefixo_arg,
         "value_expr": value_expr,
-        "mode": mode,
-        "transaction_var_name": txn_var,
-        "transaction_arg_name": txn_arg,
+        "mode": "inherit",
+        "overwrite": True,  # regra 2: só um valor legítimo na cadeia
     }
     return [Finding(
         rule_id=rule.id, severity=rule.severity, category=rule.category,
         file=str(fc.path), line=_line_for(content, binding_sites[0]),
         message=(
             f"{rule.title}: {len(binding_sites)} binding(s) de {prefixo_arg} "
-            f"vazio/ausente em InvokeWorkflowFile.Arguments — seed "
-            f"{value_expr} ({mode})"
+            f"!= {value_expr} em InvokeWorkflowFile.Arguments — propagar herança "
+            f"(overwrite)"
         ),
         fix_mechanical=fix_mech_spec,
+        fix_prose=(rule.fix or {}).get("prose"),
+    )]
+
+
+def detect_n3c_main_deownership(rule, fc, pc):
+    """N-3C: o Main (entry) NÃO pode declarar nem USAR in_StPrefixoLog. O prefixo
+    de log só existe em Process + filhos (regra 3 Sicoob). O Main apenas SEMEIA o
+    valor no invoke do Process (binding x:Key=in_StPrefixoLog) — isso é mantido.
+
+    Detecta: Main declara `<x:Property Name="in_StPrefixoLog">` OU usa
+    `[in_StPrefixoLog + ...]` em alguma LogMessage. Fixer strip_prefixo_from_main
+    remove: a declaração, o bloco default `<this:<Class>.in_StPrefixoLog>`, e o
+    prefixo das mensagens (`[in_StPrefixoLog + ` → `[`). NÃO toca nos bindings
+    `x:Key="in_StPrefixoLog"` (o seed que o Main passa pro Process)."""
+    p = _params(rule)
+    prefixo_arg = p.get("prefixo_arg_name") or "in_StPrefixoLog"
+
+    if not _is_performer_project(pc):
+        return []
+    if not _is_main_entry(fc, pc):
+        return []
+
+    content = fc.active_content
+    if not content:
+        return []
+
+    declares = bool(
+        re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content)
+    )
+    uses_in_msg = f"[{prefixo_arg} + " in content
+    if not declares and not uses_in_msg:
+        return []
+
+    return [Finding(
+        rule_id=rule.id, severity=rule.severity, category=rule.category,
+        file=str(fc.path), line=_line_for(content, 0),
+        message=(
+            f"{rule.title}: Main declara/usa {prefixo_arg} — prefixo de log só "
+            f"pertence a Process + filhos (Main apenas semeia o valor)"
+        ),
+        fix_mechanical={"type": "strip_prefixo_from_main", "prefixo_arg": prefixo_arg},
+        fix_prose=(rule.fix or {}).get("prose"),
+    )]
+
+
+def detect_n3d_propagator_declares(rule, fc, pc):
+    """N-3D: workflow NÃO-Main que PROPAGA in_StPrefixoLog (tem binding
+    x:Key=in_StPrefixoLog em <ui:InvokeWorkflowFile.Arguments>) mas NÃO declara o
+    argumento como `<x:Property>` → deve declará-lo. Sem a declaração, o valor de
+    propagação `[in_StPrefixoLog]` não compila no escopo do workflow.
+
+    Caso canônico: Framework/Process.xaml (em Framework/, fora do alcance da N-3,
+    mas é a RAIZ da cadeia de propagação). Fixer add_prefixo_arg declara o arg +
+    cascateia o seed pros callers (Main → deriva de TransactionItem.Reference).
+    """
+    p = _params(rule)
+    prefixo_arg = p.get("prefixo_arg_name") or "in_StPrefixoLog"
+
+    if not _is_performer_project(pc):
+        return []
+    if _is_main_entry(fc, pc):
+        return []
+
+    content = fc.active_content
+    if not content or "InvokeWorkflowFile" not in content:
+        return []
+
+    declares = bool(
+        re.search(rf'<x:Property\b[^>]*Name="{re.escape(prefixo_arg)}"', content)
+    )
+    if declares:
+        return []
+
+    binding_re = _binding_re(prefixo_arg)
+    propagates = any(
+        binding_re.search(block.group(1))
+        for block in _RE_INVOKE_ARGS_BLOCK.finditer(content)
+    )
+    if not propagates:
+        return []
+
+    return [Finding(
+        rule_id=rule.id, severity=rule.severity, category=rule.category,
+        file=str(fc.path), line=_line_for(content, 0),
+        message=(
+            f"{rule.title}: propaga {prefixo_arg} a sub-workflows mas não declara "
+            f"o argumento — [{prefixo_arg}] não resolve no escopo"
+        ),
+        fix_mechanical={
+            "type": "add_prefixo_arg",
+            "prefixo_arg": prefixo_arg,
+            "transaction_var_name": p.get("transaction_var_name") or "TransactionItem",
+            "transaction_arg_name": p.get("transaction_arg_name") or "in_TransactionItem",
+        },
         fix_prose=(rule.fix or {}).get("prose"),
     )]

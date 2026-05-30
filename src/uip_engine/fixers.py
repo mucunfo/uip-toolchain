@@ -1724,6 +1724,11 @@ def apply_seed_prefixo_binding(file: Path, spec: dict, dry_run: bool = True) -> 
     value_expr = spec.get("value_expr")
     if not value_expr:
         return False
+    # overwrite=True (N-3B cadeia): só há um valor legítimo de prefixo a jusante
+    # do seed — [in_StPrefixoLog]. Autoriza sobrescrever binding NÃO-vazio errado
+    # (ex.: re-derivação `[*.Reference + " - "]` no Process). overwrite ausente/
+    # False mantém o guard clássico (só preenche vazio) — protege seeds hand-set.
+    overwrite = bool(spec.get("overwrite", False))
 
     content = file.read_text(encoding="utf-8-sig")
     if "InvokeWorkflowFile" not in content or arg_name not in content:
@@ -1763,8 +1768,9 @@ def apply_seed_prefixo_binding(file: Path, spec: dict, dry_run: bool = True) -> 
         # Idempotente: já correto → no-op.
         if value is not None and value.strip() in (safe_value, value_expr):
             return bm.group(0)
-        # Nunca clobber valor não-vazio hand-set.
-        if not _value_is_empty(value):
+        # Guard "nunca clobber valor não-vazio hand-set" — relaxado só com
+        # overwrite=True (cadeia: valor único legítimo é a herança).
+        if not overwrite and not _value_is_empty(value):
             return bm.group(0)
         # attrs.strip() (ambos lados) + single space no template → exatamente
         # `<InArgument x:... >` sem double-space (byte-clean diff).
@@ -1774,6 +1780,46 @@ def apply_seed_prefixo_binding(file: Path, spec: dict, dry_run: bool = True) -> 
         return binding_re.sub(_rewrite_binding, block_m.group(0))
 
     new_content = args_block_re.sub(_rewrite_block, content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("strip_prefixo_from_main")
+def apply_strip_prefixo_from_main(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """N-3C fixer: remove a POSSE do prefixo de log do Main (entry).
+
+    O prefixo só pertence a Process + filhos (regra 3 Sicoob). No Main remove:
+      1. a declaração `<x:Property Name="<prefixo_arg>" .../>`;
+      2. o bloco default `<this:<Class>.<prefixo_arg>> ... </this:<Class>.<prefixo_arg>>`;
+      3. o prefixo das LogMessages do Main (`[<prefixo_arg> + ` → `[`).
+
+    NÃO toca em bindings `x:Key="<prefixo_arg>"` dentro de
+    <ui:InvokeWorkflowFile.Arguments> — esse é o SEED que o Main passa pro Process
+    (mantido). Idempotente. Preserva BOM/encoding.
+    """
+    prefixo_arg = spec.get("prefixo_arg") or "in_StPrefixoLog"
+    content = file.read_text(encoding="utf-8-sig")
+    new_content = content
+
+    # 1. Remove a declaração x:Property (linha + newline à esquerda).
+    new_content = re.sub(
+        rf'\n[ \t]*<x:Property\b[^>]*\bName="{re.escape(prefixo_arg)}"[^>]*/>',
+        "", new_content, count=1,
+    )
+    # 2. Remove o bloco default <this:<Class>.<arg>> ... </this:<Class>.<arg>>.
+    new_content = re.sub(
+        rf'\n[ \t]*<this:[A-Za-z0-9_]+\.{re.escape(prefixo_arg)}>.*?'
+        rf'</this:[A-Za-z0-9_]+\.{re.escape(prefixo_arg)}>',
+        "", new_content, count=1, flags=re.DOTALL,
+    )
+    # 3. Strip do prefixo nas mensagens do Main. O literal `[<arg> + ` só ocorre
+    #    em expressões de LogMessage (o seed usa x:Key=, não esse literal). Cobre
+    #    forma literal `[arg + "X"]` e parentizada `[arg + (X)]` — ambas viram `[`.
+    new_content = new_content.replace(f"[{prefixo_arg} + ", "[")
 
     if new_content == content:
         return False

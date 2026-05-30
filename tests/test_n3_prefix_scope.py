@@ -275,7 +275,10 @@ def _owner_derive_var_wf(callee: str = "Process.xaml", prefixo_value: str = '""'
 
 # ---- detector ----
 
-def test_n3b_derive_arg_empty_binding(tmp_path):
+def test_n3b_chain_empty_binding_inherits(tmp_path):
+    """Modelo Sicoob: na CADEIA (não-Main) todo binding vira herança
+    [in_StPrefixoLog] — a derivação de TransactionItem.Reference ocorre só no
+    seed Main→Process (via cascade), nunca aqui."""
     _write_pj(tmp_path, "FooBar_Performer")
     wf = tmp_path / "OwnerArg.xaml"
     wf.write_text(_owner_derive_arg_wf(), encoding="utf-8")
@@ -285,8 +288,9 @@ def test_n3b_derive_arg_empty_binding(tmp_path):
     fm = findings[0].fix_mechanical
     assert fm["type"] == "seed_prefixo_binding"
     assert fm["arg_name"] == "in_StPrefixoLog"
-    assert fm["value_expr"] == '[in_TransactionItem.Reference + " - "]'
-    assert fm["mode"] == "derive-arg"
+    assert fm["value_expr"] == "[in_StPrefixoLog]"
+    assert fm["mode"] == "inherit"
+    assert fm["overwrite"] is True
 
 
 def test_n3b_inherit_empty_binding(tmp_path):
@@ -301,18 +305,21 @@ def test_n3b_inherit_empty_binding(tmp_path):
     assert fm["mode"] == "inherit"
 
 
-def test_n3b_derive_var_main_side(tmp_path):
+def test_n3b_skips_main_entry(tmp_path):
+    """Regra 1: N-3B nunca toca o Main (entry/seed-owner via project.json::main).
+    A derivação do seed Main→Process é responsabilidade do cascade do
+    add_prefixo_arg (N-3D), não da N-3B."""
     _write_pj(tmp_path, "FooBar_Performer")
-    wf = tmp_path / "MainSide.xaml"
+    wf = tmp_path / "Main.xaml"
     wf.write_text(_owner_derive_var_wf(), encoding="utf-8")
     findings = detect_n3_prefixo_binding(_n3b_rule(), FileContext(wf),
                                          ProjectContext.find_root(tmp_path))
-    assert len(findings) == 1
-    assert findings[0].fix_mechanical["value_expr"] == '[TransactionItem.Reference + " - "]'
-    assert findings[0].fix_mechanical["mode"] == "derive-var"
+    assert findings == []
 
 
-def test_n3b_no_source_no_finding(tmp_path):
+def test_n3b_flags_empty_binding_without_decl(tmp_path):
+    """Na cadeia, binding vazio é sempre upgradeável p/ herança — não existe mais
+    'sem fonte → skip' (a declaração do arg é coberta pela N-3D, não pela N-3B)."""
     _write_pj(tmp_path, "FooBar_Performer")
     wf = tmp_path / "NoSource.xaml"
     wf.write_text(
@@ -321,7 +328,8 @@ def test_n3b_no_source_no_finding(tmp_path):
         + '</Activity>', encoding="utf-8")
     findings = detect_n3_prefixo_binding(_n3b_rule(), FileContext(wf),
                                          ProjectContext.find_root(tmp_path))
-    assert findings == []
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical["value_expr"] == "[in_StPrefixoLog]"
 
 
 def test_n3b_performer_gate_dispatcher(tmp_path):
@@ -333,25 +341,32 @@ def test_n3b_performer_gate_dispatcher(tmp_path):
     assert findings == []
 
 
-def test_n3b_skips_already_correct(tmp_path):
+def test_n3b_skips_already_inherit(tmp_path):
+    """Idempotente: binding já == [in_StPrefixoLog] (herança correta) não dispara."""
     _write_pj(tmp_path, "FooBar_Performer")
     wf = tmp_path / "OwnerArg.xaml"
     wf.write_text(
-        _owner_derive_arg_wf(prefixo_value='[in_TransactionItem.Reference + " - "]'),
+        _owner_derive_arg_wf(prefixo_value='[in_StPrefixoLog]'),
         encoding="utf-8")
     findings = detect_n3_prefixo_binding(_n3b_rule(), FileContext(wf),
                                          ProjectContext.find_root(tmp_path))
     assert findings == []
 
 
-def test_n3b_skips_nonempty_handset(tmp_path):
+def test_n3b_overwrites_nonempty_in_chain(tmp_path):
+    """Regra 2: na cadeia só há UM valor legítimo — qualquer valor avulso
+    não-vazio (ex.: [vCustomPrefix]) é sobrescrito p/ herança (overwrite-always).
+    O guard 'never clobber hand-set' aplica-se só ao seed do Main (que N-3B
+    pula)."""
     _write_pj(tmp_path, "FooBar_Performer")
     wf = tmp_path / "OwnerArg.xaml"
     wf.write_text(_owner_derive_arg_wf(prefixo_value='[vCustomPrefix]'),
                   encoding="utf-8")
     findings = detect_n3_prefixo_binding(_n3b_rule(), FileContext(wf),
                                          ProjectContext.find_root(tmp_path))
-    assert findings == []
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical["value_expr"] == "[in_StPrefixoLog]"
+    assert findings[0].fix_mechanical["overwrite"] is True
 
 
 def test_n3b_applies_to_includes_framework_process():
@@ -376,7 +391,7 @@ def test_n3b_fires_on_framework_process(tmp_path):
     findings = detect_n3_prefixo_binding(_n3b_rule(), FileContext(proc),
                                          ProjectContext.find_root(tmp_path))
     assert len(findings) == 1
-    assert findings[0].fix_mechanical["value_expr"] == '[in_TransactionItem.Reference + " - "]'
+    assert findings[0].fix_mechanical["value_expr"] == "[in_StPrefixoLog]"
 
 
 # ---- fixer ----

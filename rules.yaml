@@ -490,6 +490,59 @@ rules:
         Adicionar `<AssemblyReference>X</AssemblyReference>` no bloco refs
         pra cada xmlns assembly declarado mas não referenciado.
 
+  - id: W-11n
+    severity: WARN
+    category: architectural
+    target: windows
+    title: "XAML modern UIAutomation (uix:) sem refs do stack UIAutomationNext"
+    description: |
+      XAML que usa atividades modern UIAutomation (prefixo `uix:` —
+      NApplicationCard / NClick / NTypeInto / NCheckState etc.) precisa dos
+      AssemblyReference do stack UIAutomationNext no bloco
+      `<TextExpression.ReferencesForImplementation>`:
+      `UiPath.UIAutomationNext.Activities`, `UiPath.UIAutomationNext`,
+      `UiPath.UIAutomationCore`.
+
+      GAP coberto: o xmlns uix é schema-URI
+      (`http://schemas.uipath.com/workflow/activities/uix`), NÃO no formato
+      `clr-namespace:NS;assembly=ASM` — então W-11x não extrai assembly dele,
+      e a baseline W-11y só lista `UiPath.UiAutomation.Activities` (classic).
+      Nenhuma outra regra garante os refs modern.
+
+      NÃO é load-crítico (o schema uix resolve pelas DLLs restauradas,
+      governadas pela presença de `UiPath.UIAutomation.Activities` no
+      project.json — pin D-1b 25.10.8; o stack Next vem TRANSITIVO via peer
+      Runtime, NÃO é pacote NuGet separado). Mas Studio design-time/analyzer +
+      o baseline dos projetos-modelo Sicoob (contestacao-*, gerar-relatorios-*)
+      sempre incluem os refs. Ausência = drift de baseline + dialog "Some
+      references are not imported" no Studio.
+
+      Condicional: só dispara em XAML que de fato usa `<uix:...>`. XAML sem
+      modern UI não é afetado.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.xmlns_refs
+        function: detect_modern_ui_refs
+        required_refs:
+          - UiPath.UIAutomationNext.Activities
+          - UiPath.UIAutomationNext
+          - UiPath.UIAutomationCore
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding pelo detector
+      # (type=insert_assembly_reference, name=<asm específico>).
+      prose: |
+        Adicionar os `<AssemblyReference>` do stack UIAutomationNext ao bloco
+        ReferencesForImplementation. Vêm do mesmo NuGet
+        UiPath.UIAutomation.Activities (pin D-1b) — Next NÃO é pacote separado.
+
   - id: W-11h
     severity: ERROR
     category: breaking
@@ -3285,29 +3338,30 @@ rules:
     severity: WARN
     category: architectural
     target: all
-    title: "Binding in_StPrefixoLog vazio em InvokeWorkflowFile — seed valor"
+    title: "Binding in_StPrefixoLog na cadeia deve herdar [in_StPrefixoLog]"
     description: |
-      O workflow dono da transação (tipicamente Framework/Process.xaml) invoca
-      callees que recebem `in_StPrefixoLog` mas passa o binding com valor VAZIO
-      (`in_StPrefixoLog=""`). Em runtime os LogMessages do callee logam com
-      prefixo vazio. N-3 (declaração+consumo) NÃO cobre o VALOR do binding —
-      N-3B preenche/atualiza o binding conforme o modelo:
+      Modelo Sicoob de propagação do prefixo de log (3 regras):
 
-        * workflow declara in_StPrefixoLog         -> HERDA  [in_StPrefixoLog]
-        * tem arg in_TransactionItem (sem prefixo)  -> DERIVA [in_TransactionItem.Reference + " - "]
-        * tem Variable TransactionItem (sem prefixo)-> DERIVA [TransactionItem.Reference + " - "]
-        * nenhum dos acima                          -> não há fonte (skip)
+        1. DERIVA UMA VEZ — o prefixo `[TransactionItem.Reference + " - "]` é
+           semeado num único site: o invoke Main→Process. Como só o Main tem
+           `<Variable Name="TransactionItem">`, o seed é resolvido lá (via cascade
+           do add_prefixo_arg / N-3D). N-3B NÃO roda no Main (applies_to exclui)
+           → nunca toca/sobrescreve o seed (regra 1: seed do Main é intocável).
 
-      Severidade WARN: binding vazio compila (não-breaking) mas degrada
-      rastreabilidade em produção — log sem prefixo de TransactionItem.Reference
-      impede correlacionar entrada na fila ↔ linhas de log. Defeito de
-      observabilidade real, acima de INFO, abaixo de ERROR.
+        2. PROPAGA HERANÇA — Process e TODOS os invokes filhos carregam o MESMO
+           prefixo herdado. Logo, na cadeia (qualquer workflow != Main) só há UM
+           valor legítimo em cada binding `in_StPrefixoLog`: `[in_StPrefixoLog]`.
+           Qualquer outro valor (vazio, re-derivação `[*.Reference + " - "]`, ou
+           valor avulso) é UPGRADEADO sempre (overwrite-always) — não é mais
+           "upgrade-only de vazio". A presença do binding implica callee declara.
 
-      Roda em Framework/Process.xaml (o site de seeding) — applies_to PRÓPRIO
-      que NÃO exclui Framework. Exclui Tests, Main e *Launch (workflows
-      pré-transação sem handle de transação). Performer-only via gate no
-      detector. UPGRADE-only: nunca sobrescreve valor não-vazio hand-set;
-      idempotente.
+      Severidade WARN: binding errado compila mas degrada rastreabilidade
+      (prefixo divergente quebra correlação fila ↔ linhas de log).
+
+      Roda na cadeia (Framework/Process.xaml inclusive — applies_to NÃO exclui
+      Framework). Exclui Tests, Main e *Launch. Performer-only via gate no
+      detector. A DECLARAÇÃO do arg no propagador é coberta pela N-3D; a remoção
+      do prefixo do Main pela N-3C.
     applies_to:
       include: ["**/*.xaml"]
       exclude: ["Tests/**", "**/Main.xaml", "**/main.xaml", "**/*Launch.xaml"]
@@ -3322,23 +3376,108 @@ rules:
     fix:
       apply_class: deterministic
       mechanical:
-        # NOTA: o spec efetivo (value_expr/mode) é emitido DINAMICAMENTE pelo
-        # detector via fix_mechanical. Este bloco existe só p/ satisfazer o
-        # gate de registro do loader (fixer precisa estar em REGISTRY) — o
-        # arg_name aqui é inerte em runtime.
+        # O spec efetivo (value_expr=[in_StPrefixoLog], overwrite=True) é emitido
+        # DINAMICAMENTE pelo detector via fix_mechanical. Este bloco existe só p/
+        # satisfazer o gate de registro do loader (fixer em REGISTRY).
         type: seed_prefixo_binding
         params:
           arg_name: in_StPrefixoLog
       prose: |
-        Fixer `seed_prefixo_binding` reescreve o VALOR de cada binding
-        `in_StPrefixoLog` vazio dentro de `<ui:InvokeWorkflowFile.Arguments>`
-        para o valor computado pelo detector:
-          - HERDA  [in_StPrefixoLog]                       (já recebe o prefixo)
-          - DERIVA [in_TransactionItem.Reference + " - "]  (dono via arg)
-          - DERIVA [TransactionItem.Reference + " - "]     (dono via Variable)
-        UPGRADE-only: só toca bindings vazios ("" / self-closed / <Literal
-        Value=""/>). Nunca sobrescreve expressão hand-set não-vazia.
-        Idempotente. BOM preservado, XML well-formed via gate.
+        Fixer `seed_prefixo_binding` (overwrite=True) reescreve o VALOR de TODO
+        binding `in_StPrefixoLog` da cadeia que não seja `[in_StPrefixoLog]`,
+        dentro de `<ui:InvokeWorkflowFile.Arguments>`, para a herança
+        `[in_StPrefixoLog]`. Cobre vazio E re-derivação não-vazia
+        (`[in_TransactionItem.Reference + " - "]`) — na cadeia só há um valor
+        legítimo. NÃO roda no Main (seed intocável). Idempotente. BOM preservado,
+        XML well-formed via gate.
+
+  - id: N-3C
+    severity: WARN
+    category: architectural
+    target: all
+    title: "Main não pode declarar/usar in_StPrefixoLog (prefixo só em Process+filhos)"
+    description: |
+      Regra 3 do modelo Sicoob de prefixo de log: o prefixo SÓ existe em Process e
+      seus filhos. O Main (entry, via project.json::main) apenas SEMEIA o valor no
+      invoke do Process (binding `x:Key="in_StPrefixoLog"`) — isso é mantido. Mas o
+      Main NÃO pode:
+        * declarar `<x:Property Name="in_StPrefixoLog">` como argumento próprio; nem
+        * usar `[in_StPrefixoLog + ...]` nas suas próprias LogMessages.
+
+      Por que importa: o Main é pré/pós-transação (REFramework state machine). Suas
+      LogMessages não correspondem a uma TransactionItem específica — prefixá-las
+      com o arg seria semanticamente errado e exigiria o Main declarar o arg (que
+      nenhum caller passa, já que Main é o entry). N-3 EXCLUI o Main, então esse
+      desvio era invisível à engine.
+
+      Fixer remove a declaração + bloco default + o prefixo das mensagens do Main.
+      NÃO toca no binding x:Key="in_StPrefixoLog" (o seed pro Process).
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.logs
+        function: detect_n3c_main_deownership
+        prefixo_arg_name: in_StPrefixoLog
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_prefixo_from_main
+        params:
+          prefixo_arg: in_StPrefixoLog
+      prose: |
+        Fixer `strip_prefixo_from_main`: (1) remove `<x:Property
+        Name="in_StPrefixoLog" .../>`; (2) remove o bloco default
+        `<this:<Class>.in_StPrefixoLog> ... </this:<Class>.in_StPrefixoLog>`;
+        (3) faz strip do prefixo nas LogMessages do Main (`[in_StPrefixoLog + ` →
+        `[`). Preserva os bindings `x:Key="in_StPrefixoLog"` (seed Main→Process).
+        Após a remoção, o seed do Process é re-injetado pelo cascade da N-3D
+        (Main tem `<Variable TransactionItem>` → deriva). Idempotente, BOM preservado.
+
+  - id: N-3D
+    severity: ERROR
+    category: architectural
+    target: all
+    title: "Workflow propaga in_StPrefixoLog mas não declara o argumento"
+    description: |
+      Um workflow da cadeia (≠ Main) que PASSA `in_StPrefixoLog` a sub-workflows
+      (binding `x:Key="in_StPrefixoLog"` em `<ui:InvokeWorkflowFile.Arguments>`)
+      DEVE declarar `in_StPrefixoLog` como `<x:Property>`. Sem a declaração, o
+      valor de propagação `[in_StPrefixoLog]` não resolve no escopo do workflow
+      (UIPATH:LOAD ERROR — 'in_StPrefixoLog' is not declared).
+
+      Caso canônico: `Framework/Process.xaml` — a RAIZ da cadeia de propagação,
+      que fica em Framework/ (fora do alcance da N-3) e frequentemente não tem o
+      argumento declarado. Severidade ERROR: é breaking em runtime.
+
+      Fixer `add_prefixo_arg` declara o argumento + cascateia o seed pros callers
+      (o caller Main, com `<Variable TransactionItem>`, recebe
+      `[TransactionItem.Reference + " - "]`; demais callers herdam).
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude: ["Tests/**", "**/Main.xaml", "**/main.xaml", "**/*Launch.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.logs
+        function: detect_n3d_propagator_declares
+        prefixo_arg_name: in_StPrefixoLog
+        transaction_var_name: TransactionItem
+        transaction_arg_name: in_TransactionItem
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: add_prefixo_arg
+        params:
+          prefixo_arg: in_StPrefixoLog
+      prose: |
+        Fixer `add_prefixo_arg`: declara `<x:Property Name="in_StPrefixoLog"
+        Type="InArgument(x:String)" />` em `<x:Members>` + bloco default vazio, e
+        cascateia o argumento pros callers que invocam este workflow (inserindo o
+        binding `in_StPrefixoLog` ausente). No caller Main, deriva
+        `[TransactionItem.Reference + " - "]` (seed); nos demais, herda
+        `[in_StPrefixoLog]`. Idempotente.
 
   - id: N-4
     severity: INFO
