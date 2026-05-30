@@ -285,6 +285,82 @@ def detect_baseline_refs(rule, fc, pc):
     return findings
 
 
+# W-11n: modern UIAutomation (uix:) -> stack UIAutomationNext assembly refs
+_RE_UIX_USAGE = re.compile(r'<uix:[A-Z]')
+_MODERN_UI_REFS_FALLBACK = (
+    "UiPath.UIAutomationNext.Activities",
+    "UiPath.UIAutomationNext",
+    "UiPath.UIAutomationCore",
+)
+
+
+def detect_modern_ui_refs(rule, fc, pc):
+    """W-11n: XAML que usa atividades modern UIAutomation (prefixo `uix:` —
+    NApplicationCard/NClick/NTypeInto/NCheckState etc.) precisa dos
+    AssemblyReference do stack UIAutomationNext no bloco
+    ReferencesForImplementation.
+
+    Gap coberto: o xmlns uix é schema-URI (`http://schemas.uipath.com/workflow/
+    activities/uix`), NÃO `clr-namespace:NS;assembly=ASM` — então `detect_xmlns_
+    required_refs` (W-11x) não extrai assembly dele, e a baseline W-11y só lista
+    `UiPath.UiAutomation.Activities` (classic). Nenhuma outra regra garante os
+    refs modern.
+
+    NÃO é load-crítico (o schema uix resolve pelas DLLs restauradas, governadas
+    pela presença de `UiPath.UIAutomation.Activities` no project.json — pin
+    D-1b), mas Studio design-time/analyzer + baseline dos projetos-modelo Sicoob
+    esperam os refs. Lista vem de `rule.detect.params.required_refs` (fallback
+    hardcoded). Skip se o XAML não usa uix.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    content = fc.active_content
+    if not _RE_REFS_BLOCK.search(content):
+        return []
+    if not _RE_UIX_USAGE.search(content):
+        return []
+
+    params = (rule.detect or {}).get("params", {}) or {}
+    required: list[str] = params.get("required_refs") or list(_MODERN_UI_REFS_FALLBACK)
+
+    current: set[str] = {m.group(1).strip() for m in _RE_ASM_REF.finditer(content)}
+    missing = [r for r in required if r and r not in current]
+    if not missing:
+        return []
+
+    findings: list[Finding] = []
+    for asm in missing:
+        findings.append(
+            Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=1,
+                message=(
+                    f"XAML usa atividades modern UIAutomation (uix:) mas falta "
+                    f"<AssemblyReference>{asm}</AssemblyReference> do stack "
+                    f"UIAutomationNext"
+                ),
+                fix_mechanical={
+                    "type": "insert_assembly_reference",
+                    "name": asm,
+                },
+                fix_prose=(
+                    f"Adicionar `<AssemblyReference>{asm}</AssemblyReference>` ao "
+                    f"bloco refs. Atividades modern (NApplicationCard/NClick/"
+                    f"NTypeInto) precisam do stack UIAutomationNext pro Studio "
+                    f"compile/analyzer. Vem do mesmo NuGet "
+                    f"UiPath.UIAutomation.Activities (pin D-1b) — Next NÃO é "
+                    f"pacote separado."
+                ),
+            )
+        )
+
+    return findings
+
+
 # W-20: orphan xmlns aliases
 _RE_XMLNS_DECL = re.compile(r'\s+xmlns:([A-Za-z_][\w]*)="[^"]*"')
 _W20_CORE_PREFIXES = frozenset({"x", "mc", "xml"})
