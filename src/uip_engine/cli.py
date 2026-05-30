@@ -273,12 +273,6 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Timeout uipcli publish (pack dry-run) em segundos (default 600).")
     rev.add_argument("--nuget-gate-timeout", type=int, default=300,
                      help="Timeout NuGet restore em segundos (default 300).")
-    rev.add_argument("--runtime-loadtest-timeout", type=int, default=180,
-                     help="Timeout (s) pra runtime_loadtest .NET subprocess "
-                          "gate (default 180). Carrega cada XAML via "
-                          "ActivityXamlServices.Load + CacheMetadata walk; "
-                          "catches Variable.Default VB compile errors, type "
-                          "resolution fails, malformed Activity tree.")
     # Phase 1B (2026-05): activity-compile gate paralelo. AOT compile VB
     # expressions via UiPath.ActivityCompiler.CommandLine.exe (binário
     # oficial Studio). Catches BC<NNNN> em Variable.Default / InArgument /
@@ -564,18 +558,14 @@ def _cmd_review(args) -> int:
                     verbose=verbose,
                 ),
             ),
-            (
-                "runtime-loadtest",
-                lambda: _run_runtime_loadtest_gate(
-                    result, args.path,
-                    timeout=getattr(args, "runtime_loadtest_timeout", 180),
-                    verbose=verbose,
-                ),
-            ),
-            # Phase 1B (2026-05): AOT VB compile via Studio's
-            # UiPath.ActivityCompiler.CommandLine.exe — complementar a
-            # runtime-loadtest (que carrega XAML via ActivityXamlServices.Load
-            # sem AOT-compilar expressions).
+            # runtime-loadtest gate REMOVIDO (2026-05-30): o harness caseiro
+            # (.NET ActivityXamlServices.Load) carregava cada XAML ISOLADO, sem o
+            # contexto do projeto (refs de pacote, VB imports, escopo de args do
+            # root). Resultado: falso-positivo BC30451/BC30002 em todo projeto
+            # Windows REFramework — inclusive nos templates UiPath stock — porque
+            # media a propria falta de contexto, nao o projeto. Redundante com
+            # activity-compile (compilador AOT oficial do Studio) + analyzer-gate,
+            # que validam com o projeto inteiro. Ver experiments/runtime_loadtest/.
             (
                 "activity-compile",
                 lambda: _run_activity_compile_gate(
@@ -1314,40 +1304,6 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                           file=sys.stderr)
 
 
-def _run_runtime_loadtest_gate(result, project_path: str, timeout: int = 180,
-                                verbose: bool = False) -> None:
-    """PHASE 2 gate: runtime XAML load test via .NET subprocess.
-
-    Carrega cada XAML do projeto via UiPath SDK ActivityXamlServices.Load
-    + WorkflowInspectionServices.CacheMetadata. Catches errors que analyze
-    estático não pega:
-      - VB compile errors em Variable.Default (smart-quote “” bugs etc.)
-      - Type resolution failures (assembly ref missing)
-      - Malformed Activity tree (XAML parse errors)
-      - Required arg sem binding, type mismatch
-
-    Custos: cheaper que pack-gate full publish (~5-30s per projeto), mais
-    profundo que analyze (que só roda regras estáticas declarativas).
-
-    Graceful degradation: se binary `runtime_loadtest.exe` não built,
-    wrapper emite finding diagnóstico RT-LOAD-INFRA (severity WARN, não
-    bloqueia engine PASS) + retorna. Build instructions em
-    `.uip-toolchain/experiments/runtime_loadtest/README.md`.
-    """
-    from pathlib import Path as _Path
-    from .runtime_loadtest import run_loadtest
-
-    project = _Path(project_path)
-    if verbose:
-        print(f"[runtime-loadtest] running em {project}", file=sys.stderr)
-    code, findings = run_loadtest(project, timeout=timeout)
-    for f in findings:
-        result.add(f)
-    if verbose:
-        print(f"[runtime-loadtest] exit={code} findings={len(findings)}",
-              file=sys.stderr)
-
-
 def _run_activity_compile_gate(result, project_path: str, timeout: int = 180,
                                 verbose: bool = False) -> None:
     """PHASE 2 gate: AOT compile VB expressions via Studio compiler subprocess.
@@ -1860,9 +1816,15 @@ def _cmd_fix(args) -> int:
     # re-run só nos files modificados em iters subsequentes. Sem cache,
     # gate custa 30-60s × 20 iters = inviável. Cache disabled em dry_run
     # (preview-only, runner.run não escreve → sem need de re-detect via gate).
-    from ._gate_cache import FixLoopGateCache
-    _use_runner_gates = not dry_run
-    gate_cache = FixLoopGateCache(project_root) if _use_runner_gates else None
+    # runtime-loadtest gate REMOVIDO do fix-loop (2026-05-30): era o ÚNICO gate
+    # ativado via gate_cache (runner.py default {"runtime-loadtest"}), e o harness
+    # caseiro produzia falso-positivo (ver comentário no gate list de _cmd_review)
+    # → congelava/rollback de fixes legítimos. Sem ele, `fix --apply` deixa de
+    # exigir UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1. As guardas `if gate_cache is
+    # not None` no loop abaixo viram no-op. Validação real fica no analyzer-gate +
+    # activity-compile (PHASE 2, compiladores oficiais Studio).
+    _use_runner_gates = False
+    gate_cache = None
 
     while True:  # outer: analyzer-gate retry
         # --- Inner: fixpoint ---
