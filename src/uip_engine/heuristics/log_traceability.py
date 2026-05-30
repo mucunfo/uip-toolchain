@@ -1,11 +1,12 @@
-﻿"""N-16: LLM-assisted semantic traceability of LogMessage content.
+﻿"""N-16: semantic traceability of LogMessage content (100% determinístico).
 
 Detects LogMessages whose Message string lacks debugging value in
 production: generic literals, missing variable refs, indistinguishable
 from other logs.
 
-Calls Claude Code CLI via subprocess (cached per-message hash). Fail-open
-on LLM unavailability — never blocks pipeline.
+OFFLINE: delega para `llm_validator.validate_messages`, que desde 2026-05-30 é
+uma HEURÍSTICA PURA em Python — NÃO chama `claude -p` nem qualquer LLM/rede/
+subprocess. `uip` é 100% script offline. Opt-out via env `UIP_TOOLCHAIN_NO_LLM=1`.
 """
 from __future__ import annotations
 
