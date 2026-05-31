@@ -4,6 +4,7 @@ from uip_engine.fixers import (
     apply_regex_replace, apply_rename_attribute, apply_rename_argument,
     apply_set_attribute, apply_delete_element,
     apply_rename_xclass,
+    apply_rename_invoke_arg_key,
     apply_expand_self_closed_inarg,
     apply_strip_string_quotes_numeric_default,
     REGISTRY,
@@ -101,6 +102,30 @@ def test_rename_attribute_orphan_check_skips_when_unsafe(tmp_path):
     assert 'Name="bar"' in out
 
 
+def test_rename_attribute_skips_duplicate_invoke_arg_keys(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = (
+        '<Activity>'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Process.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<InArgument x:TypeArguments="ui:UiElement" x:Key="in_UiEFluig">[v]</InArgument>'
+        '<InArgument x:TypeArguments="ui:UiElement" x:Key="in_UIEFluig">[v]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+        '</Activity>'
+    )
+    f.write_text(original, encoding="utf-8")
+
+    changed = apply_rename_attribute(
+        f,
+        {"type": "rename_attribute", "from": "in_UiEFluig", "to": "in_UIEFluig"},
+        dry_run=False,
+    )
+
+    assert changed is False
+    assert f.read_text(encoding="utf-8") == original
+
+
 # ---- rename_argument ----
 
 def test_rename_argument_cascades(tmp_path):
@@ -122,6 +147,93 @@ def test_rename_argument_cascades(tmp_path):
     assert changed
     assert 'Name="in_New"' in callee.read_text()
     assert 'x:Key="in_New"' in caller.read_text()
+
+
+def test_rename_argument_skips_caller_block_when_key_would_duplicate(tmp_path):
+    proj = tmp_path / "P"
+    proj.mkdir()
+    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    callee = proj / "Callee.xaml"
+    callee.write_text('<x:Property Name="in_old" Type="InArgument(x:String)"/>')
+    caller = proj / "Caller.xaml"
+    original_caller = (
+        '<ui:InvokeWorkflowFile WorkflowFileName="Callee.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<InArgument x:Key="in_old">[v]</InArgument>'
+        '<InArgument x:Key="in_New">[v2]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+    )
+    caller.write_text(original_caller)
+
+    changed = apply_rename_argument(
+        callee,
+        {
+            "type": "rename_argument",
+            "from": "in_old",
+            "to": "in_New",
+            "target_workflow": "Callee.xaml",
+        },
+        dry_run=False,
+        project_root=proj,
+    )
+
+    assert changed is True
+    assert 'Name="in_New"' in callee.read_text()
+    assert caller.read_text() == original_caller
+
+
+def test_rename_argument_skips_primary_file_when_key_would_duplicate(tmp_path):
+    proj = tmp_path / "P"
+    proj.mkdir()
+    (proj / "project.json").write_text('{"targetFramework":"Windows"}')
+    callee = proj / "Callee.xaml"
+    original = (
+        '<x:Property Name="in_old" Type="InArgument(x:String)"/>'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Other.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<InArgument x:Key="in_old">[v]</InArgument>'
+        '<InArgument x:Key="in_New">[v2]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+    )
+    callee.write_text(original)
+
+    changed = apply_rename_argument(
+        callee,
+        {"type": "rename_argument", "from": "in_old", "to": "in_New"},
+        dry_run=False,
+        project_root=proj,
+    )
+
+    assert changed is False
+    assert callee.read_text() == original
+
+
+def test_rename_invoke_arg_key_skips_when_target_key_already_exists(tmp_path):
+    f = tmp_path / "Caller.xaml"
+    original = (
+        '<ui:InvokeWorkflowFile WorkflowFileName="Callee.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<InArgument x:Key="in_Old">[v]</InArgument>'
+        '<InArgument x:Key="in_New">[v2]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+    )
+    f.write_text(original, encoding="utf-8")
+
+    changed = apply_rename_invoke_arg_key(
+        f,
+        {
+            "workflow_basename": "Callee.xaml",
+            "from_key": "in_Old",
+            "to_key": "in_New",
+        },
+        dry_run=False,
+    )
+
+    assert changed is False
+    assert f.read_text(encoding="utf-8") == original
 
 
 def test_rename_argument_propertyelement_attribute_form(tmp_path):

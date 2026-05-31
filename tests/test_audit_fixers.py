@@ -221,6 +221,54 @@ def test_dpinalert_filewide_fallback_when_no_element():
         os.unlink(f)
 
 
+def test_dpinalert_nwindow_strip_preserves_property_elements():
+    xaml = (
+        f'<Activity {NS}>'
+        '<uix:NApplicationCard sap2010:WorkflowViewState.IdRef="Card_1">'
+        '<uix:NWindowOperation.Target>'
+        '<uix:TargetAnchorable />'
+        '</uix:NWindowOperation.Target>'
+        '<uix:NWindowOperation DisplayName="Fechar" />'
+        '</uix:NApplicationCard>'
+        '</Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("strip_nwindow_operation", f, {})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert '<uix:NWindowOperation.Target>' in out
+        assert '</uix:NWindowOperation.Target>' in out
+        assert '<uix:NWindowOperation DisplayName=' not in out
+        assert 'CloseMode="Always"' in out
+    finally:
+        os.unlink(f)
+
+
+def test_dpinalert_nwindow_self_closed_does_not_consume_next_pair():
+    xaml = (
+        f'<Activity {NS}>'
+        '<uix:NApplicationCard sap2010:WorkflowViewState.IdRef="Card_1">'
+        '<uix:NWindowOperation DisplayName="Activate" />'
+        '<Sequence DisplayName="KeepMe" />'
+        '<uix:NWindowOperation DisplayName="Close">'
+        '<ui:LogMessage DisplayName="Inner" />'
+        '</uix:NWindowOperation>'
+        '</uix:NApplicationCard>'
+        '</Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("strip_nwindow_operation", f, {})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert 'DisplayName="KeepMe"' in out
+        assert '<uix:NWindowOperation' not in out
+        assert 'CloseMode="Always"' in out
+    finally:
+        os.unlink(f)
+
+
 # --------------------------------------------------------------------------- #
 # M-2
 # --------------------------------------------------------------------------- #
@@ -298,6 +346,59 @@ def test_a19b_fallback_keeps_legacy_xstring_when_no_direction():
         out = f.read_text(encoding="utf-8")
         assert ok is True
         assert 'InArgument x:TypeArguments="x:String"' in out
+        assert ">[&quot;&quot;]</InArgument>" in out
+        assert ">\"\"</InArgument>" not in out
+    finally:
+        os.unlink(f)
+
+
+def test_a19b_missing_string_arg_uses_vb_empty_string_literal():
+    f = _mk(_CALLER)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_StName",
+                   "direction": "In", "inner_type": "x:String"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert 'InArgument x:TypeArguments="x:String"' in out
+        assert ">[&quot;&quot;]</InArgument>" in out
+        assert ">\"\"</InArgument>" not in out
+    finally:
+        os.unlink(f)
+
+
+def test_a19b_missing_datatable_arg_uses_nothing_and_declares_sd():
+    f = _mk(_CALLER)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_DTabRows",
+                   "direction": "In", "inner_type": "sd:DataTable"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert 'xmlns:sd="clr-namespace:System.Data;assembly=System.Data.Common"' in out
+        assert '<InArgument x:TypeArguments="sd:DataTable"' in out
+        assert ">[Nothing]</InArgument>" in out
+        assert ">[&quot;&quot;]</InArgument>" not in out
+    finally:
+        os.unlink(f)
+
+
+def test_a19b_skips_when_args_block_already_has_duplicate_key():
+    caller = (
+        '<Activity><ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<InArgument x:TypeArguments="x:String" x:Key="in_Duplicate">[a]</InArgument>'
+        '<InArgument x:TypeArguments="x:String" x:Key="in_Duplicate">[b]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(caller)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_StName",
+                   "direction": "In", "inner_type": "x:String"})
+        assert ok is False
+        assert f.read_text(encoding="utf-8") == caller
     finally:
         os.unlink(f)
 

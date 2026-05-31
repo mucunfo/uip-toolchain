@@ -84,6 +84,33 @@ def _normalize_description(desc: str) -> str:
     return out
 
 
+_XAML_HINT_RE = re.compile(
+    r"(?P<path>[A-Za-z]:\\[^\"'<>|*?\r\n]+?\.xaml|"
+    r"(?:[A-Za-z0-9_.\-À-ÿ()]+[\\/])+[A-Za-z0-9_.\-À-ÿ() ]+\.xaml|"
+    r"[A-Za-z0-9_.\-À-ÿ() ]+\.xaml)",
+    re.IGNORECASE,
+)
+
+
+def _infer_xaml_basename_from_description(desc: str) -> str:
+    """Best-effort fallback for Studio load errors with empty FilePath.
+
+    Some uipcli analyzer payloads report FilePath="" while the Description says
+    e.g. "Nao foi possivel carregar o arquivo ...\\Cases\\TC_X.xaml". Without
+    a file hint, the fix-loop can only FULL-SNAPSHOT rollback every changed XAML.
+    Returning the basename lets the rollback stay granular.
+    """
+    if not desc:
+        return ""
+    matches = list(_XAML_HINT_RE.finditer(desc))
+    if not matches:
+        return ""
+    # Prefer the last XAML mention; Studio messages often prefix with a project
+    # path and the actual failing workflow appears closest to "Motivo:".
+    hint = matches[-1].group("path").replace("/", "\\")
+    return os.path.basename(hint)
+
+
 def discover_uipcli() -> Path | None:
     """Localize UiPath.Studio.CommandLine.exe. Order: env var, PATH,
     well-known install paths. Most-recent version wins (lexicographic on
@@ -140,10 +167,11 @@ def parse_analyzer_output(stdout: str, stderr: str = "") -> set[AnalyzerIssue]:
     issues: set[AnalyzerIssue] = set()
     for raw in _parse_json_block(stdout):
         fp = raw.get("FilePath") or ""
-        basename = os.path.basename(fp) if fp else ""
+        raw_desc = raw.get("Description") or ""
+        basename = os.path.basename(fp) if fp else _infer_xaml_basename_from_description(raw_desc)
         code = raw.get("ErrorCode") or ""
         sev = raw.get("ErrorSeverity") or ""
-        desc = _normalize_description(raw.get("Description") or "")
+        desc = _normalize_description(raw_desc)
         issues.add(AnalyzerIssue(basename, code, sev, desc))
 
     # NU\d+ package errors (1 per line)

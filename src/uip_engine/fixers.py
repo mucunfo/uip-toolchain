@@ -38,6 +38,34 @@ def _write_preserving_bom(path: Path, content: str, had_bom: bool) -> None:
         path.write_text(content, encoding="utf-8")
 
 
+_COMMON_XMLNS_FOR_TYPEARGS = {
+    "sd": "clr-namespace:System.Data;assembly=System.Data.Common",
+    "scg": "clr-namespace:System.Collections.Generic;assembly=System.Private.CoreLib",
+    "s": "clr-namespace:System;assembly=System.Private.CoreLib",
+    "ui": "http://schemas.uipath.com/workflow/activities",
+}
+
+
+def _ensure_common_xmlns_for_typeargs(content: str, typeargs: str | None) -> str:
+    """Declare common prefixes used by injected x:TypeArguments."""
+    if not typeargs:
+        return content
+
+    missing: list[tuple[str, str]] = []
+    for prefix, uri in _COMMON_XMLNS_FOR_TYPEARGS.items():
+        if re.search(rf'(?<![A-Za-z0-9_]){re.escape(prefix)}:', typeargs):
+            if not re.search(rf'\bxmlns:{re.escape(prefix)}\s*=', content):
+                missing.append((prefix, uri))
+    if not missing:
+        return content
+
+    root = re.search(r'<Activity\b[^>]*>', content)
+    if not root:
+        return content
+    additions = "".join(f' xmlns:{prefix}="{uri}"' for prefix, uri in missing)
+    return content[:root.end() - 1] + additions + content[root.end() - 1:]
+
+
 def _format_property_element_value(prop_type: str | None, default,
                                     direction: str = "In") -> str:
     """Generate `<{In|Out|InOut}Argument x:TypeArguments="T">{default}</...>` content.
@@ -338,6 +366,18 @@ def _has_orphan_ref(content: str, name: str, exclude: str | None = None) -> bool
     return False
 
 
+def _has_duplicate_invoke_arg_keys(content: str) -> bool:
+    args_block_re = re.compile(
+        r'<ui:InvokeWorkflowFile\.Arguments\s*>(.*?)</ui:InvokeWorkflowFile\.Arguments\s*>',
+        re.DOTALL,
+    )
+    for block in args_block_re.finditer(content):
+        keys = re.findall(r'\bx:Key="([^"]+)"', block.group(1))
+        if len(keys) != len(set(keys)):
+            return True
+    return False
+
+
 @register("rename_attribute")
 def apply_rename_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
     from_name = spec.get("from")
@@ -353,6 +393,8 @@ def apply_rename_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool
     # fora de contexto element-name, abortar pra evitar quebra silenciosa.
     if _has_orphan_ref(new_content, from_name, exclude=to_name):
         print(f"  [NEEDS_REVIEW] rename_attribute: orphan refs '{from_name}' em {file.name} — fix abortado")
+        return False
+    if _has_duplicate_invoke_arg_keys(new_content):
         return False
     if not dry_run:
         _write_preserving_bom(file, new_content, _file_has_bom(file))
@@ -462,6 +504,8 @@ def apply_rename_argument(
     if changed and _has_orphan_ref(new_content, from_name, exclude=to_name):
         print(f"  [NEEDS_REVIEW] rename_argument (callee): orphan refs '{from_name}' em {file.name} — fix abortado")
         return False
+    if changed and _has_duplicate_invoke_arg_keys(new_content):
+        return False
     if changed and not dry_run:
         _write_preserving_bom(file, new_content, _file_has_bom(file))
 
@@ -509,6 +553,8 @@ def apply_rename_argument(
                     rf'x:Key="{re.escape(from_name)}"', f'x:Key="{to_name}"', block
                 )
                 new_block, _ = _whole_word_sub_skip_tags(new_block, from_name, to_name)
+                if _has_duplicate_invoke_arg_keys(new_block):
+                    return block
                 return new_block
             new_c = invoke_block_re.sub(_maybe_rename_block, new_c)
 
@@ -1107,6 +1153,12 @@ def apply_rename_invoke_arg_key(
             return match.group(0)
         if idref_re is not None and not idref_re.search(attrs):
             return match.group(0)
+        # Same fix iteration can first add `to_key` via A-19b and then process
+        # a stale A-19c finding computed before that insertion. Renaming now
+        # would create duplicate x:Key entries and Studio fails loading the
+        # InvokeWorkflowFile.Arguments dictionary.
+        if re.search(rf'\bx:Key="{re.escape(to_key)}"', inner):
+            return match.group(0)
         new_inner = key_re.sub(rf'\1{to_key}\3', inner)
         if new_inner == inner:
             return match.group(0)
@@ -1614,6 +1666,19 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
     # Step 1: x:Property declaration. Insere depois da última <x:Property> em
     # <x:Members>, ou imediatamente após `<x:Members>` (sem properties existentes).
     members_open = re.search(r'<x:Members\b[^>]*>', new_content)
+    if members_open is None:
+        activity_open = re.search(r'<Activity\b[^>]*>', new_content)
+        if activity_open is not None:
+            members_block = (
+                f'\n  <x:Members>\n'
+                f'  </x:Members>'
+            )
+            new_content = (
+                new_content[:activity_open.end()]
+                + members_block
+                + new_content[activity_open.end():]
+            )
+            members_open = re.search(r'<x:Members\b[^>]*>', new_content)
     if members_open is None:
         # No <x:Members> block — workflow malformed for our purposes.
         return False
@@ -2237,7 +2302,11 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
             if re.search(rf'<Variable\b[^>]*\bName="{re.escape(var_candidate)}"', content):
                 default_expr = f"[{var_candidate}]"
             else:
-                default_expr = '""'
+                type_hint = str(inner_type or "x:String")
+                if type_hint in {"x:String", "System.String", "String"}:
+                    default_expr = '[&quot;&quot;]'
+                else:
+                    default_expr = "[Nothing]"
 
     invoke_re = re.compile(
         r'(<ui:InvokeWorkflowFile\b[^>]*?\bWorkflowFileName="([^"]+)"[^>]*?>)'
@@ -2307,16 +2376,15 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
         )
         check_m = check_re.search(new_body)
         if check_m:
-            key_count = len(re.findall(
-                rf'\bx:Key="{re.escape(arg_name)}"', check_m.group(1)
-            ))
-            if key_count > 1:
+            keys = re.findall(r'\bx:Key="([^"]+)"', check_m.group(1))
+            if len(keys) != len(set(keys)):
                 return m.group(0)
         return opening + new_body + closing
 
     new_content = invoke_re.sub(_rewrite, content)
     if new_content == content:
         return False
+    new_content = _ensure_common_xmlns_for_typeargs(new_content, str(inner_type or ""))
     if not dry_run:
         _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
@@ -3199,11 +3267,11 @@ def apply_strip_nwindow_operation(file: Path, spec: dict, dry_run: bool = True,
 
     # Patterns NWindowOperation block (pair + self-closed)
     nwo_pair_pat = re.compile(
-        r'<uix:NWindowOperation\b[^>]*>.*?</uix:NWindowOperation>',
+        r'<uix:NWindowOperation(?!\.)\b[^>]*(?<!/)>.*?</uix:NWindowOperation>',
         re.DOTALL,
     )
     nwo_self_pat = re.compile(
-        r'<uix:NWindowOperation\b[^>]*/>',
+        r'<uix:NWindowOperation(?!\.)\b[^>]*/>',
     )
 
     # Coleta posições start de cada NWindow
@@ -3225,11 +3293,11 @@ def apply_strip_nwindow_operation(file: Path, spec: dict, dry_run: bool = True,
 
     # Strip todos NWindowOperation blocks (com whitespace prefix pra cleanup)
     pat_pair_ws = re.compile(
-        r'\s*<uix:NWindowOperation\b[^>]*>.*?</uix:NWindowOperation>\s*',
+        r'\s*<uix:NWindowOperation(?!\.)\b[^>]*(?<!/)>.*?</uix:NWindowOperation>\s*',
         re.DOTALL,
     )
     pat_self_ws = re.compile(
-        r'\s*<uix:NWindowOperation\b[^>]*/>\s*',
+        r'\s*<uix:NWindowOperation(?!\.)\b[^>]*/>\s*',
     )
     new_content, n_pair = pat_pair_ws.subn('\n', content)
     new_content, n_self = pat_self_ws.subn('\n', new_content)

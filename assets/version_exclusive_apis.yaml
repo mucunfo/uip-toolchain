@@ -68,6 +68,34 @@ UiPath.UIAutomation.Activities:
       fix: 'Activity NWindowOperation não disponível no pin 25.10.8. Engine strip element + força CloseMode="Always" no NApplicationCard pai (cobre close lifecycle equivalente).'
       mechanical:
         type: strip_nwindow_operation
+    - pattern: '<uix:TargetAnchorable\b[^>]*\bElementVisibilityArgument\s*='
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo ElementVisibilityArgument de TargetAnchorable (não existe em UIA pin Sicoob 25.10.8).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: ElementVisibilityArgument
+        element: uix:TargetAnchorable
+
+UiPath.OCR.Activities:
+  apis:
+    - pattern: '<[A-Za-z_][\w]*:UiPathScreenOCR\b[^>]*\bUseSeparateOcrProcess\s*='
+      introduced_in: '3.23.0'
+      where: xaml_attribute
+      fix: 'Remover atributo UseSeparateOcrProcess de UiPathScreenOCR (não existe em UiPath.OCR.Activities pin Sicoob 3.22.0).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: UseSeparateOcrProcess
+
+UiPath.Mail.Activities:
+  apis:
+    - pattern: '<ui:SendMail\b[^>]*\bConnectionMode\s*='
+      introduced_in: '1.25.0'
+      where: xaml_attribute
+      fix: 'Remover atributo ConnectionMode de SendMail (não existe em UiPath.Mail.Activities pin Sicoob 1.24.2).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: ConnectionMode
 
 # Removed APIs: attrs/elements REMOVIDOS em versão >= removed_in.
 # Caso típico: Activity Migrator UiPath upgrade pacote 1.x→3.x mas deixa

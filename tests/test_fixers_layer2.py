@@ -370,6 +370,18 @@ def test_add_prefixo_arg_idempotent_when_already_declared(tmp_path):
     assert changed is False
 
 
+def test_add_prefixo_arg_creates_xmembers_when_missing(tmp_path):
+    f = tmp_path / "wf.xaml"
+    head = XAML_HEAD.replace('<x:Members></x:Members>', '')
+    f.write_text(head + '  <Sequence />\n' + XAML_TAIL, encoding="utf-8")
+    changed = apply_add_prefixo_arg(f, {"prefixo_arg": "in_StPrefixoLog"}, dry_run=False)
+    out = f.read_text(encoding="utf-8")
+    assert changed is True
+    assert "<x:Members>" in out
+    assert '<x:Property Name="in_StPrefixoLog" Type="InArgument(x:String)" />' in out
+    assert "this:TestWf.in_StPrefixoLog" in out
+
+
 # ---- F34: schema-driven parent classification ----
 
 def test_classify_parent_for_logmessage_unknown_falls_through():

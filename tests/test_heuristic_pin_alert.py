@@ -115,6 +115,24 @@ def test_pin_alert_silent_when_package_not_in_deps(tmp_path):
     assert detect_pin_alert(_mk_rule(), fc, pc) == []
 
 
+def test_pin_alert_uses_canonical_pin_when_package_assembly_is_in_xaml(tmp_path):
+    """Some migrated XAMLs reference a pinned package assembly without deps."""
+    proj, pc = _mk_project(tmp_path, {"UiPath.System.Activities": "[25.4.4]"})
+    body = (
+        '  <AssemblyReference>UiPath.OCR.Activities</AssemblyReference>\n'
+        '  <p1:UiPathScreenOCR UseSeparateOcrProcess="True" />\n'
+    )
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert "UiPathScreenOCR" in findings[0].message
+    assert "UseSeparateOcrProcess" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "strip_xml_attribute",
+        "attribute": "UseSeparateOcrProcess",
+    }
+
+
 def test_pin_alert_flags_copyfile_destinationresource(tmp_path):
     """CopyFile.DestinationResource é outro pattern listado."""
     proj, pc = _mk_project(
@@ -143,6 +161,44 @@ def test_pin_alert_flags_nwindowoperation_element(tmp_path):
     assert len(findings) == 1
     assert "NWindowOperation" in findings[0].message
     assert "NApplicationCard" in findings[0].fix_prose  # fix sugere replace
+
+
+def test_pin_alert_flags_targetanchorable_elementvisibilityargument(tmp_path):
+    """TargetAnchorable.ElementVisibilityArgument is newer than the UIA pin."""
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+    )
+    body = '  <uix:TargetAnchorable ElementVisibilityArgument="Interactive"/>\n'
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert "TargetAnchorable" in findings[0].message
+    assert "ElementVisibilityArgument" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "strip_xml_attribute",
+        "attribute": "ElementVisibilityArgument",
+        "element": "uix:TargetAnchorable",
+    }
+
+
+def test_pin_alert_flags_sendmail_connectionmode(tmp_path):
+    """SendMail.ConnectionMode is newer than the Mail pin."""
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.Mail.Activities": "[1.24.2]"},
+    )
+    body = '  <ui:SendMail ConnectionMode="Undefined"/>\n'
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert "SendMail" in findings[0].message
+    assert "ConnectionMode" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "strip_xml_attribute",
+        "attribute": "ConnectionMode",
+        "element": "ui:SendMail",
+    }
 
 
 def test_pin_alert_multiple_matches_same_xaml(tmp_path):

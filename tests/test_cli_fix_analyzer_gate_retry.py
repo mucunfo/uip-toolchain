@@ -231,6 +231,78 @@ def test_gate_empty_filepath_triggers_full_snapshot_rollback(
     assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
 
 
+def test_parse_analyzer_output_infers_file_from_empty_filepath_description():
+    guid = "11111111-1111-1111-1111-111111111111"
+    payload = {
+        f"{guid}-FilePath": "",
+        f"{guid}-ErrorCode": "",
+        f"{guid}-ErrorSeverity": "Error",
+        f"{guid}-Description": (
+            r"Não foi possível carregar o arquivo C:\Work\Proj\Cases\TC_ObterRelatorio.xaml. "
+            r"Motivo: Falha ao criar um 'InArgument' do texto '\"\"'."
+        ),
+    }
+    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
+
+    issues = _analyzer.parse_analyzer_output(stdout)
+
+    assert issues == {
+        _analyzer.AnalyzerIssue(
+            file="TC_ObterRelatorio.xaml",
+            error_code="",
+            severity="Error",
+            description=(
+                "Não foi possível carregar o arquivo <PATH> "
+                "Motivo: Falha ao criar um 'InArgument' do texto '\\\"\\\"'."
+            ),
+        )
+    }
+
+
+def test_gate_empty_filepath_with_xaml_description_rolls_back_granular(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """Studio sometimes leaves FilePath empty but includes the XAML path in
+    Description. Analyzer parsing should infer the basename so the gate rolls
+    back only the failing file, not every changed XAML in the project.
+    """
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    other = fake_project / "Other.xaml"
+    other.write_text(SAMPLE_BAD_XAML.replace("Foo", "Other"), encoding="utf-8")
+    bad_baseline = (fake_project / "Bad.xaml").read_bytes()
+    other_baseline = other.read_bytes()
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        if len(call_log) == 1:
+            return set()
+        if len(call_log) > 2:
+            return set()
+        return {
+            _analyzer.AnalyzerIssue(
+                file="Bad.xaml",
+                error_code="",
+                severity="Error",
+                description="Nao foi possivel carregar o arquivo <PATH> Bad.xaml. Motivo: Falha",
+            )
+        }
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+
+    assert rc == _cli.EXIT_OK
+    assert "FULL-SNAPSHOT rollback" not in out
+    assert "ANALYZER ROLLBACK" in out
+    assert (fake_project / "Bad.xaml").read_bytes() == bad_baseline
+    assert other.read_bytes() != other_baseline, "unrelated changed file should stay fixed"
+
+
 def test_gate_disabled_no_retry_logic(
     fake_project: Path, monkeypatch, capsys
 ):

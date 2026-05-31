@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from uip_engine._types import Finding
+from uip_engine.canonical import canonical_pin_for
 
 
 _CACHE: dict[str, Any] | None = None
@@ -105,9 +106,15 @@ def detect_pin_alert(rule, fc, pc):
     content = fc.active_content
 
     for package, pkg_data in apis.items():
-        if package not in deps:
+        if package in deps:
+            raw = deps[package]
+        elif package in content:
+            canonical = canonical_pin_for(package)
+            if not canonical:
+                continue
+            raw = f"[{canonical}]"
+        else:
             continue
-        raw = deps[package]
         m = re.match(r"\[?([\d.]+)", str(raw))
         if not m:
             continue
