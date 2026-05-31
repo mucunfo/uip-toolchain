@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 import pytest
+from uip_engine import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -74,3 +75,37 @@ def test_cli_validate_command_checks_schema(tmp_path):
         encoding="utf-8", errors="replace",
     )
     assert proc.returncode >= 10  # internal error range
+
+
+def test_uip_public_help_only_documents_two_modes(capsys):
+    rc = cli.uip_main(["--help"])
+
+    out = capsys.readouterr().out
+    assert rc == cli.EXIT_OK
+    assert "uip <project_path> [--apply-contextual]" in out
+    assert "uip <subcommand>" not in out
+    assert "python -m uip_engine.cli <subcommand>" in out
+
+
+def test_uip_rejects_internal_subcommands(capsys):
+    rc = cli.uip_main(["review", "C:/tmp/project"])
+
+    captured = capsys.readouterr()
+    assert rc == cli.EXIT_ERROR
+    assert "não é interface pública" in captured.err
+    assert "python -m uip_engine.cli review" in captured.err
+
+
+def test_uip_path_injects_all(monkeypatch):
+    calls = []
+
+    def fake_main(argv):
+        calls.append(argv)
+        return cli.EXIT_OK
+
+    monkeypatch.setattr(cli, "main", fake_main)
+
+    rc = cli.uip_main(["C:/tmp/project", "--apply-contextual"])
+
+    assert rc == cli.EXIT_OK
+    assert calls == [["all", "C:/tmp/project", "--apply-contextual"]]

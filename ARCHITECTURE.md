@@ -190,13 +190,14 @@ PHASE 0  migration probe   (Activity Migrator se targetFramework != Windows)
 PHASE 1  deterministic fix (auto-apply, fixpoint loop, cascade rollback)
 PHASE 2  gates             (Layer 2 uipcli + Layer 3 nuget + Layer 5 pack)
 PHASE 3  contextual        (dry-run default; --apply-contextual aplica)
-PHASE 4  decisão           PASS / PENDING_REVIEW / FAIL
+PHASE 4  decisão           PASS / PASS-WITH-NOTES / FAIL
 ```
 
-Em **FAIL**, exit imediato (modo CI/agentic). Em **PASS**, exit 0. Em
-**PENDING_REVIEW** (contextual residual), exit 1.
+Em **FAIL**, exit imediato (modo CI/agentic) com exit 2. Em **PASS**, exit 0.
+Em **PASS-WITH-NOTES** (contextual/structural/governança residual), exit 0:
+deploy-safe, com notas para IA/humano.
 
-**Interface pública** — só 1 variação aceita:
+**Interface pública** — só 2 variações aceitas:
 
 | Cenário | Comando |
 |---|---|
@@ -216,12 +217,12 @@ env vars apenas:
 | `UIP_TOOLCHAIN_MAX_ITERS` | `0` | limite iters loop (0 = ilimitado) |
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
-Underlying: `python -m uip_engine.cli all <project>`. PS alias
-`uip` em `$HOME\Documents\WindowsPowerShell\profile.ps1` adiciona
-`cd .uip-toolchain` automático.
+Underlying: `python -m uip_engine.cli all <project>`. Console script público
+`uip` é instalado via `pyproject.toml`.
 
 Subcomandos atomicos (`review`, `fix`, `migrate-windows`, etc.) seguem
-existindo para debug e para o pipeline interno do `cli all`.
+existindo para debug e para o pipeline interno do `cli all`, mas somente via
+`python -m uip_engine.cli ...`; o comando público `uip` rejeita subcomandos.
 
 ## Pre-publish gate (`review` = canonical do gate, chamado dentro do `uip`)
 

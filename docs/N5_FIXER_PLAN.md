@@ -258,7 +258,7 @@ Estimate: ~120 LOC novo + ~80 LOC tests (mocked).
 
 Steps:
 1. `rm -rf .tmp/analyzer_cache/*` (cold cache to test full path)
-2. `uip <target-project>` → PENDING_REVIEW exit 1
+2. `uip <target-project>` → PASS-WITH-NOTES exit 0 quando sobra apenas contextual/structural
 3. `uip <target-project> --apply-contextual` → expect PASS exit 0
 4. Verify:
    - All 295 N-5 findings resolved (or marked NEEDS_REVIEW se LLM falhou)

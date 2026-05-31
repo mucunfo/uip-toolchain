@@ -23,7 +23,7 @@ Schema (estável; mantenha backwards-compat ao alterar):
         },
         ...
       ],
-      "exit_status": "PASS|PENDING_REVIEW|FAIL|null"
+      "exit_status": "PASS|PASS_WITH_NOTES|FAIL|null"
     }
 
 Atomic: escreve em `engine_status.json.tmp` + `os.replace()` → leitores nunca

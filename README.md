@@ -41,16 +41,18 @@ Status final do `uip <path>`:
 correções que exigem interpretação semântica (mensagem, refactor, camada correta,
 decisão arquitetural) com IA/humano no loop.
 
-Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
+Console script público: `uip`. Underlying:
 `python -m uip_engine.cli all <project>`. Subcomandos atômicos
-(`review`, `fix`, `migrate-windows`) seguem existindo para debug interno.
+(`review`, `fix`, `migrate-windows`) seguem existindo **somente** para debug
+interno via `python -m uip_engine.cli ...`; não são aceitos pelo comando
+público `uip`.
 
 ## Arquivos ativos
 
 | Arquivo | Papel |
 |---|---|
 | `README.md` | este — setup, hooks, scripts, fluxo |
-| `rules.yaml` | **fonte única** de regras (233 hoje: A/S/P/I/T/W/D/J/X + per-package; 58 deterministic + 170 contextual + 5 structural) |
+| `rules.yaml` | **fonte única** de regras (291 hoje: A/S/P/I/T/W/D/J/X + per-package; 110 deterministic + 174 contextual + 7 structural) |
 | `ARCHITECTURE.md` | manual operacional (schema, decision tree, file map) |
 | `models.conf` | paths de projetos modelo (lookup de exemplos via `xaml_example.py`) |
 
@@ -76,7 +78,10 @@ Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 | `tools/batch_uip.py` | manual | valida muitos projetos com retry adaptativo e relatório em `.tmp/` |
 | `inspect-ui-tree.ps1` | manual | inspecionar UI Automation (app em runtime) |
 
-## CLI uip_engine
+## CLI interna `uip_engine`
+
+Esta seção é para manutenção/debug da toolchain. Para execução em projetos,
+use só `uip <project_path>` ou `uip <project_path> --apply-contextual`.
 
 ```bash
 # Validar schema rules.yaml

@@ -214,19 +214,28 @@ def uip_main(argv: list[str] | None = None) -> int:
     eliminar dependência de alias PowerShell em profile.ps1 (não carrega em
     `-NoProfile` shells, hooks, agents, CI).
 
-    Pass-through subcommands explícitos pra debug interno:
-        `uip <subcmd> <args>` onde subcmd in {review, fix, list, validate,
-        docs, stats, all, migrate-windows, phase-out} → rule-engine direto.
+    Interface pública intencionalmente mínima:
+        `uip <project_path>`
+        `uip <project_path> --apply-contextual`
+
+    Subcommands atômicos continuam existindo só pelo entrypoint interno:
+        `python -m uip_engine.cli <subcmd> ...`
     """
     argv = argv if argv is not None else sys.argv[1:]
-    explicit_subcommands = {
+    internal_subcommands = {
         "review", "fix", "list", "validate", "docs", "stats", "all",
         "migrate-windows", "phase-out",
         # Phase 7 (2026-05): new standalone subcommands.
         "pre-migrate-check", "pack-scrub", "migrate-check",
     }
-    if argv and argv[0] in explicit_subcommands:
-        return main(argv)
+    if argv and argv[0] in internal_subcommands:
+        print(
+            f"[ERROR] `uip {argv[0]}` não é interface pública.\n"
+            f"Use `uip <project_path> [--apply-contextual]`.\n"
+            f"Para debug interno: `python -m uip_engine.cli {argv[0]} ...`.",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
     if argv and argv[0] in ("-h", "--help"):
         print(
             "uip — god command UiPath rules engine\n"
@@ -239,13 +248,13 @@ def uip_main(argv: list[str] | None = None) -> int:
             "      --apply-contextual: modo assistido por IA para aplicar fixes\n"
             "      contextuais (default: lista como PASS-WITH-NOTES, sem aplicar).\n"
             "\n"
-            "  uip <subcommand> [args]\n"
-            "      Pass-through pra debug interno: review|fix|list|validate|\n"
-            "      docs|stats|all|migrate-windows|phase-out.\n"
-            "\n"
-            "EQUIVALENTE: uip X ≡ rule-engine all X\n"
+            "INTERFACE PÚBLICA: só `uip <project_path>` e\n"
+            "`uip <project_path> --apply-contextual`.\n"
+            "Debug interno: `python -m uip_engine.cli <subcommand> ...`.\n"
         )
         return EXIT_OK
+    if not argv:
+        return uip_main(["--help"])
     return main(["all"] + argv)
 
 

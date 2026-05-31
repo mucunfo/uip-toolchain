@@ -4,7 +4,7 @@ Cobre cenários básicos:
   - Project clean (Windows, sem findings) → PASS exit 0
   - Project com migração necessária → PHASE 0 executa
   - Project com FAIL (default = no-watch) → exit 2 imediato
-  - Project com PENDING contextual (sem --apply-contextual) → exit 1
+  - Project com contextual residual (sem --apply-contextual) → PASS-WITH-NOTES exit 0
   - --max-iters guard limita loop em FAIL com --watch ativo
   - Backward-compat: --no-watch flag deprecated mas aceito (noop)
 """

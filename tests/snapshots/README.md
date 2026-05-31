@@ -41,7 +41,7 @@ Projetos canonical = estáveis, Windows-target migrados, conhecidamente PASS eng
 
 Critério inclusão:
 - targetFramework: Windows
-- Pipeline `uip` retorna PASS ou PENDING_REVIEW estável (3 runs consecutivos zero diff)
+- Pipeline `uip` retorna PASS ou PASS-WITH-NOTES estável (3 runs consecutivos zero diff)
 - Cobre patterns Sicoob típicos (NApplicationCard, REFramework, CCS_* libs)
 
 Atual:
