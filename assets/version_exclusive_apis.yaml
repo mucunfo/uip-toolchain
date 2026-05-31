@@ -76,6 +76,22 @@ UiPath.UIAutomation.Activities:
         type: strip_xml_attribute
         attribute: ElementVisibilityArgument
         element: uix:TargetAnchorable
+    - pattern: '<uix:TargetAnchorable\b[^>]*\bImageAccuracyArgument\s*='
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo ImageAccuracyArgument de TargetAnchorable (não existe em UIA pin Sicoob 25.10.8).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: ImageAccuracyArgument
+        element: uix:TargetAnchorable
+    - pattern: '<uix:Target\b[^>]*\bImageAccuracyArgument\s*='
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo ImageAccuracyArgument de Target (não existe em UIA pin Sicoob 25.10.8).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: ImageAccuracyArgument
+        element: uix:Target
 
 UiPath.OCR.Activities:
   apis:
@@ -102,11 +118,11 @@ UiPath.Mail.Activities:
 # attrs obsoletos no XAML legacy migrado → Studio load-fail.
 UiPath.MicrosoftOffice365.Activities:
   removed_apis:
-    # Office365ApplicationScope.Folder removida no upgrade 1.14.x → 3.x
-    # (Migrator pré-3.x deixa `Folder="{x:Null}"` órfão pós-upgrade).
+    # Office365ApplicationScope.Folder não existe nos pins modernos Sicoob
+    # observados (2.7.x/3.x). Migrator deixa `Folder="{x:Null}"` órfão.
     # REF: contestacao-de-compras-coleta-anexos-performer (2026-05-25).
     - pattern: '<uma:Office365ApplicationScope\b[^>]*\bFolder\s*='
-      removed_in: '3.0.0'
+      removed_in: '2.0.0'
       where: xaml_attribute
       fix: 'Remover atributo Folder (não existe em UiPath.MicrosoftOffice365.Activities >= 3.0.0). Usar MailFolder na child GetMail/MoveMail.'
       mechanical:

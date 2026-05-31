@@ -82,7 +82,7 @@ def _cleanup_pre_migration_backups(project_root: Path) -> list[Path]:
     — se engine completou pipeline com PASS, backup é dead weight (~50-200MB
     por projeto, acumula em batch runs).
 
-    Auto-clean DISPARA somente em PASS final (não em FAIL/PENDING_REVIEW —
+    Auto-clean DISPARA somente em PASS/PASS-WITH-NOTES final (não em FAIL —
     user pode querer rollback nesses casos).
 
     Opt-out via env `UIP_TOOLCHAIN_KEEP_BACKUP=1` (debug / paranoid mode).
@@ -234,9 +234,10 @@ def uip_main(argv: list[str] | None = None) -> int:
             "USAGE:\n"
             "  uip <project_path> [--apply-contextual]\n"
             "      Pipeline completo (migration probe → deterministic fix →\n"
-            "      gates Layer2/3/5 → contextual). Exit em FAIL (CI/agentic).\n"
-            "      --apply-contextual: aplica fixes contextual (default: lista\n"
-            "      PENDING_REVIEW pra decisão humana, sem aplicar).\n"
+            "      gates Layer2/3/5 → contextual report). FAIL só para\n"
+            "      deploy blockers mecânicos/pipeline/HALT.\n"
+            "      --apply-contextual: modo assistido por IA para aplicar fixes\n"
+            "      contextuais (default: lista como PASS-WITH-NOTES, sem aplicar).\n"
             "\n"
             "  uip <subcommand> [args]\n"
             "      Pass-through pra debug interno: review|fix|list|validate|\n"
@@ -450,13 +451,12 @@ def build_parser() -> argparse.ArgumentParser:
         "all",
         help="GOD COMMAND — pipeline completo: migration probe + "
              "deterministic auto-fix + gates Layer2/3/5 + contextual "
-             "(dry-run default). Exit em FAIL (modo CI/agentic).",
+             "report. FAIL só para deploy blockers.",
     )
     al.add_argument("path", help="Project root path")
     al.add_argument("--apply-contextual", action="store_true",
-                    help="Aplica também fixes contextual (default: só "
-                         "lista pra decisão humana, sem aplicar). Use após "
-                         "review da lista PENDING da 1ª run.")
+                    help="Modo assistido por IA: aplica fixes contextuais "
+                         "(default: reporta em PASS-WITH-NOTES, sem aplicar).")
     # Escape hatches internos (NÃO documentados no `uip --help`). Acessíveis
     # via env vars; tests invocam direto via `_ns(...)`. Mantidos pra debug
     # interno e back-compat de invocações programáticas — NÃO são interface
@@ -2494,6 +2494,22 @@ def _is_blocking_error(finding, rule_index) -> bool:
     return _effective_apply_class(finding, rule_index) == "deterministic"
 
 
+def _classify_deploy_blockers(result, rule_index) -> list:
+    """Findings que bloqueiam deploy no contrato público `uip <path>`.
+
+    Contextual/structural ERRORs aparecem como notas em PASS-WITH-NOTES, mas
+    não entram nesta lista. HALT sempre bloqueia porque indica política crítica
+    ou integridade de pipeline sem fallback seguro.
+    """
+    blockers = []
+    for f in result.findings:
+        if f.suppressed:
+            continue
+        if f.severity == Severity.HALT or _is_blocking_error(f, rule_index):
+            blockers.append(f)
+    return blockers
+
+
 def _print_uip_header(project: Path, iter_no: int) -> None:
     print(f"\n[uip] {project.name} — iter {iter_no}")
     print("=" * (8 + len(project.name) + 12))
@@ -2516,7 +2532,7 @@ def _print_status(status: str, *, project: Path, apply_contextual: bool) -> None
                   "informacionais — projeto deploy-safe.")
             print(f"  Opt-in fix: uip {project} --apply-contextual")
     elif status == "FAIL":
-        print("[FAIL] errors/halts residuais.")
+        print("[FAIL] deploy blockers residuais.")
 
 
 def _print_findings_table(findings: list, *, max_rows: int = 10, header: str) -> None:
@@ -2700,9 +2716,9 @@ def _cmd_all(args) -> int:
 
         # ---- Display findings relevantes ----
         if status == "FAIL":
-            blocking = [f for f in result.findings
-                        if f.severity in (Severity.ERROR, Severity.HALT) and not f.suppressed]
-            _print_findings_table(blocking, max_rows=10, header="TOP blocking findings")
+            blocking = _classify_deploy_blockers(result, rule_index)
+            _print_findings_table(blocking, max_rows=10,
+                                  header="Deploy blockers (mecânicos/pipeline)")
         elif status == "PASS_WITH_NOTES" and not apply_ctx:
             _print_findings_table(contextual_pending, max_rows=20,
                                   header="Contextual findings (informacional — decisão humana)")

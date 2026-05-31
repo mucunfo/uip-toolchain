@@ -7,11 +7,11 @@ Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML
 **Pipeline completo (god command)**:
 
 ```powershell
-# 1ª run — migration + deterministic fix + gates + contextual dry-run.
-# Exit imediato em FAIL (modo CI/agentic).
+# 1ª run — migration + deterministic fix + gates + contextual report.
+# Deploy-safe: FAIL só quando sobram blockers mecânicos/pipeline/HALT.
 uip <project_path>
 
-# 2ª run — aprova contextual remanescente da 1ª.
+# 2ª run — modo assistido por IA para polish/governança contextual.
 uip <project_path> --apply-contextual
 ```
 
@@ -29,8 +29,17 @@ Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 | `UIP_TOOLCHAIN_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
-Exit codes: `0` PASS, `1` PENDING_REVIEW (contextual aguarda `--apply-contextual`),
-`2` FAIL, `3` HALT, `10` INTERNAL.
+Status final do `uip <path>`:
+
+| Status | Exit | Significado |
+|---|---:|---|
+| `PASS` | `0` | sem blockers e sem pendências contextuais relevantes |
+| `PASS-WITH-NOTES` | `0` | deploy-safe; há achados contextuais/estruturais/governança para IA/humano |
+| `FAIL` | `2` | sobrou blocker mecânico/deploy-breaking, HALT ou falha de integridade do pipeline |
+
+`--apply-contextual` não é pré-requisito para deploy. Ele existe para aplicar
+correções que exigem interpretação semântica (mensagem, refactor, camada correta,
+decisão arquitetural) com IA/humano no loop.
 
 Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 `python -m uip_engine.cli all <project>`. Subcomandos atômicos
@@ -112,8 +121,8 @@ Cada rule classifica seu fix em uma de 3 classes (`fix.apply_class`):
 | Classe | Critério | `fix --apply` default |
 |---|---|---|
 | **deterministic** | Mecânico, output único correto, sem judgment | ✅ aplica |
-| **contextual** | Exige interpretação semântica (qual mensagem, qual valor) | ❌ alerta only (review) |
-| **structural** | Reorganiza estrutura (split/extract/move) | ❌ alerta only (review) |
+| **contextual** | Exige interpretação semântica (qual mensagem, qual valor) | ❌ nota em `PASS-WITH-NOTES` |
+| **structural** | Reorganiza estrutura (split/extract/move) | ❌ nota em `PASS-WITH-NOTES` |
 
 Default derivation (sem `apply_class` declarado):
 - `fix.auto_apply: false` (legado) → `contextual`

@@ -1728,17 +1728,23 @@ def apply_add_prefixo_arg(file: Path, spec: dict, dry_run: bool = True,
     mc = members_close_re.search(new_content)
     if mc is None:
         return False
-    default_block = (
-        f'\n  <this:{class_name}.{prefixo_arg}>'
-        f'<InArgument x:TypeArguments="x:String">'
-        f'<Literal x:TypeArguments="x:String" Value="" />'
-        f'</InArgument>'
-        f'</this:{class_name}.{prefixo_arg}>'
-    )
-    # Idempotent check
-    if f'this:{class_name}.{prefixo_arg}' not in new_content:
-        new_content = (new_content[:mc.end()] + default_block
-                       + new_content[mc.end():])
+    default_tag_local = f"{class_name}.{prefixo_arg}"
+    # Legacy UiPath workflows sometimes use x:Class values such as
+    # "1.2.UpdateExecutionEndDB2". That is not a valid XML local-name for a
+    # `<this:...>` property element. In that case, the x:Property declaration is
+    # still valid and is the deploy-safe mechanical fix; skip the default block.
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", default_tag_local):
+        default_block = (
+            f'\n  <this:{default_tag_local}>'
+            f'<InArgument x:TypeArguments="x:String">'
+            f'<Literal x:TypeArguments="x:String" Value="" />'
+            f'</InArgument>'
+            f'</this:{default_tag_local}>'
+        )
+        # Idempotent check
+        if f'this:{default_tag_local}' not in new_content:
+            new_content = (new_content[:mc.end()] + default_block
+                           + new_content[mc.end():])
 
     # Step 3: rewrite literal Messages `[&quot;X&quot;]` →
     # `[<prefixo_arg> + &quot;X&quot;]`. Cobre só literal-string form.

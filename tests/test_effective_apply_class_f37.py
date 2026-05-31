@@ -22,6 +22,7 @@ from uip_engine.cli import (
     _effective_apply_class,
     _is_blocking_error,
     _classify_contextual_pending,
+    _classify_deploy_blockers,
 )
 
 
@@ -178,3 +179,21 @@ def test_pending_excludes_halt_severity():
     result.add(_finding("DET-RULE", sev=Severity.HALT))
     pending = _classify_contextual_pending(result, ridx)
     assert len(pending) == 0
+
+
+def test_deploy_blockers_excludes_contextual_errors_but_keeps_halt():
+    ridx = {
+        "DET-RULE": _det_rule(),
+        "CTX-RULE": _ctx_rule(),
+        "STR-RULE": _struct_rule(),
+    }
+    result = ValidationResult()
+    result.add(_finding("DET-RULE", fix_mech={"type": "x"}))
+    result.add(_finding("CTX-RULE"))
+    result.add(_finding("STR-RULE"))
+    result.add(_finding("UIPATH:LOAD"))
+    result.add(_finding("DET-RULE", sev=Severity.HALT))
+
+    blockers = _classify_deploy_blockers(result, ridx)
+
+    assert [f.rule_id for f in blockers] == ["DET-RULE", "DET-RULE"]

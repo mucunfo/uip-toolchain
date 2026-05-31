@@ -382,6 +382,19 @@ def test_add_prefixo_arg_creates_xmembers_when_missing(tmp_path):
     assert "this:TestWf.in_StPrefixoLog" in out
 
 
+def test_add_prefixo_arg_skips_invalid_this_default_for_numeric_xclass(tmp_path):
+    f = tmp_path / "wf.xaml"
+    head = XAML_HEAD.replace('x:Class="TestWf"', 'x:Class="2.0.UpdateExecutionEndDB2"')
+    f.write_text(head + '  <Sequence />\n' + XAML_TAIL, encoding="utf-8")
+
+    changed = apply_add_prefixo_arg(f, {"prefixo_arg": "in_StPrefixoLog"}, dry_run=False)
+    out = f.read_text(encoding="utf-8")
+
+    assert changed is True
+    assert '<x:Property Name="in_StPrefixoLog" Type="InArgument(x:String)" />' in out
+    assert "this:2.0.UpdateExecutionEndDB2.in_StPrefixoLog" not in out
+
+
 # ---- F34: schema-driven parent classification ----
 
 def test_classify_parent_for_logmessage_unknown_falls_through():

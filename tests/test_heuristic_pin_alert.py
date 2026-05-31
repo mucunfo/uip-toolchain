@@ -206,6 +206,31 @@ def test_pin_alert_flags_targetanchorable_elementvisibilityargument(tmp_path):
     }
 
 
+@pytest.mark.parametrize(
+    ("body", "attr", "element"),
+    [
+        ('  <uix:TargetAnchorable ImageAccuracyArgument="0.99"/>\n',
+         "ImageAccuracyArgument", "uix:TargetAnchorable"),
+        ('  <uix:Target ImageAccuracyArgument="0.85"/>\n',
+         "ImageAccuracyArgument", "uix:Target"),
+    ],
+)
+def test_pin_alert_flags_uia_imageaccuracyargument(tmp_path, body, attr, element):
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+    )
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert attr in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "strip_xml_attribute",
+        "attribute": attr,
+        "element": element,
+    }
+
+
 def test_pin_alert_flags_sendmail_connectionmode(tmp_path):
     """SendMail.ConnectionMode is newer than the Mail pin."""
     proj, pc = _mk_project(
@@ -222,6 +247,24 @@ def test_pin_alert_flags_sendmail_connectionmode(tmp_path):
         "type": "strip_xml_attribute",
         "attribute": "ConnectionMode",
         "element": "ui:SendMail",
+    }
+
+
+def test_pin_alert_flags_office365_scope_folder_on_2_7_pin(tmp_path):
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.MicrosoftOffice365.Activities": "[2.7.24]"},
+    )
+    body = '  <uma:Office365ApplicationScope Folder="{x:Null}"/>\n'
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert "Office365ApplicationScope" in findings[0].message
+    assert "Folder" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "strip_xml_attribute",
+        "attribute": "Folder",
+        "element": "uma:Office365ApplicationScope",
     }
 
 
