@@ -3579,10 +3579,13 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
 
     content = file.read_text(encoding="utf-8-sig")
 
-    # Pattern: word boundary + opt namespace prefix + attribute name + ="..."
+    # Pattern: opt namespace prefix + opt dotted owner + attribute name + ="..."
+    # UiPath load errors report dotted names (RetryScope.LogRetriedExceptions)
+    # while the catalog keeps the reusable leaf name (LogRetriedExceptions).
     # Captura prefixed whitespace pra cleanup limpo.
     pat = re.compile(
-        rf'(\s+)(?:[A-Za-z_][\w]*:)?{re.escape(attr)}\s*=\s*"[^"]*"'
+        rf'(\s+)(?:[A-Za-z_][\w]*:)?(?:[A-Za-z_][\w]*\.)*'
+        rf'{re.escape(attr)}\s*=\s*"[^"]*"'
     )
 
     if element:

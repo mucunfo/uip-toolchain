@@ -8,6 +8,7 @@ import pytest
 
 from uip_engine._types import Rule, Severity
 from uip_engine.context import FileContext, ProjectContext
+from uip_engine.fixers import REGISTRY
 from uip_engine.heuristics.pin_alert import (
     detect_pin_alert,
     _reset_cache_for_tests,
@@ -78,6 +79,29 @@ def test_pin_alert_flags_when_pin_below_introduced(tmp_path):
     assert "25.10.21" in findings[0].message
     assert "25.10.8" in findings[0].message
     assert findings[0].fix_prose  # tem prose explicando fix
+
+
+def test_pin_alert_dotted_attribute_mechanical_fix_applies(tmp_path):
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+    )
+    fc = _write_xaml(
+        proj,
+        '  <ui:RetryScope RetryScope.LogRetriedExceptions="True" DisplayName="Tentar"/>',
+    )
+
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    mech = findings[0].fix_mechanical
+    assert mech["type"] == "strip_xml_attribute"
+    assert mech["attribute"] == "LogRetriedExceptions"
+
+    ok = REGISTRY[mech["type"]](Path(fc.path), mech, dry_run=False, project_root=proj)
+    out = Path(fc.path).read_text(encoding="utf-8")
+
+    assert ok is True
+    assert "RetryScope.LogRetriedExceptions=" not in out
+    assert 'DisplayName="Tentar"' in out
 
 
 def test_pin_alert_silent_when_pin_covers_api(tmp_path):

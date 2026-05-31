@@ -221,6 +221,45 @@ def test_dpinalert_filewide_fallback_when_no_element():
         os.unlink(f)
 
 
+def test_dpinalert_strip_accepts_dotted_attribute_owner():
+    xaml = (
+        f'<Activity {NS}>'
+        '<ui:RetryScope RetryScope.LogRetriedExceptions="True" DisplayName="try" />'
+        '</Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("strip_xml_attribute", f, {"attribute": "LogRetriedExceptions"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert "RetryScope.LogRetriedExceptions=" not in out
+        assert 'DisplayName="try"' in out
+    finally:
+        os.unlink(f)
+
+
+def test_dpinalert_strip_dotted_attribute_is_still_element_scoped():
+    xaml = (
+        f'<Activity {NS}>'
+        '<ui:RetryScope RetryScope.LogRetriedExceptions="True" DisplayName="try" />'
+        '<ui:Other RetryScope.LogRetriedExceptions="True" DisplayName="keep" />'
+        '</Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run(
+            "strip_xml_attribute",
+            f,
+            {"attribute": "LogRetriedExceptions", "element": "ui:RetryScope"},
+        )
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert '<ui:RetryScope DisplayName="try" />' in out
+        assert '<ui:Other RetryScope.LogRetriedExceptions="True" DisplayName="keep" />' in out
+    finally:
+        os.unlink(f)
+
+
 def test_dpinalert_nwindow_strip_preserves_property_elements():
     xaml = (
         f'<Activity {NS}>'

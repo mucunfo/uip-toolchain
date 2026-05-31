@@ -64,6 +64,7 @@ Alias PS em `$HOME\Documents\WindowsPowerShell\profile.ps1`. Underlying:
 | `xaml_example.py` | manual | exemplo real de activity (fonte: `models.conf`) |
 | `config_xlsx_manager.py` | manual | inspecionar/alterar Config.xlsx |
 | `resolve_nuget.py --add/--all` | manual | adicionar pacote nova dependência |
+| `tools/batch_uip.py` | manual | valida muitos projetos com retry adaptativo e relatório em `.tmp/` |
 | `inspect-ui-tree.ps1` | manual | inspecionar UI Automation (app em runtime) |
 
 ## CLI uip_engine
@@ -97,6 +98,9 @@ python -m uip_engine.cli docs --out .tmp/all-rules.md
 
 # Workspace multi-projeto
 python -m uip_engine.cli review <workspace> --multi-project
+
+# Batch de validação/fix multi-projeto com retry para projetos lentos
+python tools/batch_uip.py C:\Users\lisan\Desktop\temp\_uip_relacao.txt --workers 3 --t1 900 --t2 2400
 ```
 
 Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).

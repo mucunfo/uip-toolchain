@@ -104,12 +104,36 @@ def run_one(proj: str, timeout: int) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("input")
-    ap.add_argument("--report", default="batch_adaptive_report.md")
-    ap.add_argument("--workers", type=int, default=3)
-    ap.add_argument("--t1", type=int, default=900)
-    ap.add_argument("--t2", type=int, default=2400)
+    ap = argparse.ArgumentParser(
+        description="Run `uip all` across many UiPath projects with adaptive retry for slow projects."
+    )
+    ap.add_argument(
+        "input",
+        help="Workspace directory, .txt project list, or .json array of project paths.",
+    )
+    ap.add_argument(
+        "--report",
+        default="batch_adaptive_report.md",
+        help="Markdown report filename written under .tmp/ (default: %(default)s).",
+    )
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=3,
+        help="Parallel workers for Phase A (default: %(default)s).",
+    )
+    ap.add_argument(
+        "--t1",
+        type=int,
+        default=900,
+        help="Per-project Phase A timeout in seconds (default: %(default)s).",
+    )
+    ap.add_argument(
+        "--t2",
+        type=int,
+        default=2400,
+        help="Sequential retry timeout for Phase B in seconds (default: %(default)s).",
+    )
     a = ap.parse_args()
     projects = discover(Path(a.input))
     heavy = [p for p in projects if is_heavy(p)]

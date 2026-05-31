@@ -87,7 +87,7 @@ def _normalize_description(desc: str) -> str:
 _XAML_HINT_RE = re.compile(
     r"(?P<path>[A-Za-z]:\\[^\"'<>|*?\r\n]+?\.xaml|"
     r"(?:[A-Za-z0-9_.\-À-ÿ()]+[\\/])+[A-Za-z0-9_.\-À-ÿ() ]+\.xaml|"
-    r"[A-Za-z0-9_.\-À-ÿ() ]+\.xaml)",
+    r"[A-Za-z0-9_.\-À-ÿ()]+\.xaml)",
     re.IGNORECASE,
 )
 

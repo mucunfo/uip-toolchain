@@ -1723,10 +1723,10 @@ def _cmd_fix(args) -> int:
     if not dry_run:
         print(f"# include_classes={sorted(included_classes)}")
 
-    # Analyzer gate baseline (opt-in via --analyzer-gate). Roda uma única vez
-    # ANTES de qualquer fix iter, captura set de issues pré-existentes. Diff
-    # vs post-loop dá erros introduzidos. Caro (10-30s) — só rodar quando
-    # explicitamente requested.
+    # Analyzer gate baseline. Roda uma única vez ANTES de qualquer fix iter e
+    # captura set de issues pré-existentes. Diff vs post-loop dá erros
+    # introduzidos. Default-on em fix --apply; use --no-analyzer-gate apenas em
+    # debug quando Studio/uipcli não deve participar.
     analyzer_baseline = None
     analyzer_cli_path = None
     analyzer_gate_enabled = (not getattr(args, "no_analyzer_gate", False)) and not dry_run

@@ -259,6 +259,26 @@ def test_parse_analyzer_output_infers_file_from_empty_filepath_description():
     }
 
 
+def test_parse_analyzer_output_infers_bare_xaml_basename_from_prose():
+    guid1 = "11111111-1111-1111-1111-111111111111"
+    guid2 = "22222222-2222-2222-2222-222222222222"
+    payload = {
+        f"{guid1}-FilePath": "",
+        f"{guid1}-ErrorCode": "",
+        f"{guid1}-ErrorSeverity": "Error",
+        f"{guid1}-Description": "Nao foi possivel carregar o arquivo Bad.xaml",
+        f"{guid2}-FilePath": "",
+        f"{guid2}-ErrorCode": "",
+        f"{guid2}-ErrorSeverity": "Error",
+        f"{guid2}-Description": "Falha em Main.xaml",
+    }
+    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
+
+    issues = _analyzer.parse_analyzer_output(stdout)
+
+    assert {i.file for i in issues} == {"Bad.xaml", "Main.xaml"}
+
+
 def test_gate_empty_filepath_with_xaml_description_rolls_back_granular(
     fake_project: Path, monkeypatch, capsys, disable_baseline_cache
 ):

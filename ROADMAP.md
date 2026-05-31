@@ -400,14 +400,14 @@ Hoje: workflows que ganharam Trace mas não declaram `in_StPrefixoLog` viram fin
 ### F26 — Layer 2 default-on (CLI flag invertida)
 **Esforço**: meio dia | **Valor**: médio | **Risco**: baixo
 
-Hoje: `--analyzer-gate` opt-in. Devs perdem feedback de compile sem decisão consciente.
+Antes da F26: `--analyzer-gate` era opt-in. Devs perdiam feedback de compile sem decisão consciente.
 
 **Implementação**:
 1. `cli.py fix`: trocar `--analyzer-gate` por `--no-analyzer-gate` (opt-out).
 2. Default behavior: roda gate se uipcli encontrado; skip silencioso se não.
 3. Atualizar README + docstrings.
 
-**Done**: produzir compile-safe by default.
+**Done**: `fix --apply` roda analyzer gate por default; `--no-analyzer-gate` fica reservado para debug/offline.
 
 ---
 
@@ -476,7 +476,7 @@ Hoje: rename refactors usam grep+regex. Quebra em edge cases (variable shadowing
 
 **Implementação**:
 1. `tests/test_engine_no_regression.py`: roda `cli review` em REF, asserta count baseline (esperado: zero `category=breaking`).
-2. CI hook (PR): rodar suite + `--analyzer-gate` em REF.
+2. CI hook (PR): rodar suite + analyzer gate default-on em REF (`--no-analyzer-gate` só para debug).
 3. Falha CI se findings novos vs baseline known.
 
 **Done**: regressions caçadas em PR, não em produção.
