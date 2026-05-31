@@ -128,3 +128,10 @@ UiPath.MicrosoftOffice365.Activities:
       mechanical:
         type: strip_xml_attribute
         attribute: Folder
+    - pattern: '<uma:Office365ApplicationScope\b[^>]*\bDataStoreLocation\s*='
+      removed_in: '2.0.0'
+      where: xaml_attribute
+      fix: 'Remover atributo DataStoreLocation de Office365ApplicationScope (não existe no pin Sicoob observado).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: DataStoreLocation

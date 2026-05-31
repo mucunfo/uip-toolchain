@@ -268,6 +268,24 @@ def test_pin_alert_flags_office365_scope_folder_on_2_7_pin(tmp_path):
     }
 
 
+def test_pin_alert_flags_office365_scope_datastorelocation_on_2_7_pin(tmp_path):
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.MicrosoftOffice365.Activities": "[2.7.24]"},
+    )
+    body = '  <uma:Office365ApplicationScope DataStoreLocation="DISK"/>\n'
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert "Office365ApplicationScope" in findings[0].message
+    assert "DataStoreLocation" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "strip_xml_attribute",
+        "attribute": "DataStoreLocation",
+        "element": "uma:Office365ApplicationScope",
+    }
+
+
 def test_pin_alert_multiple_matches_same_xaml(tmp_path):
     """Múltiplas violations no mesmo XAML -> múltiplos findings."""
     proj, pc = _mk_project(
