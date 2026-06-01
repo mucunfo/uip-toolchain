@@ -14,6 +14,7 @@ Findings covered:
   ENV-3       insert_namespace_import (loosened scg:List requirement)
   ENV-4       normalize_visualbasic_settings (optional leading newline+indent)
   N-17        rename_poor_log_displayname (element-form Message)
+  N-12        force_attribute (exact tag match, not property-element prefix)
   S-5         strip_annotation_text (property-element form)
 
 NOTE: several fixers (W-30, X-2) run an ET.fromstring well-formedness gate, so
@@ -26,7 +27,14 @@ from pathlib import Path
 
 import pytest
 
-from uip_engine.fixers import REGISTRY, _format_property_element_value
+from uip_engine.fixers import (
+    REGISTRY,
+    _format_property_element_value,
+    sanitize_invoke_arguments_dictionary_placeholders,
+    sanitize_invoke_arguments_variable_conflicts,
+    strip_empty_invoke_arguments_dictionary_placeholders,
+    strip_null_arguments_variable_conflicts,
+)
 
 
 # Common namespace blob so ET.fromstring gates in W-30 / X-2 pass.
@@ -442,6 +450,221 @@ def test_a19b_skips_when_args_block_already_has_duplicate_key():
         os.unlink(f)
 
 
+def test_a19b_expands_self_closing_arguments_block_instead_of_duplicating():
+    caller = (
+        '<Activity><ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments />'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(caller)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_StName",
+                   "direction": "In", "inner_type": "x:String"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert out.count("<ui:InvokeWorkflowFile.Arguments") == 1
+        assert "<ui:InvokeWorkflowFile.Arguments />" not in out
+        assert 'x:Key="in_StName"' in out
+    finally:
+        os.unlink(f)
+
+
+def test_a19b_strips_null_arguments_variable_when_adding_args_block():
+    caller = (
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" '
+        'WorkflowFileName="Sub.xaml"></ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(caller)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_StName",
+                   "direction": "In", "inner_type": "x:String"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert 'ArgumentsVariable="{x:Null}"' not in out
+        assert out.count("<ui:InvokeWorkflowFile.Arguments") == 1
+        assert 'x:Key="in_StName"' in out
+    finally:
+        os.unlink(f)
+
+
+def test_a19b_strips_null_arguments_variable_when_expanding_existing_args_block():
+    caller = (
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" '
+        'WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments />'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(caller)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_StName",
+                   "direction": "In", "inner_type": "x:String"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert 'ArgumentsVariable="{x:Null}"' not in out
+        assert out.count("<ui:InvokeWorkflowFile.Arguments") == 1
+        assert "<ui:InvokeWorkflowFile.Arguments />" not in out
+    finally:
+        os.unlink(f)
+
+
+def test_strip_invoke_arguments_variable_when_args_element_removes_null_placeholder():
+    xaml = (
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" '
+        'WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<InArgument x:TypeArguments="x:String" x:Key="in_Name">[v]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("strip_invoke_arguments_variable_when_args_element", f, {})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert 'ArgumentsVariable="{x:Null}"' not in out
+        assert '<ui:InvokeWorkflowFile.Arguments>' in out
+    finally:
+        os.unlink(f)
+
+
+def test_strip_invoke_arguments_variable_preserves_non_null_or_no_args_element():
+    non_null = (
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="[args]" '
+        'WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments />'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(non_null)
+    try:
+        ok = _run("strip_invoke_arguments_variable_when_args_element", f, {})
+        assert ok is False
+        assert 'ArgumentsVariable="[args]"' in f.read_text(encoding="utf-8")
+    finally:
+        os.unlink(f)
+
+    no_args = (
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" '
+        'WorkflowFileName="Sub.xaml"></ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(no_args)
+    try:
+        ok = _run("strip_invoke_arguments_variable_when_args_element", f, {})
+        assert ok is False
+        assert 'ArgumentsVariable="{x:Null}"' in f.read_text(encoding="utf-8")
+    finally:
+        os.unlink(f)
+
+
+def test_strip_null_arguments_variable_conflicts_counts_multiple_blocks():
+    xaml = (
+        '<Activity>'
+        '<ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" WorkflowFileName="A.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments />'
+        '</ui:InvokeWorkflowFile>'
+        '<ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" WorkflowFileName="B.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments></ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+        '<ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" WorkflowFileName="C.xaml">'
+        '</ui:InvokeWorkflowFile>'
+        '</Activity>'
+    )
+
+    out, count = strip_null_arguments_variable_conflicts(xaml)
+
+    assert count == 2
+    assert out.count('ArgumentsVariable="{x:Null}"') == 1
+
+
+def test_sanitize_invoke_arguments_variable_conflicts_scans_project(tmp_path):
+    first = tmp_path / "Main.xaml"
+    first.write_text(
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}" '
+        'WorkflowFileName="Sub.xaml"><ui:InvokeWorkflowFile.Arguments />'
+        '</ui:InvokeWorkflowFile></Activity>',
+        encoding="utf-8",
+    )
+    nested_dir = tmp_path / "Nested"
+    nested_dir.mkdir()
+    second = nested_dir / "Other.xaml"
+    second.write_text(
+        '<Activity><ui:InvokeWorkflowFile ArgumentsVariable="[args]" '
+        'WorkflowFileName="Sub.xaml"><ui:InvokeWorkflowFile.Arguments />'
+        '</ui:InvokeWorkflowFile></Activity>',
+        encoding="utf-8",
+    )
+
+    files, attrs = sanitize_invoke_arguments_variable_conflicts(tmp_path)
+
+    assert (files, attrs) == (1, 1)
+    assert 'ArgumentsVariable="{x:Null}"' not in first.read_text(encoding="utf-8")
+    assert 'ArgumentsVariable="[args]"' in second.read_text(encoding="utf-8")
+
+
+def test_strip_empty_invoke_arguments_dictionary_placeholder_with_real_args():
+    xaml = (
+        '<Activity>'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<scg:Dictionary x:TypeArguments="x:String, Argument" />'
+        '<InArgument x:TypeArguments="x:String" x:Key="in_Config">[cfg]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+        '</Activity>'
+    )
+
+    out, count = strip_empty_invoke_arguments_dictionary_placeholders(xaml)
+
+    assert count == 1
+    assert '<scg:Dictionary x:TypeArguments="x:String, Argument" />' not in out
+    assert 'x:Key="in_Config"' in out
+
+
+def test_strip_empty_invoke_arguments_dictionary_preserves_empty_args():
+    xaml = (
+        '<Activity>'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<scg:Dictionary x:TypeArguments="x:String, Argument" />'
+        '</ui:InvokeWorkflowFile.Arguments>'
+        '</ui:InvokeWorkflowFile>'
+        '</Activity>'
+    )
+
+    out, count = strip_empty_invoke_arguments_dictionary_placeholders(xaml)
+
+    assert count == 0
+    assert '<scg:Dictionary x:TypeArguments="x:String, Argument" />' in out
+
+
+def test_sanitize_invoke_arguments_dictionary_placeholders_scans_project(tmp_path):
+    first = tmp_path / "Main.xaml"
+    first.write_text(
+        '<Activity><ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<scg:Dictionary x:TypeArguments="x:String, Argument" />'
+        '<InArgument x:TypeArguments="x:String" x:Key="in_Config">[cfg]</InArgument>'
+        '</ui:InvokeWorkflowFile.Arguments></ui:InvokeWorkflowFile></Activity>',
+        encoding="utf-8",
+    )
+    second = tmp_path / "Other.xaml"
+    second.write_text(
+        '<Activity><ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml">'
+        '<ui:InvokeWorkflowFile.Arguments>'
+        '<scg:Dictionary x:TypeArguments="x:String, Argument" />'
+        '</ui:InvokeWorkflowFile.Arguments></ui:InvokeWorkflowFile></Activity>',
+        encoding="utf-8",
+    )
+
+    files, placeholders = sanitize_invoke_arguments_dictionary_placeholders(tmp_path)
+
+    assert (files, placeholders) == (1, 1)
+    assert "scg:Dictionary" not in first.read_text(encoding="utf-8")
+    assert "scg:Dictionary" in second.read_text(encoding="utf-8")
+
+
 # --------------------------------------------------------------------------- #
 # W-30
 # --------------------------------------------------------------------------- #
@@ -483,10 +706,27 @@ def test_w30_noop_when_only_protected_text():
         os.unlink(f)
 
 
+def test_a19b_skips_invoke_with_inline_arguments_attribute():
+    caller = (
+        '<Activity><ui:InvokeWorkflowFile WorkflowFileName="Sub.xaml" '
+        'Arguments="[legacyArgs]">'
+        '</ui:InvokeWorkflowFile></Activity>'
+    )
+    f = _mk(caller)
+    try:
+        ok = _run("cascade_caller_in_args", f,
+                  {"callee_path": "Sub.xaml", "arg_name": "in_StName",
+                   "direction": "In", "inner_type": "x:String"})
+        assert ok is False
+        assert f.read_text(encoding="utf-8") == caller
+    finally:
+        os.unlink(f)
+
+
 # --------------------------------------------------------------------------- #
 # X-2
 # --------------------------------------------------------------------------- #
-def test_x2_preserves_xtypearguments_directive_in_case_b():
+def test_x2_ignores_directive_only_property_elements():
     xaml = (
         f'<Activity {NS}>'
         '<scg:List.Items x:TypeArguments="x:String">'
@@ -496,10 +736,30 @@ def test_x2_preserves_xtypearguments_directive_in_case_b():
     try:
         ok = _run("strip_property_element_with_attribute", f, {})
         out = f.read_text(encoding="utf-8")
-        assert ok is True
-        # x:TypeArguments must survive (load-bearing on generic property element)
+        assert ok is False
         assert 'x:TypeArguments="x:String"' in out
-        # inner content preserved
+        assert "<x:String>a</x:String>" in out
+    finally:
+        os.unlink(f)
+
+
+def test_x2_strips_hybrid_without_touching_directive_only_neighbor():
+    xaml = (
+        f'<Activity {NS}>'
+        '<ui:LogMessage Level="Trace">'
+        '<ui:LogMessage.Level Level="Trace"><x:String>z</x:String></ui:LogMessage.Level>'
+        '</ui:LogMessage>'
+        '<scg:List.Items x:TypeArguments="x:String">'
+        '<x:String>a</x:String></scg:List.Items>'
+        '</Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("strip_property_element_with_attribute", f, {})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert "<ui:LogMessage.Level" not in out
+        assert '<scg:List.Items x:TypeArguments="x:String">' in out
         assert "<x:String>a</x:String>" in out
     finally:
         os.unlink(f)
@@ -666,6 +926,46 @@ def test_n17_attribute_form_still_works():
         out = f.read_text(encoding="utf-8")
         assert ok is True
         assert 'DisplayName="Log Message"' not in out
+    finally:
+        os.unlink(f)
+
+
+# --------------------------------------------------------------------------- #
+# N-12
+# --------------------------------------------------------------------------- #
+def test_force_attribute_does_not_match_property_element_prefix():
+    xaml = (
+        '<Activity><ui:LogMessage>'
+        '<ui:LogMessage.Message>[&quot;ok&quot;]</ui:LogMessage.Message>'
+        '</ui:LogMessage></Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("force_attribute", f,
+                  {"tag": "ui:LogMessage", "attribute": "Level", "value": "Trace"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is True
+        assert '<ui:LogMessage Level="Trace">' in out
+        assert '<ui:LogMessage.Message Level="Trace">' not in out
+    finally:
+        os.unlink(f)
+
+
+def test_force_attribute_does_not_duplicate_existing_property_element():
+    xaml = (
+        '<Activity><ui:LogMessage>'
+        '<ui:LogMessage.Level>Trace</ui:LogMessage.Level>'
+        '<ui:LogMessage.Message>[&quot;ok&quot;]</ui:LogMessage.Message>'
+        '</ui:LogMessage></Activity>'
+    )
+    f = _mk(xaml)
+    try:
+        ok = _run("force_attribute", f,
+                  {"tag": "ui:LogMessage", "attribute": "Level", "value": "Trace"})
+        out = f.read_text(encoding="utf-8")
+        assert ok is False
+        assert '<ui:LogMessage Level="Trace">' not in out
+        assert '<ui:LogMessage.Level>Trace</ui:LogMessage.Level>' in out
     finally:
         os.unlink(f)
 

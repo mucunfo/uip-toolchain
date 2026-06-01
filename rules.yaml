@@ -930,8 +930,10 @@ rules:
     applies_to:
       include: ["**/*.xaml"]
     detect:
-      type: regex
-      pattern: '[“”‘’ ​‌‍﻿]'
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w30_hostile_unicode
     fix:
       apply_class: deterministic
       mechanical:
@@ -1014,6 +1016,39 @@ rules:
           Set v = x            → v = x
           Variant              → Object
           MsgBox(...)          → <ui:MessageBox/>
+
+  - id: W-34
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "InvokeWorkflowFile ArgumentsVariable duplica Arguments"
+    description: |
+      Em Windows target, `<ui:InvokeWorkflowFile ArgumentsVariable="{x:Null}">`
+      junto com `<ui:InvokeWorkflowFile.Arguments>` pode ser carregado como
+      dupla atribuição da propriedade `Arguments`, gerando:
+
+        XamlDuplicateMemberException: A propriedade 'Arguments' já foi definida
+        em 'InvokeWorkflowFile'.
+
+      `ArgumentsVariable="{x:Null}"` é placeholder legacy nulo; quando o bloco
+      `InvokeWorkflowFile.Arguments` existe, o contrato real está no property
+      element. O fix remove apenas esse placeholder nulo e preserva qualquer
+      valor não-nulo.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w34_invoke_arguments_variable_duplicate
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_invoke_arguments_variable_when_args_element
+      prose: |
+        Remover `ArgumentsVariable="{x:Null}"` somente de
+        `<ui:InvokeWorkflowFile>` que já possui
+        `<ui:InvokeWorkflowFile.Arguments>`.
 
   - id: ENV-2
     severity: ERROR
@@ -3867,7 +3902,7 @@ rules:
     detect:
       type: regex_with_context
       params:
-        pattern: '<ui:LogMessage\b(?:(?!\bLevel="Trace")[^>])*?/?>'
+        pattern: '<ui:LogMessage(?=[\s/>])(?:(?!\bLevel="Trace")[^>])*?/?>'
         message_suffix: 'LogMessage sem Level="Trace" — promover.'
     fix:
       apply_class: deterministic

@@ -116,6 +116,7 @@ def test_gate_regression_rolls_back_and_retries(
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
+    project_json_baseline = (fake_project / "project.json").read_bytes()
     call_log: list = []
 
     def fake_run(project_root, cli_path, **kwargs):
@@ -166,6 +167,7 @@ def test_gate_persistent_regression_exits_after_retries(
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
+    project_json_baseline = (fake_project / "project.json").read_bytes()
     call_log: list = []
 
     def fake_run(project_root, cli_path, **kwargs):
@@ -189,6 +191,8 @@ def test_gate_persistent_regression_exits_after_retries(
     assert "FULL-SNAPSHOT rollback" in out
     # Bad.xaml restaurado pra estado pré-loop (engine NUNCA deixa pior)
     assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
+    assert (fake_project / "project.json").read_bytes() == project_json_baseline
+    assert not (fake_project / ".gitignore").exists()
 
 
 def test_gate_empty_filepath_triggers_full_snapshot_rollback(
@@ -205,6 +209,7 @@ def test_gate_empty_filepath_triggers_full_snapshot_rollback(
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
+    project_json_baseline = (fake_project / "project.json").read_bytes()
     call_log: list = []
 
     def fake_run(project_root, cli_path, **kwargs):
@@ -229,6 +234,8 @@ def test_gate_empty_filepath_triggers_full_snapshot_rollback(
     )
     # Bad.xaml restaurado mesmo sem basename match
     assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
+    assert (fake_project / "project.json").read_bytes() == project_json_baseline
+    assert not (fake_project / ".gitignore").exists()
 
 
 def test_parse_analyzer_output_infers_file_from_empty_filepath_description():
@@ -257,6 +264,64 @@ def test_parse_analyzer_output_infers_file_from_empty_filepath_description():
             ),
         )
     }
+
+
+def test_parse_analyzer_output_infers_file_when_filepath_is_exception_type():
+    guid = "22222222-2222-2222-2222-222222222222"
+    payload = {
+        f"{guid}-FilePath": "System.Activities.Xaml",
+        f"{guid}-ErrorCode": "",
+        f"{guid}-ErrorSeverity": "Error",
+        f"{guid}-Description": (
+            r"Não foi possível analisar o arquivo C:\Work\Proj\Sipag_Direct\FinalizaChamado.xaml. "
+            r"Motivo: falha de parse."
+        ),
+    }
+    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
+
+    issues = _analyzer.parse_analyzer_output(stdout)
+
+    assert {i.file for i in issues} == {"FinalizaChamado.xaml"}
+
+
+def test_parse_analyzer_output_infers_file_from_path_with_spaces():
+    guid = "33333333-3333-3333-3333-333333333333"
+    payload = {
+        f"{guid}-FilePath": "System.Activities.Xaml",
+        f"{guid}-ErrorCode": "",
+        f"{guid}-ErrorSeverity": "Error",
+        f"{guid}-Description": (
+            r"Não foi possível analisar o arquivo "
+            r"C:\Users\lisan\Desktop\NC-179\2. doing\repo\Cases\FinalizaChamado.xaml. "
+            r"Motivo: falha de parse."
+        ),
+    }
+    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
+
+    issues = _analyzer.parse_analyzer_output(stdout)
+
+    assert {i.file for i in issues} == {"FinalizaChamado.xaml"}
+    assert all("2. doing" not in i.description for i in issues)
+
+
+def test_parse_analyzer_output_does_not_mistake_system_xaml_for_file():
+    guid = "44444444-4444-4444-4444-444444444444"
+    payload = {
+        f"{guid}-FilePath": "System.Activities.Xaml",
+        f"{guid}-ErrorCode": "",
+        f"{guid}-ErrorSeverity": "Error",
+        f"{guid}-Description": (
+            r"Não foi possível analisar o arquivo "
+            r"C:\Users\lisan\Desktop\NC-179\2. doing\repo\Framework\SetTransactionStatus.xaml. "
+            r"Motivo: System.Xaml.XamlDuplicateMemberException: "
+            r"A propriedade 'Arguments' já foi definida em 'InvokeWorkflowFile'."
+        ),
+    }
+    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
+
+    issues = _analyzer.parse_analyzer_output(stdout)
+
+    assert {i.file for i in issues} == {"SetTransactionStatus.xaml"}
 
 
 def test_parse_analyzer_output_infers_bare_xaml_basename_from_prose():

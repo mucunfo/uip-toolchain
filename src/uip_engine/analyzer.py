@@ -63,7 +63,8 @@ _GUID_KEY_RE = re.compile(
 # Normalize patterns: strip absolute paths + line numbers + GUIDs em msgs
 # para diff stable entre runs.
 _NORMALIZE_PATTERNS = (
-    (re.compile(r"\b[A-Z]:\\[^\s\"'<>|*?]+"), "<PATH>"),
+    (re.compile(r"\b[A-Z]:\\[^\"'<>|*?\r\n]*?\.xaml\.?", re.IGNORECASE), "<PATH>"),
+    (re.compile(r"\b[A-Z]:\\[^\s\"'<>|*?\r\n]+"), "<PATH>"),
     (re.compile(r"\b/[a-zA-Z][^\s\"'<>|*?]+"), "<PATH>"),
     (re.compile(r"\b\d{4,}\b"), "<NUM>"),
     (re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"),
@@ -85,9 +86,11 @@ def _normalize_description(desc: str) -> str:
 
 
 _XAML_HINT_RE = re.compile(
-    r"(?P<path>[A-Za-z]:\\[^\"'<>|*?\r\n]+?\.xaml|"
-    r"(?:[A-Za-z0-9_.\-À-ÿ()]+[\\/])+[A-Za-z0-9_.\-À-ÿ() ]+\.xaml|"
-    r"[A-Za-z0-9_.\-À-ÿ()]+\.xaml)",
+    r"(?P<path>"
+    r"[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]+?\.xaml|"
+    r"(?:[A-Za-z0-9_.\-À-ÿ() ]+[\\/])+[A-Za-z0-9_.\-À-ÿ() ]+\.xaml|"
+    r"[A-Za-z0-9_.\-À-ÿ()]+\.xaml"
+    r")(?=\.?(?:\s|$|[\"'<>]))",
     re.IGNORECASE,
 )
 
@@ -168,7 +171,14 @@ def parse_analyzer_output(stdout: str, stderr: str = "") -> set[AnalyzerIssue]:
     for raw in _parse_json_block(stdout):
         fp = raw.get("FilePath") or ""
         raw_desc = raw.get("Description") or ""
-        basename = os.path.basename(fp) if fp else _infer_xaml_basename_from_description(raw_desc)
+        basename = os.path.basename(fp) if fp else ""
+        if (
+            not basename.lower().endswith(".xaml")
+            or basename == "System.Activities.Xaml"
+        ):
+            inferred = _infer_xaml_basename_from_description(raw_desc)
+            if inferred:
+                basename = inferred
         code = raw.get("ErrorCode") or ""
         sev = raw.get("ErrorSeverity") or ""
         desc = _normalize_description(raw_desc)

@@ -212,7 +212,7 @@ def apply_add_property_element(file: Path, spec: dict[str, Any], dry_run: bool =
 def _find_matching_close(content: str, start: int, prefix: str, activity: str) -> int:
     """Find offset of matching </prefix:activity> respecting nesting.
     Returns -1 if not found."""
-    open_pat = re.compile(rf'<{re.escape(prefix)}:{re.escape(activity)}\b[^>]*?(/?)>')
+    open_pat = re.compile(rf'<{re.escape(prefix)}:{re.escape(activity)}(?=[\s/>])[^>]*?(/?)>')
     close_pat = re.compile(rf'</{re.escape(prefix)}:{re.escape(activity)}\s*>')
     depth = 1
     pos = start
@@ -231,6 +231,23 @@ def _find_matching_close(content: str, start: int, prefix: str, activity: str) -
                 return nxt_close.start()
             pos = nxt_close.end()
     return -1
+
+
+def _has_property_element_for_attr(content: str, tag: str, attr: str,
+                                   open_end: int) -> bool:
+    """True when `<tag>` already sets `attr` through `<tag.attr>...`."""
+    if ":" not in tag:
+        return False
+    prefix, local = tag.split(":", 1)
+    close_start = _find_matching_close(content, open_end, prefix, local)
+    if close_start < 0:
+        return False
+    body = content[open_end:close_start]
+    prop_re = re.compile(
+        rf'<{re.escape(tag)}\.{re.escape(attr)}(?=[\s/>])',
+        re.DOTALL,
+    )
+    return bool(prop_re.search(body))
 
 
 @register("regex_replace")
@@ -1046,7 +1063,7 @@ def apply_force_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if not all([tag, attr, value is not None]):
         return False
     content = file.read_text(encoding="utf-8-sig")
-    pattern = re.compile(rf"<{re.escape(tag)}\b([^>]*?)(/?)>", re.DOTALL)
+    pattern = re.compile(rf"<{re.escape(tag)}(?=[\s/>])([^>]*?)(/?)>", re.DOTALL)
     attr_in_existing = re.compile(rf'(\s){re.escape(attr)}="([^"]*)"')
 
     def replace(m):
@@ -1060,7 +1077,9 @@ def apply_force_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
                 rf'\g<1>{attr}="{value}"', existing, count=1
             )
             return f'<{tag}{new_existing}{self_close}>'
-        sep = '' if (existing == '' or existing.endswith(' ')) else ' '
+        if not self_close and _has_property_element_for_attr(content, tag, attr, m.end()):
+            return m.group(0)
+        sep = '' if existing.endswith(' ') else ' '
         return f'<{tag}{existing}{sep}{attr}="{value}"{self_close}>'
 
     new_content = pattern.sub(replace, content)
@@ -1084,14 +1103,16 @@ def apply_set_attribute(file: Path, spec: dict, dry_run: bool = True) -> bool:
     if not all([tag, attr, value is not None]):
         return False
     content = file.read_text(encoding="utf-8-sig")
-    pattern = re.compile(rf"<{re.escape(tag)}\b([^>]*?)(/?)>", re.DOTALL)
+    pattern = re.compile(rf"<{re.escape(tag)}(?=[\s/>])([^>]*?)(/?)>", re.DOTALL)
 
     def replace(m):
         existing = m.group(1)
         self_close = m.group(2)
         if re.search(rf'\b{re.escape(attr)}\s*=', existing):
             return m.group(0)
-        sep = '' if (existing == '' or existing.endswith(' ')) else ' '
+        if not self_close and _has_property_element_for_attr(content, tag, attr, m.end()):
+            return m.group(0)
+        sep = '' if existing.endswith(' ') else ' '
         return f'<{tag}{existing}{sep}{attr}="{value}"{self_close}>'
 
     new_content = pattern.sub(replace, content)
@@ -1476,6 +1497,193 @@ def _n5_unique_display_name(content: str, base: str) -> str:
         n += 1
 
 
+_INVOKE_ARGUMENTS_BLOCK_RE = re.compile(
+    r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
+    re.DOTALL,
+)
+_INVOKE_ARGUMENTS_SELF_CLOSING_RE = re.compile(
+    r'(?P<indent>[ \t]*)<ui:InvokeWorkflowFile\.Arguments\s*/>'
+)
+_EMPTY_INVOKE_ARGUMENTS_DICT_RE = re.compile(
+    r'\n?[ \t]*<scg:Dictionary\b'
+    r'(?=[^>]*\bx:TypeArguments\s*=\s*"x:String,\s*(?:Argument|System\.Activities\.Argument)")'
+    r'(?=[^>]*\s/>)'
+    r'[^>]*/>',
+    re.DOTALL,
+)
+_NULL_ARGUMENTS_VARIABLE_ATTR_RE = re.compile(
+    r'\s+ArgumentsVariable\s*=\s*"\{x:Null\}"'
+)
+_INVOKE_WORKFLOW_FILE_BLOCK_RE = re.compile(
+    r'(<(?P<prefix>[A-Za-z_]\w*):InvokeWorkflowFile(?=[\s/>])[^>]*>)'
+    r'(?P<body>.*?)'
+    r'(</(?P=prefix):InvokeWorkflowFile>)',
+    re.DOTALL,
+)
+
+
+def _count_invoke_arguments_properties(body: str) -> int:
+    return len(re.findall(r'<ui:InvokeWorkflowFile\.Arguments(?=[\s/>])', body))
+
+
+def _insert_invoke_workflow_argument(body: str, new_arg: str) -> str:
+    """Insert into InvokeWorkflowFile.Arguments, including self-closing form."""
+    am = _INVOKE_ARGUMENTS_BLOCK_RE.search(body)
+    if am:
+        inner = _strip_empty_invoke_arguments_dictionary(am.group(2))
+        return (
+            body[:am.start()]
+            + am.group(1)
+            + inner
+            + new_arg
+            + "\n        "
+            + am.group(3)
+            + body[am.end():]
+        )
+
+    sm = _INVOKE_ARGUMENTS_SELF_CLOSING_RE.search(body)
+    if sm:
+        indent = sm.group("indent")
+        replacement = (
+            f'{indent}<ui:InvokeWorkflowFile.Arguments>'
+            f'{new_arg}\n{indent}</ui:InvokeWorkflowFile.Arguments>'
+        )
+        return body[:sm.start()] + replacement + body[sm.end():]
+
+    return body + (
+        f'\n        <ui:InvokeWorkflowFile.Arguments>'
+        f'{new_arg}\n        </ui:InvokeWorkflowFile.Arguments>\n      '
+    )
+
+
+def _strip_null_arguments_variable_attr(opening: str) -> str:
+    return _NULL_ARGUMENTS_VARIABLE_ATTR_RE.sub("", opening, count=1)
+
+
+def _strip_empty_invoke_arguments_dictionary(inner: str) -> str:
+    """Drop legacy empty dictionary placeholders once real args are present."""
+    if not re.search(r'<(?:In|Out|InOut)Argument\b', inner):
+        return inner
+    return _EMPTY_INVOKE_ARGUMENTS_DICT_RE.sub("", inner)
+
+
+def strip_empty_invoke_arguments_dictionary_placeholders(
+    content: str,
+) -> tuple[str, int]:
+    """Remove empty Arguments dictionary placeholders with real arg siblings.
+
+    Some migrated projects contain:
+
+    `<ui:InvokeWorkflowFile.Arguments><scg:Dictionary ... /><InArgument ...>`
+
+    Studio's Windows XAML loader can treat the empty dictionary as an extra
+    assignment to `InvokeWorkflowFile.Arguments`. If concrete argument entries
+    exist, the empty dictionary is just a legacy placeholder and is safe to drop.
+    """
+    removals = 0
+
+    def _rewrite(m: "re.Match[str]") -> str:
+        nonlocal removals
+        inner = m.group(2)
+        if not re.search(r'<(?:In|Out|InOut)Argument\b', inner):
+            return m.group(0)
+        new_inner, count = _EMPTY_INVOKE_ARGUMENTS_DICT_RE.subn("", inner)
+        if count <= 0:
+            return m.group(0)
+        removals += count
+        return m.group(1) + new_inner + m.group(3)
+
+    return _INVOKE_ARGUMENTS_BLOCK_RE.sub(_rewrite, content), removals
+
+
+def strip_null_arguments_variable_conflicts(content: str) -> tuple[str, int]:
+    """Remove null ArgumentsVariable only when an Arguments property exists."""
+    removals = 0
+
+    def _rewrite(m: "re.Match[str]") -> str:
+        nonlocal removals
+        opening = m.group(1)
+        prefix = m.group("prefix")
+        body = m.group("body")
+        if not _NULL_ARGUMENTS_VARIABLE_ATTR_RE.search(opening):
+            return m.group(0)
+        if not re.search(
+            rf'<{re.escape(prefix)}:InvokeWorkflowFile\.Arguments(?=[\s/>])',
+            body,
+        ):
+            return m.group(0)
+        new_opening, n = _NULL_ARGUMENTS_VARIABLE_ATTR_RE.subn("", opening, count=1)
+        if not n:
+            return m.group(0)
+        removals += n
+        return new_opening + body + m.group(4)
+
+    return _INVOKE_WORKFLOW_FILE_BLOCK_RE.sub(_rewrite, content), removals
+
+
+def sanitize_invoke_arguments_variable_conflicts(project_root: Path) -> tuple[int, int]:
+    """Strip analyzer-breaking null ArgumentsVariable conflicts project-wide."""
+    import os as _os
+
+    skip_dirs = {
+        ".git", ".hg", ".svn", "bin", "obj", ".local", ".nuget",
+        ".uipath", ".tmp", "__pycache__", "node_modules",
+    }
+    changed_files = 0
+    removals = 0
+    for root, dirs, files in _os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        for name in files:
+            if not name.lower().endswith(".xaml"):
+                continue
+            path = Path(root) / name
+            try:
+                content = path.read_text(encoding="utf-8-sig")
+            except OSError:
+                continue
+            new_content, count = strip_null_arguments_variable_conflicts(content)
+            if count <= 0 or new_content == content:
+                continue
+            changed_files += 1
+            removals += count
+            _write_preserving_bom(path, new_content, _file_has_bom(path))
+    return changed_files, removals
+
+
+def sanitize_invoke_arguments_dictionary_placeholders(
+    project_root: Path,
+) -> tuple[int, int]:
+    """Strip empty `Arguments` dictionary placeholders project-wide."""
+    import os as _os
+
+    skip_dirs = {
+        ".git", ".hg", ".svn", "bin", "obj", ".local", ".nuget",
+        ".uipath", ".tmp", "__pycache__", "node_modules",
+    }
+    changed_files = 0
+    removals = 0
+    for root, dirs, files in _os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        for name in files:
+            if not name.lower().endswith(".xaml"):
+                continue
+            path = Path(root) / name
+            try:
+                content = path.read_text(encoding="utf-8-sig")
+            except OSError:
+                continue
+            new_content, count = strip_empty_invoke_arguments_dictionary_placeholders(
+                content
+            )
+            if count <= 0 or new_content == content:
+                continue
+            changed_files += 1
+            removals += count
+            _write_preserving_bom(path, new_content, _file_has_bom(path))
+    return changed_files, removals
+
+
+
 def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
                              arg_name: str, default_expr: str = '""',
                              dry_run: bool = True,
@@ -1557,7 +1765,7 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
 
         # Pattern InvokeWorkflowFile block (non-greedy)
         invoke_re = re.compile(
-            r'(<ui:InvokeWorkflowFile\b[^>]*?\bWorkflowFileName="([^"]+)"[^>]*>)'
+            r'(<ui:InvokeWorkflowFile(?=[\s/>])[^>]*?\bWorkflowFileName="([^"]+)"[^>]*>)'
             r'(.*?)'
             r'(</ui:InvokeWorkflowFile>)',
             re.DOTALL,
@@ -1572,12 +1780,15 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
             # Idempotent: já passa?
             if re.search(rf'\bx:Key="{re.escape(arg_name)}"', body):
                 return m.group(0)
+            if re.search(r'\bArguments\s*=', opening):
+                return m.group(0)
             # Encontra <ui:InvokeWorkflowFile.Arguments> ... </ui:InvokeWorkflowFile.Arguments>
             args_re = re.compile(
                 r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
                 re.DOTALL,
             )
             am = args_re.search(body)
+            asm = _INVOKE_ARGUMENTS_SELF_CLOSING_RE.search(body)
             new_in_arg = (
                 f'\n          <InArgument x:TypeArguments="x:String" '
                 f'x:Key="{arg_name}">{caller_default}</InArgument>'
@@ -1585,6 +1796,13 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
             if am:
                 # Insert before closing </ui:InvokeWorkflowFile.Arguments>
                 new_body = body[:am.start()] + am.group(1) + am.group(2) + new_in_arg + "\n        " + am.group(3) + body[am.end():]
+            elif asm:
+                indent = asm.group("indent")
+                replacement = (
+                    f'{indent}<ui:InvokeWorkflowFile.Arguments>'
+                    f'{new_in_arg}\n{indent}</ui:InvokeWorkflowFile.Arguments>'
+                )
+                new_body = body[:asm.start()] + replacement + body[asm.end():]
             else:
                 # No Arguments block — add one before </ui:InvokeWorkflowFile>
                 new_body = body + (
@@ -1594,6 +1812,8 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
             # Defesa pós-insert: se key apareceu >1× na args block resultante,
             # rollback. Cobre race/regex-miss (Studio load-fail: dict bind
             # exception em Dictionary(String, Argument)).
+            if _count_invoke_arguments_properties(new_body) > 1:
+                return m.group(0)
             check_re = re.compile(
                 r'<ui:InvokeWorkflowFile\.Arguments\s*>(.*?)</ui:InvokeWorkflowFile\.Arguments\s*>',
                 re.DOTALL,
@@ -1605,7 +1825,7 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
                 ))
                 if key_count > 1:
                     return m.group(0)
-            return opening + new_body + closing
+            return _strip_null_arguments_variable_attr(opening) + new_body + closing
 
         new_ctext = invoke_re.sub(_rewrite_invoke, new_ctext)
         if new_ctext != ctext:
@@ -1613,6 +1833,28 @@ def _cascade_arg_to_callers(project_root: Path, callee_file: Path,
             if not dry_run:
                 _write_preserving_bom(caller, new_ctext, _file_has_bom(caller))
     return modified
+
+
+@register("strip_invoke_arguments_variable_when_args_element")
+def apply_strip_invoke_arguments_variable_when_args_element(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """Strip legacy ArgumentsVariable={x:Null} when Arguments element exists.
+
+    Windows target can treat `ArgumentsVariable` as a duplicate assignment when
+    the same InvokeWorkflowFile also has `<ui:InvokeWorkflowFile.Arguments>`.
+    Only the null legacy placeholder is removed; non-null values are preserved.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    new_content, count = strip_null_arguments_variable_conflicts(content)
+    if count <= 0 or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
 
 
 @register("add_prefixo_arg")
@@ -2315,7 +2557,7 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
                     default_expr = "[Nothing]"
 
     invoke_re = re.compile(
-        r'(<ui:InvokeWorkflowFile\b[^>]*?\bWorkflowFileName="([^"]+)"[^>]*?>)'
+        r'(<ui:InvokeWorkflowFile(?=[\s/>])[^>]*?\bWorkflowFileName="([^"]+)"[^>]*?>)'
         r'(.*?)'
         r'(</ui:InvokeWorkflowFile>)',
         re.DOTALL,
@@ -2333,6 +2575,8 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
             if not idref_m or idref_m.group(1) != target_invoke_idref:
                 return m.group(0)
         if re.search(rf'\bx:Key="{re.escape(arg_name)}"', body):
+            return m.group(0)
+        if re.search(r'\bArguments\s*=', opening):
             return m.group(0)
         # Direction-aware emission (A-19b contract). Fallback = legacy
         # <InArgument x:TypeArguments="x:String">[default] when direction/
@@ -2361,19 +2605,9 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
                 f'\n          <InArgument x:TypeArguments="x:String" '
                 f'x:Key="{arg_name}">{default_expr}</InArgument>'
             )
-        args_re = re.compile(
-            r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
-            re.DOTALL,
-        )
-        am = args_re.search(body)
-        if am:
-            new_body = (body[:am.start()] + am.group(1) + am.group(2)
-                        + new_in_arg + "\n        " + am.group(3) + body[am.end():])
-        else:
-            new_body = body + (
-                f'\n        <ui:InvokeWorkflowFile.Arguments>'
-                f'{new_in_arg}\n        </ui:InvokeWorkflowFile.Arguments>\n      '
-            )
+        new_body = _insert_invoke_workflow_argument(body, new_in_arg)
+        if _count_invoke_arguments_properties(new_body) > 1:
+            return m.group(0)
         # Defesa pós-insert: x:Key duplicado na args block → rollback
         # (cobre race/regex-miss; Studio load-fails: dict bind exception).
         check_re = re.compile(
@@ -2385,7 +2619,7 @@ def apply_cascade_caller_in_args(file: Path, spec: dict, dry_run: bool = True,
             keys = re.findall(r'\bx:Key="([^"]+)"', check_m.group(1))
             if len(keys) != len(set(keys)):
                 return m.group(0)
-        return opening + new_body + closing
+        return _strip_null_arguments_variable_attr(opening) + new_body + closing
 
     new_content = invoke_re.sub(_rewrite, content)
     if new_content == content:
@@ -4218,10 +4452,18 @@ def apply_strip_property_element_with_attribute(
         elem = m.group("elem")
         if target_elem and elem != target_elem:
             continue
+        attrs_blob = m.group("attrs")
         inner = m.group("inner")
         if "." not in elem:
             continue
         parent_act, prop = elem.rsplit(".", 1)
+        # Keep fixer scope identical to X-2 detector: only Migrator's invalid
+        # hybrid shape, where the property element carries an attribute with the
+        # same local-name as the property (`<ui:LogMessage.Level Level="...">`).
+        # Generic property elements with directive attrs (`x:TypeArguments`,
+        # `x:Key`, `xml:space`) are intentionally out of scope.
+        if not re.search(rf'\s{re.escape(prop)}\s*=\s*"', attrs_blob):
+            continue
         before = content[:m.start()]
         parent_open_re = re.compile(rf'<{re.escape(parent_act)}\b[^>]*?>')
         parent_opens = list(parent_open_re.finditer(before))
@@ -4242,7 +4484,6 @@ def apply_strip_property_element_with_attribute(
             # property element (e.g. <scg:List.Items x:TypeArguments="x:String">)
             # produces well-formed-but-broken XAML that the ET.fromstring gate
             # cannot catch (X-2 audit).
-            attrs_blob = m.group("attrs")
             directive_attrs = "".join(
                 am.group(0)
                 for am in re.finditer(

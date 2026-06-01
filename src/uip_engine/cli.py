@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -72,6 +73,119 @@ EXIT_WARN = 1
 EXIT_ERROR = 2
 EXIT_HALT = 3
 EXIT_INTERNAL = 10
+
+
+def _iter_analyzer_snapshot_paths(project_root: Path):
+    """Files that analyzer-gate rollback must be able to restore.
+
+    The gate used to snapshot only XAMLs. That was insufficient because the
+    deterministic fix loop can also mutate project metadata (project.json,
+    .project/design.json, .gitignore, project.uiproj). A package/project change
+    can introduce Studio load errors while the XAML bytes are innocent; rollback
+    must restore the whole analyzer-relevant surface, not just workflows.
+    """
+    import os as _os
+
+    skip_dirs = {
+        ".git", ".hg", ".svn", "bin", "obj", ".local", ".nuget",
+        ".uipath", ".tmp", "__pycache__", "node_modules",
+    }
+    snapshot_names = {
+        ".gitignore",
+        "NuGet.config",
+        "project.json",
+        "project.uiproj",
+    }
+    snapshot_suffixes = {
+        ".xaml",
+        ".json",
+        ".uiproj",
+        ".config",
+    }
+
+    for root, dirs, files in _os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        root_path = Path(root)
+        for name in files:
+            path = root_path / name
+            if name in snapshot_names or path.suffix in snapshot_suffixes:
+                yield path
+
+
+_PROPERTY_ELEMENT_ATTR_RE = re.compile(
+    r'<[A-Za-z_][\w]*:[A-Za-z_][\w]*\.[A-Za-z_][\w]*'
+    r'(?:\s+[A-Za-z_][\w:]*="[^"]*")+\s*>'
+)
+
+
+def _property_element_attribute_snippet(path: Path) -> str | None:
+    """Best-effort locator for Studio's NonemptyPropertyElement ATTRIBUTE error."""
+    try:
+        content = path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return None
+    m = _PROPERTY_ELEMENT_ATTR_RE.search(content)
+    if not m:
+        return None
+    return re.sub(r"\s+", " ", m.group(0))[:220]
+
+
+_INVOKE_WORKFLOW_BLOCK_RE = re.compile(
+    r'(?P<opening><(?P<prefix>[A-Za-z_]\w*):InvokeWorkflowFile(?=[\s/>])'
+    r'(?P<attrs>[^>]*)>)'
+    r'(?P<body>.*?)'
+    r'(?P<closing></(?P=prefix):InvokeWorkflowFile>)',
+    re.DOTALL,
+)
+
+
+def _line_for_offset(content: str, offset: int) -> int:
+    return content[:offset].count("\n") + 1
+
+
+def _invoke_workflow_arguments_conflict_snippets(
+    project_root: Path,
+    pre_loop_bytes: dict[Path, bytes],
+) -> list[tuple[Path, int, str]]:
+    """Best-effort locator for hidden InvokeWorkflowFile Arguments duplicates."""
+    out: list[tuple[Path, int, str]] = []
+    for path in _iter_analyzer_snapshot_paths(project_root):
+        if path.suffix.lower() != ".xaml" or not path.exists():
+            continue
+        try:
+            current = path.read_bytes()
+        except OSError:
+            continue
+        try:
+            content = current.decode("utf-8-sig", errors="replace")
+        except Exception:
+            continue
+        for m in _INVOKE_WORKFLOW_BLOCK_RE.finditer(content):
+            opening = m.group("opening")
+            attrs = m.group("attrs")
+            body = m.group("body")
+            prefix = m.group("prefix")
+            prop_re = re.compile(
+                rf'<{re.escape(prefix)}:InvokeWorkflowFile\.Arguments(?=[\s/>])'
+            )
+            prop_count = len(prop_re.findall(body))
+            has_attr = bool(re.search(r'\bArguments\s*=', attrs))
+            has_var = bool(re.search(r'\bArgumentsVariable\s*=', attrs))
+            if prop_count > 1:
+                reason = f"property-elements={prop_count}"
+            elif prop_count and has_attr:
+                reason = "inline Arguments attr + property element"
+            elif prop_count and has_var:
+                reason = "ArgumentsVariable attr + property element"
+            else:
+                continue
+            snippet = re.sub(r"\s+", " ", opening)[:220]
+            out.append((path, _line_for_offset(content, m.start()), f"{reason}: {snippet}"))
+    return out
+
+
+def _has_property_element_with_attribute(path: Path) -> bool:
+    return _property_element_attribute_snippet(path) is not None
 
 
 def _cleanup_pre_migration_backups(project_root: Path) -> list[Path]:
@@ -1767,8 +1881,10 @@ def _cmd_fix(args) -> int:
                 print(f"# analyzer-gate: baseline = {len(analyzer_baseline)} issues "
                       f"({base_err} errors, {base_warn} warnings). Pré-existentes "
                       "serão ignoradas no diff final.")
-                # F28: snapshot pre-loop XAML bytes p/ rollback potencial.
-                for x in project_root.rglob("*.xaml"):
+                # F28/F40: snapshot pre-loop analyzer-relevant files p/
+                # rollback potencial. Inclui XAML + metadata de projeto porque
+                # package/project.json changes podem introduzir load errors.
+                for x in _iter_analyzer_snapshot_paths(project_root):
                     try:
                         pre_loop_bytes[x.resolve()] = x.read_bytes()
                     except OSError:
@@ -2013,6 +2129,31 @@ def _cmd_fix(args) -> int:
         if dry_run or analyzer_baseline is None or applied == 0:
             break  # nada pra gate, sai do outer
 
+        from .fixers import (
+            sanitize_invoke_arguments_dictionary_placeholders,
+            sanitize_invoke_arguments_variable_conflicts,
+        )
+        sanitized_files, sanitized_attrs = sanitize_invoke_arguments_variable_conflicts(
+            project_root
+        )
+        if sanitized_attrs:
+            print(
+                "# pre-analyzer sanitize: W-34 stripped "
+                f"{sanitized_attrs} ArgumentsVariable placeholders "
+                f"em {sanitized_files} XAMLs"
+            )
+            applied += sanitized_files
+        dict_files, dict_placeholders = (
+            sanitize_invoke_arguments_dictionary_placeholders(project_root)
+        )
+        if dict_placeholders:
+            print(
+                "# pre-analyzer sanitize: W-34 stripped "
+                f"{dict_placeholders} empty Arguments dictionaries "
+                f"em {dict_files} XAMLs"
+            )
+            applied += dict_files
+
         from .analyzer import run_analyzer, diff_new_issues, format_issue
         retry_tag = (
             f" (retry {analyzer_retry}/{ANALYZER_GATE_MAX_RETRIES})"
@@ -2079,6 +2220,74 @@ def _cmd_fix(args) -> int:
         if len(new_errs) > 30:
             print(f"  ... +{len(new_errs)-30} more")
 
+        invoke_args_error = any(
+            "InvokeWorkflowFile" in i.description and "Arguments" in i.description
+            for i in new_errs
+        )
+        if invoke_args_error:
+            from .fixers import (
+                sanitize_invoke_arguments_dictionary_placeholders,
+                sanitize_invoke_arguments_variable_conflicts,
+            )
+            sanitized_files, sanitized_attrs = sanitize_invoke_arguments_variable_conflicts(
+                project_root
+            )
+            dict_files, dict_placeholders = (
+                sanitize_invoke_arguments_dictionary_placeholders(project_root)
+            )
+            if sanitized_attrs or dict_placeholders:
+                print(
+                    "\n[ANALYZER RECOVERY] W-34 stripped "
+                    f"{sanitized_attrs} ArgumentsVariable placeholders "
+                    f"em {sanitized_files} XAMLs; "
+                    f"{dict_placeholders} empty Arguments dictionaries "
+                    f"em {dict_files} XAMLs; revalidando antes do rollback..."
+                )
+                analyzer_recovered = run_analyzer(project_root, analyzer_cli_path)
+                if analyzer_recovered is None:
+                    print("# analyzer-gate: recovery run failed/timeout. Mantendo rollback path.")
+                else:
+                    recovered_new = diff_new_issues(
+                        analyzer_baseline, analyzer_recovered
+                    )
+                    recovered_errs = [
+                        i for i in recovered_new
+                        if i.severity == "Error"
+                        and i.error_code not in _ANALYZER_SICOOB_POLICY
+                    ]
+                    recovered_warns = [
+                        i for i in recovered_new if i.severity == "Warning"
+                    ]
+                    print(
+                        "# analyzer-gate: recovery = "
+                        f"{len(recovered_new)} new issues "
+                        f"({len(recovered_errs)} errors, "
+                        f"{len(recovered_warns)} warnings)"
+                    )
+                    if not recovered_errs:
+                        if recovered_warns:
+                            print(
+                                "\n[ANALYZER WARN] Warnings introduzidas "
+                                "após recovery (sem block):"
+                            )
+                            for i in recovered_warns[:10]:
+                                print(f"  ~ {format_issue(i)[:200]}")
+                            if len(recovered_warns) > 10:
+                                print(f"  ... +{len(recovered_warns)-10} more")
+                        break
+
+            candidates = _invoke_workflow_arguments_conflict_snippets(
+                project_root, pre_loop_bytes
+            )
+            if candidates:
+                print("\n[ANALYZER DIAG] InvokeWorkflowFile Arguments candidates:")
+                for path, line, snippet in candidates[:30]:
+                    print(f"  ? {path.name}:{line} — {snippet[:220]}")
+                if len(candidates) > 30:
+                    print(f"  ... +{len(candidates)-30} more")
+            else:
+                print("\n[ANALYZER DIAG] nenhum candidato InvokeWorkflowFile Arguments encontrado.")
+
         err_files = {i.file for i in new_errs if i.file}
         rolled_back_paths: list = []
         rollback_failed: list = []
@@ -2095,11 +2304,41 @@ def _cmd_fix(args) -> int:
             except OSError as e:
                 rollback_failed.append((path.name, str(e)))
 
+        # Studio sometimes reports XAML parser regressions as
+        # FilePath=System.Activities.Xaml with a path-redacted Description.
+        # When the signature is the known property-element ATTRIBUTE error,
+        # locate changed XAMLs that still contain property-elements with attrs
+        # and rollback only those files instead of falling back to all files.
+        attr_parse_error = any(
+            "ATTRIBUTE" in i.description
+            or "NonemptyPropertyElement" in i.description
+            for i in new_errs
+        )
+        if not rolled_back_paths and attr_parse_error:
+            for path, pre_bytes in pre_loop_bytes.items():
+                if path.suffix.lower() != ".xaml":
+                    continue
+                if path.resolve() in frozen_files:
+                    continue
+                try:
+                    if path.exists() and path.read_bytes() != pre_bytes:
+                        snippet = _property_element_attribute_snippet(path)
+                        if snippet:
+                            print(
+                                "# analyzer-gate: ATTRIBUTE rollback candidate "
+                                f"{path.name}: {snippet}"
+                            )
+                            path.write_bytes(pre_bytes)
+                            rolled_back_paths.append(path)
+                except OSError as e:
+                    rollback_failed.append((path.name, str(e)))
+
         # FULL-SNAPSHOT fallback: granular rollback falhou (err_files vazio
         # ou todos basenames ausentes do snapshot — típico de analyzer-error
         # project-level sem FilePath, ex.: "Não foi possível realizar análise
         # do projeto"). Engine NUNCA pode deixar projeto pior que estado
-        # pré-fix loop — restaura TODOS XAMLs modificados desde snapshot.
+        # pré-fix loop — restaura TODOS arquivos relevantes divergentes desde
+        # snapshot e remove arquivos novos criados pelo fix loop.
         # Regression test: pilot contestacao-de-compras (5/27) — granular
         # rollback nunca disparou pq err_files = {""} (FilePath vazio).
         if not rolled_back_paths and new_errs:
@@ -2115,6 +2354,18 @@ def _cmd_fix(args) -> int:
                     if not path.exists() or path.read_bytes() != pre_bytes:
                         path.write_bytes(pre_bytes)
                         rolled_back_paths.append(path)
+                except OSError as e:
+                    rollback_failed.append((path.name, str(e)))
+            for path in _iter_analyzer_snapshot_paths(project_root):
+                try:
+                    resolved = path.resolve()
+                except OSError:
+                    continue
+                if resolved in pre_loop_bytes or resolved in frozen_files:
+                    continue
+                try:
+                    path.unlink()
+                    rolled_back_paths.append(path)
                 except OSError as e:
                     rollback_failed.append((path.name, str(e)))
 

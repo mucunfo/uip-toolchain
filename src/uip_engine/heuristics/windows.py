@@ -17,6 +17,14 @@ _RE_ISNULLOREMPTY = re.compile(
 _RE_TOINT32 = re.compile(
     r'(?<![A-Za-z_:])((?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*)\.ToInt32\b'
 )
+_INVOKE_ARGS_VARIABLE_AND_PROPERTY_RE = re.compile(
+    r'<(?P<prefix>[A-Za-z_]\w*):InvokeWorkflowFile(?=[\s/>])'
+    r'(?=[^>]*\bArgumentsVariable\s*=\s*"\{x:Null\}")'
+    r'[^>]*>'
+    r'(?P<body>.*?)'
+    r'</(?P=prefix):InvokeWorkflowFile>',
+    re.DOTALL,
+)
 
 
 def _line_for(content: str, offset: int) -> int:
@@ -27,8 +35,76 @@ def _params(rule):
     return rule.detect.get("params", {}) or {}
 
 
+_HOSTILE_UNICODE_CHARS = "“”‘’\u00a0\u200b\u200c\u200d\ufeff"
+_HOSTILE_UNICODE_RE = re.compile(f"[{re.escape(_HOSTILE_UNICODE_CHARS)}]")
+_PROTECTED_TEXT_ATTR_RE = re.compile(
+    r'(?:[A-Za-z_][\w]*:)?'
+    r'(?:DisplayName|AnnotationText|Annotation)\s*=\s*"([^"]*)"'
+)
+
+
+def _protected_text_spans(content: str) -> list[tuple[int, int]]:
+    """Attribute value spans intentionally not normalized by W-30 fixer."""
+    return [
+        (m.start(1), m.end(1)) for m in _PROTECTED_TEXT_ATTR_RE.finditer(content)
+    ]
+
+
+def _offset_in_spans(offset: int, spans: list[tuple[int, int]]) -> bool:
+    return any(start <= offset < end for start, end in spans)
+
+
 def _last_segment(chain: str) -> str:
     return chain.rsplit(".", 1)[-1]
+
+
+def detect_w30_hostile_unicode(rule, fc, pc):
+    """W-30: hostile Unicode outside user-facing annotation/display text.
+
+    Must stay in sync with fixers.apply_replace_hostile_unicode_chars: the
+    detector only reports chars the deterministic fixer is allowed to mutate.
+    """
+    content = fc.active_content
+    protected = _protected_text_spans(content)
+    findings = []
+    for m in _HOSTILE_UNICODE_RE.finditer(content):
+        if _offset_in_spans(m.start(), protected):
+            continue
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=rule.title,
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+def detect_w34_invoke_arguments_variable_duplicate(rule, fc, pc):
+    """W-34: `ArgumentsVariable={x:Null}` duplicates Arguments property element.
+
+    UiPath Windows loader treats the legacy `ArgumentsVariable` attribute as the
+    same member family as `InvokeWorkflowFile.Arguments`; when both are present,
+    analyzer raises XamlDuplicateMemberException for `Arguments`.
+    """
+    content = fc.active_content
+    findings = []
+    for m in _INVOKE_ARGS_VARIABLE_AND_PROPERTY_RE.finditer(content):
+        prefix = m.group("prefix")
+        body = m.group("body")
+        if not re.search(
+            rf'<{re.escape(prefix)}:InvokeWorkflowFile\.Arguments(?=[\s/>])',
+            body,
+        ):
+            continue
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=rule.title,
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
 
 
 def _w2_mechanical_available(arg: str, method: str) -> bool:
