@@ -114,6 +114,46 @@ def _infer_xaml_basename_from_description(desc: str) -> str:
     return os.path.basename(hint)
 
 
+_VALIDATION_ERROR_XAML_RE = re.compile(
+    r"\[(?P<path>[^\]\r\n]+?\.xaml)\]\s+Validation error:\s*(?P<message>[^\r\n]+)",
+    re.IGNORECASE,
+)
+
+
+def _read_optional_text(path: Path) -> str:
+    try:
+        if path.is_file():
+            return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        pass
+    return ""
+
+
+def _infer_xaml_basename_from_validation_log(text: str, needle: str) -> str:
+    """Infer XAML basename from official detailed-log validation lines.
+
+    Official `uip rpa analyze` can collapse workflow validation failures into a
+    project-level `Analyze failed: BCxxxxx...` envelope. The detailed log still
+    carries lines such as:
+      `[ValidateWorkflowStep] [Foo.xaml] Validation error: BC36915: ...`
+
+    Returning the basename keeps analyzer-gate rollback granular instead of
+    reverting every changed XAML.
+    """
+    if not text:
+        return ""
+    codes = {m.group(0).upper() for m in re.finditer(r"\bBC\d{5}\b", needle or "")}
+    candidates: list[str] = []
+    for match in _VALIDATION_ERROR_XAML_RE.finditer(text):
+        message = match.group("message") or ""
+        if codes and not any(code in message.upper() for code in codes):
+            continue
+        candidates.append(match.group("path").replace("/", "\\"))
+    if not candidates:
+        return ""
+    return os.path.basename(candidates[-1])
+
+
 def discover_uipcli() -> Path | None:
     """Localize UiPath.Studio.CommandLine.exe. Order: env var, PATH,
     well-known install paths. Most-recent version wins (lexicographic on
@@ -137,6 +177,149 @@ def discover_uipcli() -> Path | None:
     # Sort by parent dir name (version string) — most recent last.
     candidates.sort(key=lambda p: p.parent.name)
     return candidates[-1]
+
+
+def _official_uip_enabled() -> bool:
+    return os.environ.get("UIP_TOOLCHAIN_USE_OFFICIAL_UIP", "1").strip().lower() not in (
+        "0", "false", "no", "legacy",
+    )
+
+
+def _write_official_nuget_config(base_dir: Path) -> Path | None:
+    ccs_nupkgs = os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
+        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
+    )
+    if not Path(ccs_nupkgs).is_dir():
+        return None
+    cfg = base_dir / "NuGet.config"
+    cfg.write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<configuration>\n'
+        '  <packageSources>\n'
+        '    <clear />\n'
+        f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
+        '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
+        '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
+        '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
+        '  </packageSources>\n'
+        '</configuration>\n',
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def _run_official_analyzer(project_root: Path, timeout: int) -> set[AnalyzerIssue] | None:
+    """Run official `uip rpa analyze`, returning normalized AnalyzerIssue rows."""
+    if not _official_uip_enabled():
+        return None
+    from .official_uip import (
+        compatibility_diagnostic,
+        diagnose_official_uip_failure,
+        discover_official_uip,
+        get_official_uip_version,
+        iter_analyzer_records,
+        official_failure_text,
+        run_official_uip,
+    )
+    import shutil as _shutil
+    import tempfile
+
+    official = discover_official_uip()
+    if official is None:
+        return None
+    version_diag = compatibility_diagnostic(get_official_uip_version(str(official)))
+    if version_diag is not None and version_diag.severity.lower() == "error":
+        return {
+            AnalyzerIssue(
+                version_diag.file,
+                version_diag.code,
+                version_diag.severity,
+                _normalize_description(version_diag.message),
+            )
+        }
+    engine_root = Path(__file__).resolve().parents[2]
+    base_tmp = engine_root / ".tmp" / "official_uip_analyzer"
+    base_tmp.mkdir(parents=True, exist_ok=True)
+    tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="analyzer_"))
+    try:
+        nuget_config = _write_official_nuget_config(tmpdir)
+        detailed_log = tmpdir / "analyze.log"
+        args = [
+            "rpa", "analyze", str(project_root),
+            "--output", "json",
+            "--detailed-log-path", str(detailed_log),
+        ]
+        if nuget_config is not None:
+            args.extend(["--nuget-sources-config-path", str(nuget_config)])
+        governance = os.environ.get("UIPATH_GOVERNANCE_FILE_PATH")
+        if governance:
+            args.extend(["--governance-file-path", governance])
+            gtype = os.environ.get("UIPATH_GOVERNANCE_FILE_TYPE")
+            if gtype:
+                args.extend(["--governance-file-type", gtype])
+        res = run_official_uip(args, timeout=timeout, uip_path=official)
+        failure_text = "\n".join(
+            part for part in (
+                official_failure_text(res),
+                _read_optional_text(detailed_log),
+            )
+            if part
+        )
+        issues: set[AnalyzerIssue] = set()
+        for raw in iter_analyzer_records(res.envelope):
+            fp = raw.get("FilePath") or ""
+            raw_desc = raw.get("Description") or ""
+            basename = os.path.basename(fp) if fp else ""
+            if (
+                not basename.lower().endswith(".xaml")
+                or basename == "System.Activities.Xaml"
+            ):
+                inferred = _infer_xaml_basename_from_description(raw_desc)
+                if inferred:
+                    basename = inferred
+            if not basename:
+                basename = _infer_xaml_basename_from_validation_log(
+                    failure_text, raw_desc
+                )
+            issues.add(AnalyzerIssue(
+                basename,
+                raw.get("ErrorCode") or "",
+                raw.get("ErrorSeverity") or "Error",
+                _normalize_description(raw_desc),
+            ))
+        if res.returncode != 0 and not issues:
+            for diagnostic in diagnose_official_uip_failure(
+                failure_text,
+                "rpa analyze",
+            ):
+                issues.add(AnalyzerIssue(
+                    diagnostic.file,
+                    diagnostic.code,
+                    diagnostic.severity,
+                    _normalize_description(diagnostic.message),
+                ))
+        if res.returncode != 0 and not issues:
+            msg = ""
+            if res.envelope is not None:
+                msg = res.envelope.message or res.envelope.instructions or ""
+            if not msg:
+                msg = (res.stderr or res.stdout).strip()
+            basename = (
+                _infer_xaml_basename_from_description(msg)
+                or _infer_xaml_basename_from_validation_log(failure_text, msg)
+            )
+            issues.add(AnalyzerIssue(
+                basename,
+                "ANALYZE_HALT",
+                "Error",
+                _normalize_description(f"official uip rpa analyze exit {res.returncode}: {msg}"),
+            ))
+        return issues
+    except Exception as exc:
+        print(f"[analyzer-gate] official uip rpa analyze failed: {exc}", file=sys.stderr)
+        return None
+    finally:
+        _shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def _parse_json_block(stdout: str) -> list[dict]:
@@ -219,18 +402,23 @@ def run_analyzer(
         skip_preflight: True só pra testes (não invoca preflight). Production
             sempre False.
     """
+    # uipcli exige path absoluto pra resolver project.json — relative path
+    # retorna stdout vazio com return code 1 (silent fail).
+    project_root = project_root.resolve()
+    project_json = project_root / "project.json"
+    if not project_json.is_file():
+        return None
+
+    official_issues = _run_official_analyzer(project_root, timeout)
+    if official_issues is not None:
+        return official_issues
+
     from .uipcli_runner import (
         preflight, run_uipcli_guarded, DEFAULT_HALT_WINDOW_SEC,
     )
 
     cli = uipcli_path or discover_uipcli()
     if cli is None or not cli.is_file():
-        return None
-    # uipcli exige path absoluto pra resolver project.json — relative path
-    # retorna stdout vazio com return code 1 (silent fail).
-    project_root = project_root.resolve()
-    project_json = project_root / "project.json"
-    if not project_json.is_file():
         return None
 
     pre = None
@@ -404,7 +592,29 @@ def diff_new_issues(
     """
     if baseline is None or post is None:
         return set()
-    return post - baseline
+    raw_new = post - baseline
+
+    # Official `uip rpa analyze` sometimes collapses compiler failures to a
+    # project-level ANALYZE_HALT without file/line. The description can change
+    # between runs even when the project was already non-analyzable at baseline,
+    # which made the fix-loop treat an unstable halt message as a new workflow
+    # regression and trigger FULL-SNAPSHOT rollback. Keep final review strict,
+    # but do not roll back mechanical fixes for same-kind project-level halts.
+    baseline_project_halts = {
+        (i.error_code, i.severity)
+        for i in baseline
+        if not i.file and i.error_code == "ANALYZE_HALT"
+    }
+    if baseline_project_halts:
+        raw_new = {
+            i for i in raw_new
+            if not (
+                not i.file
+                and i.error_code == "ANALYZE_HALT"
+                and (i.error_code, i.severity) in baseline_project_halts
+            )
+        }
+    return raw_new
 
 
 def format_issue(issue: AnalyzerIssue) -> str:

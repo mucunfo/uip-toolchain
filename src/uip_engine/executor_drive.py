@@ -380,7 +380,7 @@ def run_validate(
                 "Se falha é 'Execution must happen through the service', "
                 "garanta que UiPath.Service.UserHost está rodando. "
                 "Se 'Activity could not be loaded', dependency drift do "
-                "Activity Migrator — rodar 'uip <project>' completo."
+                "Activity Migrator — rodar 'ccs-uip <project>' completo."
             ),
         ))
 

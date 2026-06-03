@@ -19,8 +19,12 @@ Detector strategy:
      c. Para cada peer requirement (peer_id, version_range):
         - Se peer_id está em project.json::dependencies: comparar versão
           pinada vs range. Se incompatível → finding.
-        - Se peer_id não está em project.json::dependencies: skip (peer
-          é dependência implícita resolvida transitivamente).
+        - Se peer_id não está em project.json::dependencies mas existe pin
+          canônico seguro em `canonical_pins.yaml`: finding mecânico para
+          adicionar o pin direto.
+        - Se peer_id não está em project.json::dependencies e não existe pin
+          canônico: skip (peer é dependência implícita resolvida
+          transitivamente).
   2. Range parsing simplificado:
      - `[X.Y.Z]` (bracket) = exact match required.
      - `X.Y.Z` (plain) = floor (>= X.Y.Z) na convenção NuGet.
@@ -42,12 +46,18 @@ import zipfile
 from pathlib import Path
 
 from uip_engine._types import Finding
+from uip_engine.canonical import canonical_pin_for
 
 
 _RE_NUSPEC_DEP = re.compile(
     r'<dependency\s+id="([^"]+)"\s+version="([^"]+)"',
     re.IGNORECASE,
 )
+
+# Missing peers are usually valid transitives. The previous CoreIpc exception
+# was tied to ComputerVision.LocalServer 21.x; Windows projects now align that
+# package to 25.x instead of adding the legacy peer directly.
+_MISSING_PEER_AUTO_ADD = frozenset()
 
 
 def _parse_version(v: str) -> tuple[int, ...]:
@@ -112,6 +122,28 @@ def _range_satisfies(actual: tuple[int, ...], range_str: str) -> tuple[bool, str
 
     # Unknown format — não bloquear
     return (True, s)
+
+
+def _canonical_fix_for_peer(peer_id: str, peer_range: str) -> dict | None:
+    """Return a deterministic dependency-pin fix when CCS policy is unambiguous.
+
+    D-2 was originally contextual because a generic NuGet conflict can be
+    solved by changing either side of the graph. In the CCS toolchain, packages
+    listed in canonical_pins.yaml have a single source-of-truth version. If that
+    canonical version satisfies the primary package requirement, the safe
+    mechanical move is to pin the peer to the canonical value.
+    """
+    canonical = canonical_pin_for(peer_id)
+    if canonical is None:
+        return None
+    ok, _ = _range_satisfies(_parse_version(canonical), peer_range)
+    if not ok:
+        return None
+    return {
+        "type": "set_dependency_pin",
+        "package": peer_id,
+        "version": f"[{canonical}]",
+    }
 
 
 def _find_nuspec(cache_root: Path, package_id: str, version: str) -> Path | None:
@@ -237,11 +269,38 @@ def detect_nuget_peer_conflict(rule, fc, pc):
         peers = _parse_peer_deps(nuspec_xml)
         for peer_id, peer_range in peers:
             if peer_id not in pinned:
-                continue  # peer não declarado em project.json — skip
+                if peer_id.lower() not in _MISSING_PEER_AUTO_ADD:
+                    continue
+                mechanical = _canonical_fix_for_peer(peer_id, peer_range)
+                if mechanical is None:
+                    continue  # peer implícito sem pin canônico seguro — skip
+                _, expected_text = _range_satisfies(
+                    _parse_version(mechanical["version"]), peer_range
+                )
+                findings.append(
+                    Finding(
+                        rule_id=rule.id,
+                        severity=rule.severity,
+                        category=rule.category,
+                        file=str(fc.path),
+                        line=1,
+                        message=(
+                            f"{rule.title}: '{primary_id}' {primary_raw} exige "
+                            f"peer direto '{peer_id}' {expected_text}, mas o "
+                            "package não está em project.json::dependencies. "
+                            "A CLI oficial pode falhar antes do analyzer com "
+                            "package obrigatório ausente."
+                        ),
+                        fix_mechanical=mechanical,
+                        fix_prose=(rule.fix or {}).get("prose"),
+                    )
+                )
+                continue
             actual_v, actual_raw = pinned[peer_id]
             ok, expected_text = _range_satisfies(actual_v, peer_range)
             if ok:
                 continue
+            mechanical = _canonical_fix_for_peer(peer_id, peer_range)
             findings.append(
                 Finding(
                     rule_id=rule.id,
@@ -255,6 +314,7 @@ def detect_nuget_peer_conflict(rule, fc, pc):
                         f"{actual_raw}. Studio Publish gerará NU1605 "
                         f"(package downgrade)."
                     ),
+                    fix_mechanical=mechanical,
                     fix_prose=(rule.fix or {}).get("prose"),
                 )
             )

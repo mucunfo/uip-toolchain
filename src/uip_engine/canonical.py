@@ -68,6 +68,16 @@ def _synthesize_d1_rule(entry: dict[str, Any]) -> dict[str, Any]:
     pkg = entry["package"]
     ver = entry["exact"]
     rationale = (entry.get("rationale") or "").strip() or _DEFAULT_RATIONALE
+    detect_params: dict[str, Any] = {"package": pkg, "exact": ver}
+    required_when_package = entry.get("required_when_package")
+    if required_when_package:
+        detect_params["required_when_package"] = required_when_package
+    required_when_assemblies = entry.get("required_when_assemblies")
+    if required_when_assemblies:
+        detect_params["required_when_assemblies"] = required_when_assemblies
+    required_when_xaml_patterns = entry.get("required_when_xaml_patterns")
+    if required_when_xaml_patterns:
+        detect_params["required_when_xaml_patterns"] = required_when_xaml_patterns
     return {
         "id": entry["id"],
         "severity": "ERROR",
@@ -78,7 +88,7 @@ def _synthesize_d1_rule(entry: dict[str, Any]) -> dict[str, Any]:
         "applies_to": {"include": ["project.json"]},
         "detect": {
             "type": "nuget_version_check",
-            "params": {"package": pkg, "exact": ver},
+            "params": detect_params,
         },
         "fix": {
             "apply_class": "deterministic",

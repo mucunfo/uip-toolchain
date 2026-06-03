@@ -15,7 +15,7 @@ dependencies = [
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [project.scripts]
-uip = "uip_engine.cli:uip_main"
+ccs-uip = "uip_engine.cli:ccs_uip_main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -24,3 +24,6 @@ python_files = ["test_*.py"]
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["uip_engine*"]
+
+[tool.setuptools.package-data]
+uip_engine = ["ccs_agent_skills/*/SKILL.md"]

@@ -2,20 +2,20 @@
 
 Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML-driven (`src/uip_engine`)**. Fonte única = **`rules.yaml`**.
 
-## Quick start — comando único `uip`
+## Quick start — comando único `ccs-uip`
 
 **Pipeline completo (god command)**:
 
 ```powershell
 # 1ª run — migration + deterministic fix + gates + contextual report.
 # Deploy-safe: FAIL só quando sobram blockers mecânicos/pipeline/HALT.
-uip <project_path>
+ccs-uip <project_path>
 
 # 2ª run — modo assistido por IA para polish/governança contextual.
-uip <project_path> --apply-contextual
+ccs-uip <project_path> --apply-contextual
 ```
 
-Interface pública = `uip <path> [--apply-contextual]` **e nada mais**.
+Interface pública = `ccs-uip <path> [--apply-contextual]` **e nada mais**.
 Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 é intrínseco — defaults internos sobreescritos só via env vars (debug):
 
@@ -29,7 +29,7 @@ Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 | `UIP_TOOLCHAIN_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
-Status final do `uip <path>`:
+Status final do `ccs-uip <path>`:
 
 | Status | Exit | Significado |
 |---|---:|---|
@@ -41,11 +41,12 @@ Status final do `uip <path>`:
 correções que exigem interpretação semântica (mensagem, refactor, camada correta,
 decisão arquitetural) com IA/humano no loop.
 
-Console script público: `uip`. Underlying:
+Console script público: `ccs-uip`. O namespace `uip` fica reservado para a
+CLI oficial da UiPath (`@uipath/cli`). Underlying:
 `python -m uip_engine.cli all <project>`. Subcomandos atômicos
 (`review`, `fix`, `migrate-windows`) seguem existindo **somente** para debug
 interno via `python -m uip_engine.cli ...`; não são aceitos pelo comando
-público `uip`.
+público `ccs-uip`.
 
 ## Arquivos ativos
 
@@ -81,7 +82,7 @@ público `uip`.
 ## CLI interna `uip_engine`
 
 Esta seção é para manutenção/debug da toolchain. Para execução em projetos,
-use só `uip <project_path>` ou `uip <project_path> --apply-contextual`.
+use só `ccs-uip <project_path>` ou `ccs-uip <project_path> --apply-contextual`.
 
 ```bash
 # Validar schema rules.yaml

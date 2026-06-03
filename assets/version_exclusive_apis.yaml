@@ -62,12 +62,32 @@ UiPath.UIAutomation.Activities:
       mechanical:
         type: strip_xml_attribute
         attribute: PathResource
+    - pattern: '<ui:MoveFile\b[^>]*\bDestinationResource\s*='
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo DestinationResource. Usar Destination (path local).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: DestinationResource
+    - pattern: '<ui:MoveFile\b[^>]*\bPathResource\s*='
+      introduced_in: '25.10.21'
+      where: xaml_attribute
+      fix: 'Remover atributo PathResource. Usar Path (path local).'
+      mechanical:
+        type: strip_xml_attribute
+        attribute: PathResource
     - pattern: '<uix:NWindowOperation\b'
       introduced_in: '25.10.21'
       where: xaml_element
       fix: 'Activity NWindowOperation não disponível no pin 25.10.8. Engine strip element + força CloseMode="Always" no NApplicationCard pai (cobre close lifecycle equivalente).'
       mechanical:
         type: strip_nwindow_operation
+    - pattern: '<uix:NTakeScreenshot\b'
+      introduced_in: '25.10.21'
+      where: xaml_element
+      fix: 'Activity NTakeScreenshot não disponível no pin 25.10.8/Studio 23.10. Converter para ui:TakeScreenshot clássico preservando OutImage e alvo quando possível.'
+      mechanical:
+        type: rewrite_ntake_screenshot_to_classic
     - pattern: '<uix:TargetAnchorable\b[^>]*\bElementVisibilityArgument\s*='
       introduced_in: '25.10.21'
       where: xaml_attribute

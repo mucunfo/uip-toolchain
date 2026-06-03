@@ -181,9 +181,9 @@ deterministic` — fixer reusa `strip_annotation_text` com `text_prefix:
 "[PostMigration Action Required]"`, removendo só os markers (preserva
 annotations legítimas no mesmo file).
 
-## God command (`uip` = canonical entrypoint)
+## God command (`ccs-uip` = canonical entrypoint)
 
-**Único comando para tudo** — `uip <project>` orquestra todas as fases:
+**Único comando para tudo** — `ccs-uip <project>` orquestra todas as fases:
 
 ```
 PHASE 0  migration probe   (Activity Migrator se targetFramework != Windows)
@@ -201,8 +201,8 @@ deploy-safe, com notas para IA/humano.
 
 | Cenário | Comando |
 |---|---|
-| Dia-a-dia / CI / aprovação publish | `uip <project>` |
-| Aprovar contextual da 1ª run | `uip <project> --apply-contextual` |
+| Dia-a-dia / CI / aprovação publish | `ccs-uip <project>` |
+| Aprovar contextual da 1ª run | `ccs-uip <project> --apply-contextual` |
 
 Tudo o resto é intrínseco (defaults internos). Escape hatches debug via
 env vars apenas:
@@ -218,13 +218,15 @@ env vars apenas:
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
 Underlying: `python -m uip_engine.cli all <project>`. Console script público
-`uip` é instalado via `pyproject.toml`.
+`ccs-uip` é instalado via `pyproject.toml`. O comando `uip` fica reservado para
+a CLI oficial da UiPath (`@uipath/cli`) e não deve ser publicado por esta
+toolchain.
 
 Subcomandos atomicos (`review`, `fix`, `migrate-windows`, etc.) seguem
 existindo para debug e para o pipeline interno do `cli all`, mas somente via
-`python -m uip_engine.cli ...`; o comando público `uip` rejeita subcomandos.
+`python -m uip_engine.cli ...`; o comando público `ccs-uip` rejeita subcomandos.
 
-## Pre-publish gate (`review` = canonical do gate, chamado dentro do `uip`)
+## Pre-publish gate (`review` = canonical do gate, chamado dentro do `ccs-uip`)
 
 `review` é o **canonical pre-publish gate**: SEMPRE roda o pipeline completo
 sem opt-out. Se passa, projeto é publish-safe garantido.
@@ -235,9 +237,10 @@ sem opt-out. Se passa, projeto é publish-safe garantido.
 |---|------|--------|---------------|
 | 1 | Rules Sicoob | Regras locais YAML (A-*, S-*, N-*, W-*, D-*, etc.). | `runner.run` |
 | 2 | Lib-contract override | Downgrade findings que conflitam com contrato CCS_* exposto. | `_apply_sicoob_lib_overrides` |
-| 3 | Studio Analyzer | uipcli `analyze` — ST-* oficiais, contrato lib NuGet, Roslyn compile, SecureString flow. Findings `UIPATH:<code>`. | `_inject_analyzer_findings` |
-| 4 | NuGet restore | `nuget restore project.json` — peer dep resolution. Emite `NUGET:NU<NNNN>` por code. NU1101/1102/1107/1605/3026/5048 promoted ERROR (blocking publish). | `_run_nuget_restore_gate` |
-| 5 | uipcli pack (publish dry-run) | `uipcli publish -o Process -f <tmpdir>` — equivalent a pack dry-run sem upload. Captura BC* compile errors + validation que só aparecem no flow de publish. Emite `UIPATH:PACK`. | `_run_uipcli_pack_gate` |
+| 3 | UiPath restore | official `uip rpa restore <project> <tmp-out>` preferred — peer dep/feed/package graph resolution before analyzer/pack. On failure emits `UIPATH:RESTORE_*` and blocks later official analyzer/pack for that run. | `_run_official_restore_gate` |
+| 4 | UiPath Analyzer | official `uip rpa analyze` preferred; legacy uipcli `analyze` fallback — ST-* oficiais, contrato lib NuGet, Roslyn compile, SecureString flow. Findings `UIPATH:<code>`. | `_inject_analyzer_findings` |
+| 5 | NuGet restore fallback | Legacy `nuget restore project.json` only when official restore did not handle dependencies. Emite `NUGET:NU<NNNN>` por code. NU1101/1102/1107/1605/3026/5048 promoted ERROR. | `_run_nuget_restore_gate` |
+| 6 | UiPath pack (publish dry-run) | official `uip rpa pack <project> <out>` preferred; legacy `uipcli publish -o Process -f <tmpdir>` fallback — equivalent a pack dry-run sem upload. Captura BC* compile errors + validation que só aparecem no flow de publish. Emite `UIPATH:PACK`. | `_run_uipcli_pack_gate` |
 
 ### Cobertura por gate
 
@@ -246,9 +249,9 @@ sem opt-out. Se passa, projeto é publish-safe garantido.
 | Sicoob conventions (naming, log patterns, prefixo) | 1 |
 | Activity contracts (args required, OverloadGroup) | 3 |
 | VB compile errors em XAML (BC30002/BC30451/etc.) | 5 (publish dry-run força full compile) |
-| Peer dep resolution (Sicoob feed visible) | 4 |
-| Package signing / metadata | 4 |
-| Final publish-safety | 5 (autoritativo) |
+| Peer dep resolution (Sicoob feed visible) | 3 |
+| Package signing / metadata | 3/5 |
+| Final publish-safety | 6 (autoritativo) |
 
 ### Opt-out
 
@@ -263,9 +266,11 @@ unit tests. NÃO usar em produção.
 ### Graceful degradation
 
 Cada gate falha graceful se binary não disponível:
-- Analyzer (uipcli ausente): warn stderr `[analyzer-gate] uipcli not found — gate skipped`. Set `UIPATH_STUDIO_CLI`.
-- NuGet (nuget.exe ausente): warn `[NUGET-GATE] nuget binary not found; skipping`. Set `UIPATH_NUGET_CLI` ou install nuget.exe / dotnet SDK. Se só dotnet disponível, skipa silente (dotnet restore não suporta UiPath project.json).
-- Pack (uipcli ausente): warn `[PACK-GATE] uipcli not found — gate skipped`.
+- Official restore (uip ausente): falls through to legacy NuGet/analyzer/pack gates.
+- Official restore failure: emits `UIPATH:RESTORE_*`; analyzer/pack are skipped for that review run.
+- Analyzer fallback (uipcli ausente): warn stderr `[analyzer-gate] uipcli not found — gate skipped`. Set `UIPATH_STUDIO_CLI`.
+- NuGet fallback (nuget.exe ausente): warn `[NUGET-GATE] nuget binary not found; skipping`. Set `UIPATH_NUGET_CLI` ou install nuget.exe / dotnet SDK. Se só dotnet disponível, skipa silente (dotnet restore não suporta UiPath project.json).
+- Pack fallback (uipcli ausente): warn `[PACK-GATE] uipcli not found — gate skipped`.
 
 ### Tempo total
 
@@ -282,7 +287,7 @@ Esperado ~30s–2min per project (varia com tamanho + cache analyzer baseline).
 5. **Cascade detection** — files com mtime delta validados; falhas log only (não auto-rollback nesta versão).
 6. **Fixpoint loop** — re-detect+apply até `applied=0` (max 20 iter). Garante idempotência em rules que precisam multi-pass (N-6/N-7 emitem 1 finding por attr).
 
-### Layer 2 — Studio Analyzer gate (ground truth ~30-60s)
+### Layer 2 — UiPath Analyzer gate (ground truth ~30-60s)
 
 Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1 não vê:
 - **Roslyn VB compile errors** (BC30109/BC30451/etc.): identifiers undeclared, type mismatches.
@@ -290,7 +295,7 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 - **Activity property required**: args missing, type incompatibilities.
 - **NuGet package resolution**: missing dependencies.
 
-**Implementação**: `analyzer.py`. Invoca `UiPath.Studio.CommandLine.exe analyze -p <project.json>`. Parser captura `#json{...}#json` block + `NU\d+:` package errors.
+**Implementação**: `analyzer.py`. Prefere `uip rpa analyze <project> --output json` e faz fallback para `UiPath.Studio.CommandLine.exe analyze -p <project.json>`. O parser da CLI oficial lê o envelope JSON; o parser legado captura `#json{...}#json` block + `NU\d+:` package errors.
 
 **Diff-based gate**: erros NOVOS (post − baseline) bloqueiam (exit non-zero). Pré-existentes ignorados.
 
@@ -298,12 +303,11 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 **Cache** (F27): baseline cacheado em `.uip-toolchain/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA1(project.json mtime + xaml count + max xaml mtime) invalida quando projeto muda materialmente. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados).
 
-**Discovery**: ordem de busca uipcli:
-1. Env var `UIPATH_STUDIO_CLI`
-2. PATH lookup
-3. Well-known paths: `%LocalAppData%\Programs\UiPathPlatform\Studio\*\UiPath.Studio.CommandLine.exe`, etc.
+**Discovery**: ordem de busca:
+1. Official CLI: env var `UIPATH_UIP_CLI`, depois PATH lookup de `uip`.
+2. Legacy fallback: env var `UIPATH_STUDIO_CLI`, PATH lookup e well-known paths `%LocalAppData%\Programs\UiPathPlatform\Studio\*\UiPath.Studio.CommandLine.exe`, etc.
 
-**Graceful degradation**: skip silencioso se não encontrado.
+**Graceful degradation**: skip silencioso se official `uip` e legacy uipcli não forem encontrados.
 
 **Default**: ON. Flag `--no-analyzer-gate` desativa explicitamente.
 

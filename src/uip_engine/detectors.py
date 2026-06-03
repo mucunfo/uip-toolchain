@@ -406,10 +406,80 @@ def detect_nuget_version_check(rule: Rule, fc: FileContext, pc) -> list[Finding]
     package = params.get("package")
     min_v = params.get("min")
     exact_v = params.get("exact")
-    if not package or package not in deps:
+    required_when_package = params.get("required_when_package")
+    required_when_assemblies = params.get("required_when_assemblies") or []
+    required_when_xaml_patterns = params.get("required_when_xaml_patterns") or []
+    if not package:
+        return []
+    package_key = package if package in deps else None
+    if package_key is None:
+        for dep_name in deps:
+            if str(dep_name).lower() == str(package).lower():
+                package_key = dep_name
+                break
+
+    def _xaml_requirement_reason() -> str | None:
+        if not (required_when_assemblies or required_when_xaml_patterns):
+            return None
+        root = getattr(pc, "root", None)
+        if root is None:
+            return None
+        assembly_patterns = [
+            re.compile(
+                r"<AssemblyReference>\s*"
+                + re.escape(str(assembly))
+                + r"\s*</AssemblyReference>"
+                + r"|assembly\s*=\s*"
+                + re.escape(str(assembly))
+                + r"(?=[\";])",
+                re.IGNORECASE,
+            )
+            for assembly in required_when_assemblies
+        ]
+        literal_patterns = [str(pattern) for pattern in required_when_xaml_patterns]
+        for xaml in root.rglob("*.xaml"):
+            try:
+                content = xaml.read_text(encoding="utf-8-sig", errors="ignore")
+            except OSError:
+                continue
+            for assembly, pattern in zip(required_when_assemblies, assembly_patterns):
+                if pattern.search(content):
+                    try:
+                        source = str(xaml.relative_to(root))
+                    except ValueError:
+                        source = str(xaml)
+                    return f"assembly {assembly} em {source}"
+            for literal in literal_patterns:
+                if literal in content:
+                    try:
+                        source = str(xaml.relative_to(root))
+                    except ValueError:
+                        source = str(xaml)
+                    return f"padrao XAML {literal!r} em {source}"
+        return None
+
+    if package_key is None:
+        missing_reason: str | None = None
+        if required_when_package and required_when_package in deps:
+            missing_reason = f"{required_when_package} esta presente"
+        if missing_reason is None:
+            missing_reason = _xaml_requirement_reason()
+        if missing_reason:
+            expected = f"[{exact_v}]" if exact_v else ""
+            return [Finding(
+                rule_id=rule.id, severity=rule.severity, category=rule.category,
+                file=str(pc.root / "project.json"), line=1,
+                message=(
+                    f"{rule.title}: {package} ausente, mas {missing_reason} "
+                    "e exige pin direto "
+                    f"{expected}."
+                ),
+                fix_mechanical=(rule.fix or {}).get("mechanical"),
+                fix_prose=(rule.fix or {}).get("prose"),
+            )]
         return []
 
-    raw = deps[package]
+    raw = deps[package_key]
     m = re.match(r"\[?([\d.]+)", raw)
     if not m:
         return []
@@ -418,9 +488,12 @@ def detect_nuget_version_check(rule: Rule, fc: FileContext, pc) -> list[Finding]
 
     # exact takes precedence over min
     if exact_v:
-        if actual == _parse_version(exact_v):
+        if actual == _parse_version(exact_v) and package_key == package:
             return []
-        violation = f"esperado [{exact_v}], atual {raw}"
+        if package_key != package:
+            violation = f"esperado chave {package} [{exact_v}], atual {package_key}={raw}"
+        else:
+            violation = f"esperado [{exact_v}], atual {raw}"
     elif min_v:
         if actual >= _parse_version(min_v):
             return []

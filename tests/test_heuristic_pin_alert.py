@@ -173,6 +173,41 @@ def test_pin_alert_flags_copyfile_destinationresource(tmp_path):
     assert "DestinationResource" in findings[0].message
 
 
+def test_pin_alert_flags_movefile_resource_attrs(tmp_path):
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+    )
+    body = (
+        '  <ui:MoveFile DestinationResource="{x:Null}" '
+        'PathResource="{x:Null}" DisplayName="mv"/>\n'
+    )
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    attrs = {
+        f.fix_mechanical["attribute"]: f.fix_mechanical
+        for f in findings
+        if f.fix_mechanical
+    }
+    assert attrs["DestinationResource"]["element"] == "ui:MoveFile"
+    assert attrs["PathResource"]["element"] == "ui:MoveFile"
+
+
+def test_pin_alert_flags_ntake_screenshot_with_rewrite_mech(tmp_path):
+    proj, pc = _mk_project(
+        tmp_path,
+        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+    )
+    body = '  <uix:NTakeScreenshot OutImage="[Screenshot]" Version="V5" />\n'
+    fc = _write_xaml(proj, body)
+    findings = detect_pin_alert(_mk_rule(), fc, pc)
+    assert len(findings) == 1
+    assert "NTakeScreenshot" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "rewrite_ntake_screenshot_to_classic",
+    }
+
+
 def test_pin_alert_flags_nwindowoperation_element(tmp_path):
     """Activity exclusiva como elemento (xaml_element)."""
     proj, pc = _mk_project(

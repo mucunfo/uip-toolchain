@@ -139,7 +139,8 @@ def test_pack_gate_emits_finding_on_bc_error(tmp_path):
     fake_cli.is_file.return_value = True
     fake_cli.__str__ = lambda self: "fake-uipcli.exe"
 
-    with patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
+    with patch("uip_engine.official_uip.discover_official_uip", return_value=None), \
+         patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
          patch("uip_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
          patch("uip_engine.uipcli_runner.run_uipcli_guarded",
                return_value=_fake_uipcli_result(pack_output, returncode=1)):
@@ -182,7 +183,8 @@ def test_pack_gate_restores_source_project_json_after_mutation(tmp_path):
         pj.write_text(_json.dumps(data), encoding="utf-8")
         return _fake_uipcli_result("", returncode=0)
 
-    with patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
+    with patch("uip_engine.official_uip.discover_official_uip", return_value=None), \
+         patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
          patch("uip_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
          patch("uip_engine.uipcli_runner.run_uipcli_guarded",
                side_effect=_mutating_publish):
@@ -203,7 +205,8 @@ def test_pack_gate_fallback_on_unparseable_error(tmp_path):
     fake_cli = MagicMock()
     fake_cli.is_file.return_value = True
 
-    with patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
+    with patch("uip_engine.official_uip.discover_official_uip", return_value=None), \
+         patch("uip_engine.analyzer.discover_uipcli", return_value=fake_cli), \
          patch("uip_engine.uipcli_runner.preflight", return_value=_fake_preflight_ok()), \
          patch("uip_engine.uipcli_runner.run_uipcli_guarded",
                return_value=_fake_uipcli_result(pack_output, returncode=1)):
@@ -238,7 +241,8 @@ def test_pack_gate_graceful_skip_when_uipcli_absent(tmp_path, capsys):
     proj = _make_project(tmp_path)
     result = ValidationResult()
 
-    with patch("uip_engine.analyzer.discover_uipcli", return_value=None):
+    with patch("uip_engine.official_uip.discover_official_uip", return_value=None), \
+         patch("uip_engine.analyzer.discover_uipcli", return_value=None):
         cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
 
     pack_findings = [f for f in result.findings if f.rule_id == "UIPATH:PACK"]
@@ -320,8 +324,12 @@ def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, mo
     rf = tmp_path / "empty_rules.yaml"
     rf.write_text("version: 1\nrules: []\n", encoding="utf-8")
 
-    invoked = {"analyzer": False, "nuget": False, "pack": False,
+    invoked = {"restore": False, "analyzer": False, "nuget": False, "pack": False,
                "compile": False}
+
+    def _stub_restore(*a, **kw):
+        invoked["restore"] = True
+        return False, False
 
     def _stub_analyzer(*a, **kw):
         invoked["analyzer"] = True
@@ -340,13 +348,15 @@ def test_review_always_runs_analyzer_gate_even_without_flag(tmp_path, capsys, mo
     # Stuba TODOS os gates externos env-dependentes (cada um emite *-INFRA WARN
     # quando seu binario .NET esta ausente — analyzer/uipcli/nuget/
     # ActivityCompiler). No CI nenhum existe; stubando, o teste verifica o
-    # WIRING dos 4 gates + rc=OK sem depender do ambiente.
-    with patch.object(cli_mod, "_inject_analyzer_findings", side_effect=_stub_analyzer), \
+    # WIRING dos gates + rc=OK sem depender do ambiente.
+    with patch.object(cli_mod, "_run_official_restore_gate", side_effect=_stub_restore), \
+         patch.object(cli_mod, "_inject_analyzer_findings", side_effect=_stub_analyzer), \
          patch.object(cli_mod, "_run_nuget_restore_gate", side_effect=_stub_nuget), \
          patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_stub_pack), \
          patch.object(cli_mod, "_run_activity_compile_gate", side_effect=_stub_compile):
         rc = cli_mod._cmd_review(args)
 
+    assert invoked["restore"], "official restore gate não foi invocado"
     assert invoked["analyzer"], "analyzer gate não foi invocado"
     assert invoked["nuget"], "nuget gate não foi invocado"
     assert invoked["pack"], "pack gate não foi invocado"
@@ -375,9 +385,73 @@ def test_review_exit_error_when_pack_gate_adds_error(tmp_path, monkeypatch):
 
     args = _ReviewArgs(str(proj), str(rf))
 
-    with patch.object(cli_mod, "_inject_analyzer_findings"), \
+    with patch.object(cli_mod, "_run_official_restore_gate", return_value=(False, False)), \
+         patch.object(cli_mod, "_inject_analyzer_findings"), \
          patch.object(cli_mod, "_run_nuget_restore_gate"), \
          patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_stub_pack):
         rc = cli_mod._cmd_review(args)
 
     assert rc == cli_mod.EXIT_ERROR, f"esperado EXIT_ERROR (2), got {rc}"
+
+
+def test_review_restore_block_skips_analyzer_pack_and_nuget(tmp_path, monkeypatch):
+    monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
+
+    proj = _make_project(tmp_path)
+    rf = tmp_path / "empty_rules.yaml"
+    rf.write_text("version: 1\nrules: []\n", encoding="utf-8")
+    invoked = {"analyzer": False, "nuget": False, "pack": False}
+
+    def _stub_restore(result, project_root, **kw):
+        result.add(Finding(
+            rule_id="UIPATH:RESTORE_PACKAGE_MISSING",
+            severity=Severity.ERROR,
+            category="breaking",
+            file="project.json",
+            line=0,
+            message="missing package",
+        ))
+        return True, True
+
+    def _mark(name):
+        def _inner(*a, **kw):
+            invoked[name] = True
+        return _inner
+
+    args = _ReviewArgs(str(proj), str(rf))
+
+    with patch.object(cli_mod, "_run_official_restore_gate", side_effect=_stub_restore), \
+         patch.object(cli_mod, "_inject_analyzer_findings", side_effect=_mark("analyzer")), \
+         patch.object(cli_mod, "_run_nuget_restore_gate", side_effect=_mark("nuget")), \
+         patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_mark("pack")), \
+         patch.object(cli_mod, "_run_activity_compile_gate"):
+        rc = cli_mod._cmd_review(args)
+
+    assert rc == cli_mod.EXIT_ERROR
+    assert invoked == {"analyzer": False, "nuget": False, "pack": False}
+
+
+def test_review_restore_success_skips_legacy_nuget(tmp_path, monkeypatch):
+    monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
+
+    proj = _make_project(tmp_path)
+    rf = tmp_path / "empty_rules.yaml"
+    rf.write_text("version: 1\nrules: []\n", encoding="utf-8")
+    invoked = {"analyzer": False, "nuget": False, "pack": False}
+
+    def _mark(name):
+        def _inner(*a, **kw):
+            invoked[name] = True
+        return _inner
+
+    args = _ReviewArgs(str(proj), str(rf))
+
+    with patch.object(cli_mod, "_run_official_restore_gate", return_value=(True, False)), \
+         patch.object(cli_mod, "_inject_analyzer_findings", side_effect=_mark("analyzer")), \
+         patch.object(cli_mod, "_run_nuget_restore_gate", side_effect=_mark("nuget")), \
+         patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_mark("pack")), \
+         patch.object(cli_mod, "_run_activity_compile_gate"):
+        rc = cli_mod._cmd_review(args)
+
+    assert rc == cli_mod.EXIT_OK
+    assert invoked == {"analyzer": True, "nuget": False, "pack": True}

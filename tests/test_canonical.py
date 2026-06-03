@@ -11,6 +11,8 @@ from uip_engine.canonical import (
     load_canonical,
     synthesize_canonical_rules,
 )
+from uip_engine.context import FileContext, ProjectContext
+from uip_engine.detectors import detect_nuget_version_check
 from uip_engine.detectors import REGISTRY as DETECTORS
 from uip_engine.fixers import REGISTRY as FIXERS
 from uip_engine.loader import load_rules
@@ -50,7 +52,8 @@ def test_studio_pin_is_23_10_13():
     ("UiPath.Testing.Activities", "24.10.4"),
     ("UiPathTeam.SharePoint.Activities", "2.0.3"),
     ("UipathTeam.XML.Activities", "1.1.0"),
-    ("UiPath.ComputerVision.LocalServer", "21.10.1"),
+    ("UiPath.ComputerVision.LocalServer", "25.10.0"),
+    ("UiPath.CoreIpc", "2.0.1"),
 ])
 def test_canonical_pins_match_user_canonical(package, expected):
     assert canonical_pin_for(package) == expected
@@ -72,6 +75,87 @@ def test_synthesis_emits_d1_and_studio_rules():
     assert "J-1" in ids  # studio pin
     for letter in "abcdefghijklmnop":
         assert f"D-1{letter}" in ids, f"missing D-1{letter}"
+
+
+def test_mail_pin_is_required_when_mail_assembly_is_referenced(tmp_path):
+    rules = synthesize_canonical_rules()
+    rule_dict = next(r for r in rules if r["id"] == "D-1i")
+    project_json = tmp_path / "project.json"
+    project_json.write_text('{"dependencies": {}}', encoding="utf-8")
+    xaml = tmp_path / "Main.xaml"
+    xaml.write_text(
+        "<Activity>\n"
+        "  <AssemblyReference>UiPath.Mail</AssemblyReference>\n"
+        "</Activity>\n",
+        encoding="utf-8",
+    )
+    rules_loaded = load_rules(
+        RULES_YAML,
+        registered_detectors=set(DETECTORS.keys()),
+        registered_fixers=set(FIXERS.keys()),
+    )
+    rule = next(r for r in rules_loaded if r.id == "D-1i")
+    pc = ProjectContext(root=tmp_path, project_json={"dependencies": {}})
+    findings = detect_nuget_version_check(rule, FileContext(project_json), pc)
+    assert "UiPath.Mail" in rule_dict["detect"]["params"]["required_when_assemblies"]
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical == {
+        "type": "set_dependency_pin",
+        "package": "UiPath.Mail.Activities",
+        "version": "[1.24.2]",
+    }
+
+
+def test_computervision_pin_is_required_when_use_local_server_is_true(tmp_path):
+    rules = synthesize_canonical_rules()
+    rule_dict = next(r for r in rules if r["id"] == "D-1p")
+    project_json = tmp_path / "project.json"
+    project_json.write_text('{"dependencies": {}}', encoding="utf-8")
+    xaml = tmp_path / "Main.xaml"
+    xaml.write_text('<Activity UseLocalServer="True" />', encoding="utf-8")
+    rules_loaded = load_rules(
+        RULES_YAML,
+        registered_detectors=set(DETECTORS.keys()),
+        registered_fixers=set(FIXERS.keys()),
+    )
+    rule = next(r for r in rules_loaded if r.id == "D-1p")
+    pc = ProjectContext(root=tmp_path, project_json={"dependencies": {}})
+    findings = detect_nuget_version_check(rule, FileContext(project_json), pc)
+    assert rule_dict["detect"]["params"]["required_when_xaml_patterns"] == [
+        'UseLocalServer="True"'
+    ]
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical == {
+        "type": "set_dependency_pin",
+        "package": "UiPath.ComputerVision.LocalServer",
+        "version": "[25.10.0]",
+    }
+
+
+def test_canonical_package_casing_is_enforced(tmp_path):
+    rules_loaded = load_rules(
+        RULES_YAML,
+        registered_detectors=set(DETECTORS.keys()),
+        registered_fixers=set(FIXERS.keys()),
+    )
+    rule = next(r for r in rules_loaded if r.id == "D-1r")
+    project_json = tmp_path / "project.json"
+    project_json.write_text(
+        '{"dependencies": {"UiPath.CoreIPC": "[2.0.1]"}}',
+        encoding="utf-8",
+    )
+    pc = ProjectContext(
+        root=tmp_path,
+        project_json={"dependencies": {"UiPath.CoreIPC": "[2.0.1]"}},
+    )
+    findings = detect_nuget_version_check(rule, FileContext(project_json), pc)
+    assert len(findings) == 1
+    assert "UiPath.CoreIPC" in findings[0].message
+    assert findings[0].fix_mechanical == {
+        "type": "set_dependency_pin",
+        "package": "UiPath.CoreIpc",
+        "version": "[2.0.1]",
+    }
 
 
 def test_synthesized_rules_use_registered_types():

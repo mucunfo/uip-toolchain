@@ -211,13 +211,13 @@ rules:
     detect:
       type: regex_with_context
       params:
-        pattern: '\bNew\s+(?:Net\.)?NetworkCredential\s*\('
+        pattern: '(?i)\bnew\s+(?:net\.)?networkcredential\s*\('
         safe_prefix: ['System\.Net\.']
         prefix_window: 12
     fix:
       mechanical:
         type: regex_replace
-        pattern: '\bNew\s+(?:Net\.)?NetworkCredential\s*\('
+        pattern: '(?i)\bnew\s+(?:net\.)?networkcredential\s*\('
         replacement: 'New System.Net.NetworkCredential('
 
 # ---- W-11 AssemblyReference family — severity criterion ----
@@ -752,8 +752,10 @@ rules:
         - "**/.tmp/**"
         - "**/.settings/**"
     detect:
-      type: regex
-      pattern: '\.(SpecificContent|Output)\s*\(\s*(?:&quot;[^&]+&quot;|"[^"]+")\s*\)'
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w19_queue_item_indexer
     fix:
       apply_class: deterministic
       mechanical:
@@ -1050,6 +1052,157 @@ rules:
         `<ui:InvokeWorkflowFile>` que já possui
         `<ui:InvokeWorkflowFile.Arguments>`.
 
+  - id: W-35
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Continuação de linha VB terminal antes de ]"
+    description: |
+      Em expressões XAML Visual Basic, `_` só pode continuar a expressão para
+      outro token. Quando a expressão termina como `...]` após whitespace ou
+      newline XML-encoded (`_&#xA;]`, ` _]`), o compilador oficial UiPath
+      falha de forma pouco diagnóstica:
+
+        BC30203: Identifier expected.
+        BC30198: ')' expected.
+
+      A correção mecânica remove apenas o `_` terminal e preserva o restante
+      da expressão. Identificadores que terminam com underscore não são
+      alterados, porque o detector exige whitespace antes do `_`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w35_terminal_vb_line_continuation
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_terminal_vb_line_continuation
+      prose: |
+        Remover o marcador `_` quando ele aparece como último token antes do
+        fechamento `]` de uma expressão XAML.
+
+  - id: W-36
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "String.Format com ToStringWithDelimiter legado"
+    description: |
+      Em Windows target, selectors migrados podem ficar como:
+
+        (String.Format("<selector>", args)).ToStringWithDelimiter()
+
+      O compilador oficial resolve o receiver como `String` e falha com:
+
+        BC30456: 'ToStringWithDelimiter' is not a member of 'String'.
+
+      Nesse padrão o método é artefato legacy de selector e é no-op; remover
+      a chamada preserva o selector já formatado.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w36_string_format_tostring_with_delimiter
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: strip_string_format_tostring_with_delimiter
+      prose: |
+        Remover `.ToStringWithDelimiter()` quando aplicado diretamente ao
+        resultado de `String.Format(...)`.
+
+  - id: W-37
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "ReadAsDataTable legado com 3 argumentos"
+    description: |
+      `UiPath.Excel.Activities` 3.x expõe `ReadAsDataTable` com parâmetros
+      adicionais (`extendSingleCellRanges`, `readFormattingOptions`). XAML
+      migrado que mantém chamadas com 3 argumentos falha no compilador oficial:
+
+        BC30455: Argument not specified for parameter 'extendSingleCellRanges'
+        BC30455: Argument not specified for parameter 'readFormattingOptions'
+
+      Quando a chamada tem exatamente três argumentos simples, a compatibilidade
+      é mecânica: preservar os três existentes e acrescentar os defaults
+      explícitos `False,Nothing`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w37_read_as_datatable_three_args
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: expand_read_as_datatable_signature
+      prose: |
+        Expandir `.ReadAsDataTable(a,b,c)` para
+        `.ReadAsDataTable(a,b,c,False,Nothing)`.
+
+  - id: W-38
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "CCS_SipagDirect Login legacy"
+    description: |
+      Pacotes `CCS_SipagDirect` 3.x expõem a activity como
+      `CCS_SipagDirect.Login`. Alguns XAMLs legados ainda referenciam
+      `CCS_SipagDirect.Sessão.LoginSipagDirect`, que não existe no assembly
+      restaurado e faz o compilador oficial falhar:
+
+        Cannot create unknown type
+        '{clr-namespace:CCS_SipagDirect.Sessão;assembly=CCS_SipagDirect}LoginSipagDirect'
+
+      A migração é mecânica quando a chamada usa os nomes legados conhecidos:
+      `in_StUrlSipagDirect`, `in_StUsuario`, `in_SSSenha`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.windows
+        function: detect_w38_ccs_sipagdirect_legacy_login
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: rewrite_ccs_sipagdirect_legacy_login
+      prose: |
+        Reescrever namespace para `CCS_SipagDirect`, tag para `Login` e
+        argumentos legados para `in_URL`, `in_Usuario`, `in_Senha`.
+
+  - id: W-39
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "Net.WebUtility sem namespace completo"
+    description: |
+      Em VB Windows, `Net.WebUtility` pode ser resolvido como membro inexistente
+      de `net` durante a análise oficial:
+
+        BC30456: 'WebUtility' is not a member of 'net'
+
+      A forma determinística e compatível é qualificar o namespace completo:
+      `System.Net.WebUtility`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: regex
+      pattern: '(?<![A-Za-z0-9_.])Net\.WebUtility\b'
+    fix:
+      mechanical:
+        type: regex_replace
+        pattern: '(?<![A-Za-z0-9_.])Net\.WebUtility\b'
+        replacement: 'System.Net.WebUtility'
+      prose: |
+        Trocar `Net.WebUtility` por `System.Net.WebUtility`.
+
   - id: ENV-2
     severity: ERROR
     category: breaking
@@ -1207,10 +1360,12 @@ rules:
     severity: ERROR
     category: breaking
     target: windows
-    title: ".IsNullOrEmpty extension instance quebra em VB Windows"
+    title: ".IsNullOr* extension instance quebra em VB Windows"
     description: |
-      Forma `vStTexto.IsNullOrEmpty` quebra em Windows target.
-      Usar `String.IsNullOrEmpty(vStTexto)` (chamada estática).
+      Formas `vStTexto.IsNullOrEmpty` e `vStTexto.IsNullOrWhiteSpace`
+      quebram em Windows target.
+      Usar `String.IsNullOrEmpty(vStTexto)` ou
+      `String.IsNullOrWhiteSpace(vStTexto)` (chamada estática).
       Detector heurístico ignora chamada estática em qualquer caixa
       (`String.`, `string.`, `x:String.`, `s:String.`).
     applies_to:
@@ -1220,15 +1375,17 @@ rules:
       params:
         module: uip_engine.heuristics.windows
         function: detect_w16_isnullorempty
-        static_class_names: [string, "s:string", "x:string"]
+        static_class_names: [string, "system.string", "s:string", "x:string"]
         last_segment_skip: [string]
     fix:
       mechanical:
         type: regex_replace
-        pattern: '(?<![A-Za-z_:.])(?![Ss]tring\.IsNullOrEmpty\b)([a-zA-Z_]\w*)\.IsNullOrEmpty\b'
-        replacement: 'String.IsNullOrEmpty(\1)'
+        pattern: '(?<![A-Za-z_:.])(?![Ss]tring\.IsNullOr(?:Empty|WhiteSpace)\b)([a-zA-Z_]\w*)\.(IsNullOrEmpty|IsNullOrWhiteSpace)\b'
+        replacement: 'String.\2(\1)'
       prose: |
-        Trocar `<expr>.IsNullOrEmpty` por `String.IsNullOrEmpty(<expr>)`.
+        Trocar `<expr>.IsNullOrEmpty` por `String.IsNullOrEmpty(<expr>)`
+        ou `<expr>.IsNullOrWhiteSpace` por
+        `String.IsNullOrWhiteSpace(<expr>)`.
         Mechanical fix cobre só identificador simples; chains
         multi-part (`obj.Field.IsNullOrEmpty`) requerem fix manual.
 
@@ -2671,7 +2828,7 @@ rules:
       been set on If", "Handler property has already been set on ActivityFunc",
       "Add value to collection of type 'List(AssignOperation)' threw an exception".
 
-      Causa histórica (2026-04-30): agente uipath-creator aplicou N-5 (Trace log)
+      Causa histórica (2026-04-30): agente ccs-creator aplicou N-5 (Trace log)
       sem checar contexto do parent, injetando `<ui:LogMessage Level="Trace"
       Message="Iniciando: ui:X" />` em qualquer lugar antes da activity-alvo.
       101 inserções inválidas em 1 projeto.
@@ -2701,7 +2858,7 @@ rules:
       assembly que NÃO está em `project.json::dependencies`. Studio mostra
       activities como "unresolved" e falha compile/run.
 
-      Causa histórica (2026-04-30): agente uipath-creator inseriu
+      Causa histórica (2026-04-30): agente ccs-creator inseriu
       `<uta:VerifyExpression>` em TestCases (39 ocorrências em 14 arquivos),
       mas convenção Sicoob (REF importar-cadastro-avais-fiancas-honrados-performer)
       é TestCase só executar `<ui:InvokeWorkflowFile>` do workflow-alvo —
@@ -2818,7 +2975,7 @@ rules:
         - Designer-generated: `JsonSample="{x:Null}" Settings="{x:Null}"`
         - Agente-generated (incompleto): faltam ambos → unresolved.
 
-      Causa histórica (2026-04-30): agente uipath-creator gerou DeserializeJson
+      Causa histórica (2026-04-30): agente ccs-creator gerou DeserializeJson
       manualmente em 7 arquivos sem bind placeholders. Regra cobre
       `ui:DeserializeJson` por enquanto; expandir conforme outros casos
       surgirem (`ui:DeserializeXml`, etc.).
@@ -3008,7 +3165,7 @@ rules:
       Por ser structural (depende de decidir qual engine plugar — pode ser
       `UiPathScreenOCR`, `UiPathDocumentOCR`, `MicrosoftOCR`, etc.), engine
       NÃO aplica fix mecânico. Detector emite alerta + prose; correção
-      via subagent `uipath-creator` / dev humano.
+      via subagent `ccs-creator` / dev humano.
     applies_to:
       include: ["**/*.xaml"]
       exclude:
@@ -3611,7 +3768,7 @@ rules:
       #   - Open parent (insert direto)
       #   - Message template com in_StPrefixoLog cross-rule integration
       #   - DisplayName uniqueness (evita ST-MRD-002 / ST-NMG-004)
-      # Insertion runs APENAS via `uip --apply-contextual`. F35 per-file
+      # Insertion runs APENAS via `ccs-uip --apply-contextual`. F35 per-file
       # analyzer-gate rollback catches Message-quality regressions
       # (N-16 LLM validator, ST-NMG-005).
       apply_class: contextual
@@ -3622,7 +3779,7 @@ rules:
         a activity (até 600 chars depois). Logs ANTES da activity violam
         semântica de rastreabilidade pós-execução — não satisfazem N-5.
 
-        Engine auto-aplica via `uip <project> --apply-contextual`. Fixer
+        Engine auto-aplica via `ccs-uip <project> --apply-contextual`. Fixer
         gera Message template `[in_StPrefixoLog + "Concluído: <DisplayName>"]`
         quando workflow declara `in_StPrefixoLog`, senão `["Concluído: <DisplayName>"]`.
         Message mecânica pode disparar N-16 (LLM traceability validator) —
@@ -3983,7 +4140,7 @@ rules:
         - Static strings sem interpolação de variáveis (vague)
         - Verbos de intenção em vez de fato: "Vai buscar", "Começando"
 
-      Anti-padrão historicamente gerado por agente uipath-creator
+      Anti-padrão historicamente gerado por agente ccs-creator
       interpretando N-5 prose. Causa colateral: ver S-10 (LogMessage em
       parent restritivo) e N-5 ordering (logs ANTES viola N-5).
 
@@ -4387,13 +4544,20 @@ rules:
     severity: ERROR
     category: breaking
     target: windows
-    title: "CCS_* deve pinar versão mais recente em .nupkgs/"
+    title: "CCS_* deve declarar e pinar versão mais recente disponível"
     description: |
       Pacotes CCS_* Sicoob são distribuídos via `.nupkgs/` local
       (`C:\\Users\\lisan\\OneDrive - Sicoob\\Projects\\.nupkgs`). Detector
-      resolve dinamicamente a versão mais recente por pacote (max semver
-      de filenames `CCS_X.Y.Z.nupkg`) e exige que `project.json::dependencies`
-      reflita esse valor.
+      resolve dinamicamente a versão mais recente por pacote (max semver de
+      filenames `CCS_X.Y.Z.nupkg`) e exige que `project.json::dependencies`
+      reflita esse valor. Cache NuGet local não é fonte de verdade para CCS_*.
+
+      Além de drift em dependências já declaradas, XAML com uso real de
+      assembly `CCS_*` precisa ter dependency direta no `project.json`; caso
+      contrário a CLI oficial pode restaurar/migrar sem o assembly e falhar no
+      analyzer com `LoadAssembliesStep`. `AssemblyReference` e imports
+      `TextExpression.*` sozinhos são tratados como resíduo de Studio, não como
+      hard dependency.
 
       Sem canonical_pins.yaml: versão muda quando dev solta novo `.nupkg`,
       latest-on-disk evita atualizar YAML manualmente.
@@ -4407,8 +4571,10 @@ rules:
     fix:
       apply_class: deterministic
       prose: |
-        Pinar `dependencies."CCS_*"` na versão `[X.Y.Z]` mais recente em
-        `.nupkgs/`. Engine resolve automaticamente — `fix --apply` aplica.
+        Pinar/adicionar `dependencies."CCS_*"` na versão `[X.Y.Z]` mais
+        recente em `.nupkgs/`. Engine resolve automaticamente — `fix --apply`
+        aplica. Se o pacote CCS usado pelo XAML não existir em `.nupkgs/`, a
+        toolchain deve falhar com diagnóstico de feed/pacote local ausente.
 
   - id: D-PINALERT
     severity: ERROR
@@ -4492,11 +4658,17 @@ rules:
         module: uip_engine.heuristics.nuget_peer
         function: detect_nuget_peer_conflict
     fix:
-      apply_class: contextual  # fix depende de qual lado realinhar (primary vs peer)
+      apply_class: deterministic
       prose: |
-        Resolver conflito atualizando pin para versão compatível:
-        - Option A: alinhar peer ao requirement da primary (recomendado se
-          primary é o pacote core, ex: UIA).
+        Resolver conflito atualizando pin para versão compatível.
+        Quando o peer existe em `assets/canonical_pins.yaml` e o pin canônico
+        satisfaz o requirement da primary, o detector emite fix mecânico
+        `set_dependency_pin` e a toolchain realinha automaticamente.
+        Quando não há pin canônico seguro, o finding fica sem fix_mechanical e
+        é reclassificado como contextual pela política per-finding.
+
+        Opções manuais quando não houver fix mecânico:
+        - Option A: alinhar peer ao requirement da primary.
         - Option B: downgrade da primary para versão cujo peer requirement
           satisfaz o pin atual.
         Consultar `.nuspec` do package primário (`<dependencies><group>
@@ -5339,6 +5511,64 @@ rules:
       Projetos Legacy 1.x XAML (CSOM-based) não auto-migram limpo.
     detect:
       type: agent_only
+
+  - id: SP-7
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "SharePoint 2.x com probe CSOM CurrentUser legado"
+    description: |
+      `UiPathTeam.SharePoint.Activities` 2.x targeta Windows/.NET e abandonou
+      dependência CSOM. XAMLs legados 1.x podem manter variável
+      `Microsoft.SharePoint.Client.User` apenas para obter o usuário logado via
+      `GetWebLoginUser` e exibir `User.Email` em mensagem de erro.
+
+      Esse resíduo quebra a CLI oficial:
+
+        Cannot create unknown type ... Microsoft.SharePoint.Client.User
+
+      Quando o padrão é estreito e o usuário só alimenta a mensagem de erro, a
+      correção mecânica remove o probe sem tocar no `GetFile`.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.sharepoint
+        function: detect_sharepoint_2x_csom_user_leftovers
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: remove_sharepoint_2x_current_user_probe
+      prose: |
+        Remover variável `msc:User`, activity `GetWebLoginUser` e o trecho de
+        mensagem que usa `<var>.Email`, preservando as operações REST do
+        SharePoint 2.x.
+
+  - id: SP-8
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "SharePoint 2.x com imports/references CSOM sem uso"
+    description: |
+      Depois que não há mais uso real de `msc:*`, os imports e assembly refs de
+      `Microsoft.SharePoint.Client`/`.Runtime` viram resíduo Legacy. Manter esses
+      refs confunde S-11/analyzer e sugere dependência CSOM que a linha 2.x não
+      consome.
+    applies_to:
+      include: ["**/*.xaml"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.sharepoint
+        function: detect_sharepoint_2x_stale_csom_imports
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: remove_stale_csom_imports_and_refs
+      prose: |
+        Remover `xmlns:msc`, namespace import e AssemblyReference CSOM quando
+        não há mais nenhum uso `msc:*` no XAML.
 
   - id: SP-6
     severity: INFO
@@ -7221,4 +7451,4 @@ rules:
           - REFramework standard, OU
           - Sicoob Hungarian convention (St=String, Int=Int32, Bol=Boolean,
             Dt=DateTime, Dtb=DataTable, Dict=Dictionary(string,object), etc.)
-        Após fix manual, re-run `uip <project>` pra confirmar gate verde.
+        Após fix manual, re-run `ccs-uip <project>` pra confirmar gate verde.

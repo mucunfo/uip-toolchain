@@ -27,7 +27,7 @@ _sweep_pycache()
 
 # sys.path injection: ensures rules.yaml python detectors referenced as
 # `uip_engine.heuristics.<mod>` resolve in all invocation modes
-# (console_script `uip`, `python -m uip_engine.cli`, hooks subprocess).
+# (console_script `ccs-uip`, `python -m uip_engine.cli`, hooks subprocess).
 # After src/ reorg (2026-05-26), parents[2] = `.uip-toolchain/` and
 # the package lives at `src/uip_engine/`. Adding repo root to sys.path
 # is harmless and provides resilience for environments where the
@@ -110,6 +110,133 @@ def _iter_analyzer_snapshot_paths(project_root: Path):
             path = root_path / name
             if name in snapshot_names or path.suffix in snapshot_suffixes:
                 yield path
+
+
+def _is_project_metadata_snapshot_path(path: Path, project_root: Path) -> bool:
+    """Project metadata must not be blanket-rolled back by XAML analyzer fallback.
+
+    Dependency pins and project manifests are fixed by separate deterministic
+    gates. A project-level analyzer error with no FilePath should not undo those
+    fixes; otherwise the next phase diagnoses stale dependencies again instead
+    of the real remaining blocker.
+    """
+    try:
+        rel_parts = path.resolve().relative_to(project_root.resolve()).parts
+    except (OSError, ValueError):
+        rel_parts = path.parts
+
+    rel_lower = tuple(p.lower() for p in rel_parts)
+    name = path.name.lower()
+    if name in {
+        "project.json",
+        "project.uiproj",
+        "packagebindingsmetadata.json",
+    }:
+        return True
+    return bool(rel_lower and rel_lower[0] == ".project")
+
+
+def _is_analyzer_metadata_or_cli_infra_issue(issue) -> bool:
+    """True for analyzer regressions that should not roll back XAML bytes.
+
+    Official `uip rpa analyze` can fail after dependency graph changes with
+    project-level infrastructure errors such as missing assemblies. Those are
+    restore/dependency diagnostics, not proof that deterministic XAML fixes
+    introduced a workflow regression. A full-snapshot XAML rollback in that
+    situation recreates hundreds of mechanical blockers (W-19, W-4, etc.) and
+    hides the real package graph issue.
+    """
+    file_name = Path(getattr(issue, "file", "") or "").name.lower()
+    code = (getattr(issue, "error_code", "") or "").upper()
+    description = (getattr(issue, "description", "") or "").lower()
+
+    if file_name not in {"project.json", "project.uiproj"}:
+        return False
+    if code in {
+        "CLI_ASSEMBLY_MISSING",
+        "CLI_PROJECT_FORMAT",
+        "CLI_REQUIRED_PACKAGE_MISSING",
+    }:
+        return True
+    return (
+        "cannot load assembly" in description
+        or "não foi possível carregar assembly" in description
+        or "nao foi possivel carregar assembly" in description
+        or "project path and pack configuration" in description
+    )
+
+
+_TEXT_EXPRESSION_IMPL_BLOCK_RE = re.compile(
+    r"<TextExpression\.(?P<kind>ReferencesForImplementation|NamespacesForImplementation)>"
+    r".*?"
+    r"</TextExpression\.(?P=kind)>",
+    re.DOTALL,
+)
+
+
+def _is_reference_namespace_only_delta(before: bytes, after: bytes) -> bool:
+    """True when a XAML delta only touches expression refs/imports.
+
+    FULL-SNAPSHOT rollback is a last resort for analyzer errors without a
+    usable FilePath. W-11/ENV fixes live in TextExpression refs/imports and are
+    intentionally low risk; rolling them back recreates deterministic blockers
+    across many files while hiding the actual analyzer regression.
+    """
+    if before == after:
+        return False
+    try:
+        before_text = before.decode("utf-8-sig", errors="strict")
+        after_text = after.decode("utf-8-sig", errors="strict")
+    except UnicodeError:
+        return False
+
+    stripped_before = _TEXT_EXPRESSION_IMPL_BLOCK_RE.sub(
+        "<TextExpression.__CCS_IMPL_BLOCK__ />",
+        before_text,
+    )
+    stripped_after = _TEXT_EXPRESSION_IMPL_BLOCK_RE.sub(
+        "<TextExpression.__CCS_IMPL_BLOCK__ />",
+        after_text,
+    )
+    return stripped_before == stripped_after
+
+
+def _rollback_bytes_preserving_refs_namespaces(
+    before: bytes,
+    current: bytes,
+) -> bytes:
+    """Return pre-loop XAML bytes with current refs/import blocks preserved."""
+    if before == current:
+        return before
+    try:
+        before_text = before.decode("utf-8-sig", errors="strict")
+        current_text = current.decode("utf-8-sig", errors="strict")
+    except UnicodeError:
+        return before
+
+    current_blocks = {
+        m.group("kind"): m.group(0)
+        for m in _TEXT_EXPRESSION_IMPL_BLOCK_RE.finditer(current_text)
+    }
+    if not current_blocks:
+        return before
+
+    changed = False
+
+    def repl(match: re.Match) -> str:
+        nonlocal changed
+        kind = match.group("kind")
+        current_block = current_blocks.get(kind)
+        if current_block and current_block != match.group(0):
+            changed = True
+            return current_block
+        return match.group(0)
+
+    merged = _TEXT_EXPRESSION_IMPL_BLOCK_RE.sub(repl, before_text)
+    if not changed:
+        return before
+    encoding = "utf-8-sig" if before.startswith(b"\xef\xbb\xbf") else "utf-8"
+    return merged.encode(encoding)
 
 
 _PROPERTY_ELEMENT_ATTR_RE = re.compile(
@@ -316,21 +443,29 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_pack_scrub(args)
     if args.command == "migrate-check":
         return _cmd_migrate_check(args)
+    if args.command == "install-skills":
+        from .agent_skills import ensure_ccs_agent_skills
+        records = ensure_ccs_agent_skills(verbose=True)
+        changed = sum(1 for record in records if record.changed)
+        print(f"CCS skills OK: {len(records)} checked, {changed} changed")
+        return EXIT_OK
+    if args.command == "doctor-uipath-cli":
+        return _cmd_doctor_uipath_cli(args)
 
     parser.print_help()
     return EXIT_OK
 
 
-def uip_main(argv: list[str] | None = None) -> int:
+def ccs_uip_main(argv: list[str] | None = None) -> int:
     """God command entry-point — injeta subcommand 'all' implícito.
 
-    `uip <project> [flags]` ≡ `rule-engine all <project> [flags]`. Existe pra
+    `ccs-uip <project> [flags]` ≡ `rule-engine all <project> [flags]`. Existe pra
     eliminar dependência de alias PowerShell em profile.ps1 (não carrega em
     `-NoProfile` shells, hooks, agents, CI).
 
     Interface pública intencionalmente mínima:
-        `uip <project_path>`
-        `uip <project_path> --apply-contextual`
+        `ccs-uip <project_path>`
+        `ccs-uip <project_path> --apply-contextual`
 
     Subcommands atômicos continuam existindo só pelo entrypoint interno:
         `python -m uip_engine.cli <subcmd> ...`
@@ -341,35 +476,54 @@ def uip_main(argv: list[str] | None = None) -> int:
         "migrate-windows", "phase-out",
         # Phase 7 (2026-05): new standalone subcommands.
         "pre-migrate-check", "pack-scrub", "migrate-check",
+        "install-skills",
+        "doctor-uipath-cli",
     }
     if argv and argv[0] in internal_subcommands:
         print(
-            f"[ERROR] `uip {argv[0]}` não é interface pública.\n"
-            f"Use `uip <project_path> [--apply-contextual]`.\n"
+            f"[ERROR] `ccs-uip {argv[0]}` não é interface pública.\n"
+            f"Use `ccs-uip <project_path> [--apply-contextual]`.\n"
             f"Para debug interno: `python -m uip_engine.cli {argv[0]} ...`.",
             file=sys.stderr,
         )
         return EXIT_ERROR
     if argv and argv[0] in ("-h", "--help"):
         print(
-            "uip — god command UiPath rules engine\n"
+            "ccs-uip — god command UiPath rules engine\n"
             "\n"
             "USAGE:\n"
-            "  uip <project_path> [--apply-contextual]\n"
+            "  ccs-uip <project_path> [--apply-contextual]\n"
             "      Pipeline completo (migration probe → deterministic fix →\n"
             "      gates Layer2/3/5 → contextual report). FAIL só para\n"
             "      deploy blockers mecânicos/pipeline/HALT.\n"
             "      --apply-contextual: modo assistido por IA para aplicar fixes\n"
             "      contextuais (default: lista como PASS-WITH-NOTES, sem aplicar).\n"
             "\n"
-            "INTERFACE PÚBLICA: só `uip <project_path>` e\n"
-            "`uip <project_path> --apply-contextual`.\n"
+            "INTERFACE PÚBLICA: só `ccs-uip <project_path>` e\n"
+            "`ccs-uip <project_path> --apply-contextual`.\n"
             "Debug interno: `python -m uip_engine.cli <subcommand> ...`.\n"
         )
         return EXIT_OK
     if not argv:
-        return uip_main(["--help"])
+        return ccs_uip_main(["--help"])
+    from .agent_skills import ensure_ccs_agent_skills
+    ensure_ccs_agent_skills(verbose=True)
+    import os as _os
+    if _os.environ.get("UIP_TOOLCHAIN_SKIP_DOCTOR", "").lower() not in {"1", "true", "yes"}:
+        doctor_rc = _cmd_doctor_uipath_cli(type("A", (), {})())
+        if doctor_rc != EXIT_OK:
+            print(
+                "[ERROR] toolchain doctor failed; fix local UiPath CLI/migrator "
+                "readiness or set UIP_TOOLCHAIN_SKIP_DOCTOR=1 for controlled tests.",
+                file=sys.stderr,
+            )
+            return doctor_rc
     return main(["all"] + argv)
+
+
+# Backwards-compatible Python symbol for old imports. The public console
+# script intentionally no longer exports `uip`.
+uip_main = ccs_uip_main
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -583,7 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Escape hatches internos (NÃO documentados no `uip --help`). Acessíveis
     # via env vars; tests invocam direto via `_ns(...)`. Mantidos pra debug
     # interno e back-compat de invocações programáticas — NÃO são interface
-    # pública. Interface pública = `uip <path> [--apply-contextual]` só.
+    # pública. Interface pública = `ccs-uip <path> [--apply-contextual]` só.
     #
     # Configuração runtime via env:
     #   UIP_TOOLCHAIN_SKIP_MIGRATION=1   → pula PHASE 0 (Migrator)
@@ -592,6 +746,15 @@ def build_parser() -> argparse.ArgumentParser:
     #   UIP_TOOLCHAIN_WATCH_INTERVAL=<f> → cadence poll watch (segundos)
     #   UIP_TOOLCHAIN_MAX_ITERS=<n>      → limite iters loop (0 = ilimitado)
     #   UIP_TOOLCHAIN_RULES_FILE=<path>        → override rules.yaml
+
+    sub.add_parser(
+        "install-skills",
+        help="Install/update CCS-managed agent skills globally for Codex and Claude",
+    )
+    sub.add_parser(
+        "doctor-uipath-cli",
+        help="Check official UiPath CLI host, rpa-tool, Node, and .NET readiness",
+    )
 
     return p
 
@@ -617,10 +780,11 @@ def _cmd_review(args) -> int:
     Ordem de gates:
       1. runner.run(args.path)              # rules Sicoob (engine local)
       2. _apply_sicoob_lib_overrides(...)   # downgrade lib-contract findings
-      3. _inject_analyzer_findings(...)     # uipcli analyze (Studio Analyzer)
-      4. _run_nuget_restore_gate(...)       # NuGet restore (peer deps OK?)
-      5. _run_uipcli_pack_gate(...)         # uipcli publish dry-run (pack OK?)
-      6. relatório final + exit code
+      3. _run_official_restore_gate(...)    # uip rpa restore (official)
+      4. _inject_analyzer_findings(...)     # uip rpa analyze / fallback
+      5. _run_nuget_restore_gate(...)       # legacy NuGet fallback
+      6. _run_uipcli_pack_gate(...)         # uip rpa pack / fallback
+      7. relatório final + exit code
 
     Sem opt-out CLI. Se review passa, projeto é publish-safe.
 
@@ -648,39 +812,58 @@ def _cmd_review(args) -> int:
     )
 
     if not external_gates_disabled:
-        # P1 (2026-05): gates 3/4/5 paralelos via ThreadPoolExecutor.
+        verbose = getattr(args, "verbose", False)
+        project_root = Path(args.path).resolve()
+        restore_handled, restore_blocked = _run_official_restore_gate(
+            result,
+            project_root,
+            timeout=getattr(args, "nuget_gate_timeout", 300),
+            verbose=verbose,
+        )
+
+        # P1 (2026-05): gates 4/5/6 paralelos via ThreadPoolExecutor.
         # Cada gate é uma invocação subprocess externa independente (uipcli
         # analyze, nuget restore, uipcli publish) — sem shared state mutável
         # além de `result.add(...)` (list.append é GIL-atomic em CPython).
         # Ganho típico ~2x em PHASE 2 quando uipcli não está stalled.
         # Cap = 3 workers (um por gate). Não usa nproc cap pois são 3 fixos.
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        verbose = getattr(args, "verbose", False)
-        gates = [
-            (
-                "analyzer-gate",
-                lambda: _inject_analyzer_findings(
-                    result, args.path,
-                    timeout=getattr(args, "analyzer_gate_timeout", 180),
-                    verbose=verbose,
+        gates = []
+        if not restore_blocked:
+            gates.extend([
+                (
+                    "analyzer-gate",
+                    lambda: _inject_analyzer_findings(
+                        result, args.path,
+                        timeout=getattr(args, "analyzer_gate_timeout", 180),
+                        verbose=verbose,
+                    ),
                 ),
-            ),
-            (
+                (
+                    "pack-gate",
+                    lambda: _run_uipcli_pack_gate(
+                        result, args.path,
+                        timeout=getattr(args, "pack_gate_timeout", 600),
+                        verbose=verbose,
+                    ),
+                ),
+            ])
+        elif verbose:
+            print("[review] restore gate blocked analyzer/pack gates.",
+                  file=sys.stderr)
+        if not restore_handled:
+            gates.append((
                 "nuget-gate",
                 lambda: _run_nuget_restore_gate(
                     result, args.path,
                     timeout=getattr(args, "nuget_gate_timeout", 300),
                     verbose=verbose,
                 ),
-            ),
-            (
-                "pack-gate",
-                lambda: _run_uipcli_pack_gate(
-                    result, args.path,
-                    timeout=getattr(args, "pack_gate_timeout", 600),
-                    verbose=verbose,
-                ),
-            ),
+            ))
+        elif verbose:
+            print("[review] official restore handled dependency gate; "
+                  "legacy NuGet gate skipped.", file=sys.stderr)
+        gates.extend([
             # runtime-loadtest gate REMOVIDO (2026-05-30): o harness caseiro
             # (.NET ActivityXamlServices.Load) carregava cada XAML ISOLADO, sem o
             # contexto do projeto (refs de pacote, VB imports, escopo de args do
@@ -697,7 +880,7 @@ def _cmd_review(args) -> int:
                     verbose=verbose,
                 ),
             ),
-        ]
+        ])
         # Phase 6 (2026-05): executor-validate gate é OPT-IN via env var.
         # Caro (15-300s/XAML), em projetos Windows target emite só INFRA.
         # Habilita só quando há caso real de drift pack-gate-only não pega.
@@ -710,21 +893,22 @@ def _cmd_review(args) -> int:
                     verbose=verbose,
                 ),
             ))
-        with ThreadPoolExecutor(max_workers=len(gates)) as ex:
-            future_to_name = {ex.submit(fn): name for name, fn in gates}
-            for fut in as_completed(future_to_name):
-                name = future_to_name[fut]
-                try:
-                    fut.result()
-                    if verbose:
-                        print(f"[{name}] complete", file=sys.stderr)
-                except Exception as e:
-                    # Gate failure não derruba review — emit finding diagnóstico.
-                    result.add_internal_error(
-                        f"{name} raised {type(e).__name__}: {e}"
-                    )
-                    print(f"[{name}] FAILED: {type(e).__name__}: {e}",
-                          file=sys.stderr)
+        if gates:
+            with ThreadPoolExecutor(max_workers=len(gates)) as ex:
+                future_to_name = {ex.submit(fn): name for name, fn in gates}
+                for fut in as_completed(future_to_name):
+                    name = future_to_name[fut]
+                    try:
+                        fut.result()
+                        if verbose:
+                            print(f"[{name}] complete", file=sys.stderr)
+                    except Exception as e:
+                        # Gate failure não derruba review — emit finding diagnóstico.
+                        result.add_internal_error(
+                            f"{name} raised {type(e).__name__}: {e}"
+                        )
+                        print(f"[{name}] FAILED: {type(e).__name__}: {e}",
+                              file=sys.stderr)
     elif getattr(args, "verbose", False):
         print("[review] UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES set — "
               "skipping analyzer/nuget/pack gates.", file=sys.stderr)
@@ -829,6 +1013,41 @@ _SICOOB_LIB_CONTRACT_OVERRIDES = [
 ]
 
 
+def _official_uip_enabled() -> bool:
+    import os as _os
+    return _os.environ.get("UIP_TOOLCHAIN_USE_OFFICIAL_UIP", "1").strip().lower() not in (
+        "0", "false", "no", "legacy",
+    )
+
+
+def _write_official_nuget_config(base_dir: Path) -> Path | None:
+    """Create a NuGet sources config for official `uip rpa` commands."""
+    import os as _os
+
+    ccs_nupkgs = _os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
+        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
+    )
+    if not Path(ccs_nupkgs).is_dir():
+        return None
+
+    base_dir.mkdir(parents=True, exist_ok=True)
+    cfg = base_dir / "NuGet.config"
+    nuget_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<configuration>\n'
+        '  <packageSources>\n'
+        '    <clear />\n'
+        f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
+        '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
+        '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
+        '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
+        '  </packageSources>\n'
+        '</configuration>\n'
+    )
+    cfg.write_text(nuget_xml, encoding="utf-8")
+    return cfg
+
+
 def _apply_sicoob_lib_overrides(result, verbose: bool = False) -> int:
     """Downgrade findings que casam (rule_id, identifier) em LIB_CONTRACT_OVERRIDES.
 
@@ -854,6 +1073,419 @@ def _apply_sicoob_lib_overrides(result, verbose: bool = False) -> int:
     if verbose and count:
         print(f"[lib-contract-override] {count} findings downgraded.", file=sys.stderr)
     return count
+
+
+def _add_analyzer_record_finding(result, raw: dict, *, source: str = "analyzer") -> bool:
+    """Convert one analyzer record into a CCS Finding."""
+    from ._types import Finding
+
+    sev_str = raw.get("ErrorSeverity") or ""
+    sev = _ANALYZER_SEVERITY_MAP.get(sev_str)
+    if sev is None:
+        sev = _ANALYZER_SEVERITY_MAP.get(str(sev_str).title())
+    if sev is None:
+        sev = Severity.ERROR
+    code = raw.get("ErrorCode") or "LOAD"
+    fp = raw.get("FilePath") or ""
+    item = raw.get("Item") or ""
+    act = raw.get("ActivityDisplayName") or ""
+    desc = (raw.get("Description") or "").strip()
+    category = "uipath"
+    policy_note = _ANALYZER_SICOOB_POLICY.get(code)
+    if policy_note is not None:
+        sev = Severity.INFO
+        category = "uipath_sicoob_policy"
+        desc = f"{desc} | POLICY-ACEITA: {policy_note}"
+    else:
+        scope = _ANALYZER_TEST_SCOPE_WHITELIST.get(code)
+        if scope is not None:
+            substrs, scope_note = scope
+            if any(s in fp for s in substrs):
+                sev = Severity.INFO
+                category = "uipath_test_scope"
+                desc = f"{desc} | SCOPE-WHITELIST: {scope_note}"
+        fw_scope = _ANALYZER_FRAMEWORK_SCOPE_WHITELIST.get(code)
+        if fw_scope is not None and category == "uipath":
+            substrs, scope_note = fw_scope
+            if any(s in fp for s in substrs):
+                sev = Severity.INFO
+                category = "uipath_framework_scope"
+                desc = f"{desc} | FRAMEWORK-WHITELIST: {scope_note}"
+    msg_parts = [desc or f"{source} reported {code}"]
+    if item:
+        msg_parts.append(f"[{item}]")
+    if act:
+        msg_parts.append(f"@{act}")
+    result.add(Finding(
+        rule_id=f"UIPATH:{code}",
+        severity=sev,
+        category=category,
+        file=fp or "(project)",
+        line=0,
+        message=" ".join(msg_parts),
+    ))
+    return category != "uipath"
+
+
+def _add_official_uip_diagnostic(result, diagnostic, *, source: str) -> None:
+    """Convert an official CLI compatibility/failure diagnostic into a finding."""
+    from ._types import Finding
+
+    sev = Severity.ERROR
+    if str(getattr(diagnostic, "severity", "")).lower() == "warning":
+        sev = Severity.WARN
+    result.add(Finding(
+        rule_id=f"UIPATH:{diagnostic.code}",
+        severity=sev,
+        category="breaking" if sev == Severity.ERROR else "metadata",
+        file=getattr(diagnostic, "file", "project.json") or "project.json",
+        line=0,
+        message=f"[{source}] {diagnostic.message}",
+    ))
+
+
+def _check_official_uip_compatibility(result, official: Path, *, source: str) -> bool:
+    """Return True when official CLI is compatible enough to run the gate."""
+    from .official_uip import compatibility_diagnostic, get_official_uip_version
+
+    diagnostic = compatibility_diagnostic(get_official_uip_version(str(official)))
+    if diagnostic is None:
+        return True
+    _add_official_uip_diagnostic(result, diagnostic, source=source)
+    return str(diagnostic.severity).lower() != "error"
+
+
+def _run_official_restore_gate(result, project_root: Path, timeout: int,
+                               verbose: bool) -> tuple[bool, bool]:
+    """Run official `uip rpa restore` before analyze/pack.
+
+    Returns `(handled, blocked)`: handled means official CLI was available and
+    attempted/diagnosed; blocked means findings were added that should stop
+    later official analyzer/pack gates for this review run.
+    """
+    import tempfile
+    import shutil as _shutil
+    from ._types import Finding
+    from .official_uip import (
+        diagnose_official_uip_failure,
+        discover_official_uip,
+        official_failure_text,
+        run_official_uip,
+    )
+
+    if not _official_uip_enabled():
+        return False, False
+    official = discover_official_uip()
+    if official is None:
+        return False, False
+    if not _check_official_uip_compatibility(result, official, source="RESTORE-GATE"):
+        return True, True
+
+    engine_root = Path(__file__).resolve().parents[2]
+    base_tmp = engine_root / ".tmp" / "official_uip_restore"
+    base_tmp.mkdir(parents=True, exist_ok=True)
+    tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="restore_"))
+    outdir = tmpdir / "deps"
+    try:
+        nuget_config = _write_official_nuget_config(tmpdir)
+        args = ["rpa", "restore", str(project_root), str(outdir), "--output", "json"]
+        if nuget_config is not None:
+            args.extend(["--nuget-sources-config-path", str(nuget_config)])
+        if verbose:
+            print(f"[RESTORE-GATE] running official uip rpa restore via {official}",
+                  file=sys.stderr)
+        try:
+            res = run_official_uip(args, timeout=timeout, uip_path=official)
+        except Exception as exc:
+            result.add(Finding(
+                rule_id="UIPATH:RESTORE_HALT",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"[RESTORE-GATE] official uip rpa restore failed: "
+                        f"{type(exc).__name__}: {exc}",
+            ))
+            print(f"[RESTORE-GATE] official uip rpa restore failed: {exc}",
+                  file=sys.stderr)
+            return True, True
+
+        if res.returncode == 0:
+            if verbose:
+                print("[RESTORE-GATE] official uip rpa restore OK", file=sys.stderr)
+            return True, False
+
+        diagnostics = diagnose_official_uip_failure(
+            official_failure_text(res),
+            "rpa restore",
+        )
+        for diagnostic in diagnostics:
+            _add_official_uip_diagnostic(result, diagnostic, source="RESTORE-GATE")
+        if not diagnostics:
+            msg = ""
+            if res.envelope is not None:
+                msg = res.envelope.message or res.envelope.instructions or ""
+            if not msg:
+                msg = (res.stderr or res.stdout).strip().splitlines()[-1:] or [""]
+                msg = msg[0]
+            result.add(Finding(
+                rule_id="UIPATH:RESTORE_HALT",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"[RESTORE-GATE] official uip rpa restore exit "
+                        f"{res.returncode}: {str(msg)[:400]}",
+            ))
+        return True, True
+    finally:
+        _shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _cmd_doctor_uipath_cli(args) -> int:
+    """Check local official UiPath CLI readiness for CCS external gates."""
+    import os as _os
+    import shutil as _shutil
+    import subprocess
+    from .official_uip import (
+        compatibility_diagnostic,
+        discover_official_uip,
+        get_official_uip_version,
+        parse_uip_envelope,
+        run_official_uip,
+    )
+    from .migrate import find_migrator
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    official = discover_official_uip()
+    if official is None:
+        errors.append("official `uip` not found. Install @uipath/cli or set UIPATH_UIP_CLI.")
+        print("official uip: NOT FOUND")
+        return EXIT_ERROR
+
+    print(f"official uip: {official}")
+    version = get_official_uip_version(str(official))
+    if version is None:
+        warnings.append("could not read `uip --version`")
+        print("uip version: UNKNOWN")
+    else:
+        print(f"uip version: {version.raw}")
+    diag = compatibility_diagnostic(version)
+    if diag is not None:
+        target = errors if str(diag.severity).lower() == "error" else warnings
+        target.append(diag.message)
+
+    try:
+        tools = run_official_uip(
+            ["tools", "list", "--output", "json"],
+            timeout=60,
+            uip_path=official,
+        )
+    except Exception as exc:
+        errors.append(f"`uip tools list` failed: {type(exc).__name__}: {exc}")
+        tools = None
+    if tools is not None:
+        envelope = tools.envelope or parse_uip_envelope(tools.stdout)
+        rpa_tool = None
+        if envelope is not None and isinstance(envelope.data, list):
+            for item in envelope.data:
+                if isinstance(item, dict) and item.get("commandPrefix") == "rpa":
+                    rpa_tool = item
+                    break
+        if rpa_tool is None:
+            errors.append("rpa-tool not installed; run `uip tools update`.")
+            print("rpa-tool: NOT FOUND")
+        else:
+            print(f"rpa-tool: {rpa_tool.get('version')}")
+
+    node = _shutil.which("node")
+    if node:
+        try:
+            proc = subprocess.run(
+                [node, "--version"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            node_version = (proc.stdout or proc.stderr).strip()
+            print(f"node: {node_version} ({node})")
+            major = int(node_version.lstrip("v").split(".", 1)[0])
+            if major < 18:
+                errors.append(f"Node.js {node_version} is below official CLI requirement >=18.")
+        except Exception as exc:
+            warnings.append(f"could not read node version: {type(exc).__name__}: {exc}")
+    else:
+        errors.append("node not found on PATH; official UiPath CLI requires Node.js >=18.")
+        print("node: NOT FOUND")
+
+    dotnet = None
+    explicit_dotnet_root = _os.environ.get("UIP_TOOLCHAIN_DOTNET_ROOT")
+    if explicit_dotnet_root:
+        explicit_dotnet = Path(explicit_dotnet_root) / "dotnet.exe"
+        if explicit_dotnet.is_file():
+            dotnet = str(explicit_dotnet)
+    if dotnet is None:
+        home_dotnet = Path.home() / ".dotnet" / "dotnet.exe"
+        if home_dotnet.is_file():
+            dotnet = str(home_dotnet)
+    if dotnet is None:
+        dotnet = _shutil.which("dotnet")
+    if dotnet:
+        try:
+            proc = subprocess.run(
+                [dotnet, "--version"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            dotnet_version = (proc.stdout or proc.stderr).strip()
+            print(f"dotnet: {dotnet_version} ({dotnet})")
+            major = int(dotnet_version.split(".", 1)[0])
+            if major < 8:
+                warnings.append(
+                    f".NET SDK {dotnet_version} found; rpa-tool may require .NET 8 for current commands."
+                )
+        except Exception as exc:
+            warnings.append(f"could not read dotnet version: {type(exc).__name__}: {exc}")
+    else:
+        warnings.append(".NET SDK not found on PATH or ~/.dotnet; rpa-tool may fail.")
+        print("dotnet: NOT FOUND")
+
+    migrator = find_migrator(None)
+    if migrator is None:
+        errors.append(
+            "UiPath Activity Migrator not found. Provide tools/UiPathActivityMigrator, "
+            "vendor/UiPathActivityMigrator, or UIPATH_ACTIVITY_MIGRATOR."
+        )
+        print("activity migrator: NOT FOUND")
+    else:
+        try:
+            stat = migrator.stat()
+            print(
+                f"activity migrator: {migrator} "
+                f"({round(stat.st_size / 1024 / 1024, 1)} MB)"
+            )
+        except OSError:
+            print(f"activity migrator: {migrator}")
+
+    for warning in warnings:
+        print(f"WARN: {warning}")
+    for error in errors:
+        print(f"ERROR: {error}")
+
+    return EXIT_ERROR if errors else EXIT_OK
+
+
+def _inject_official_analyzer_findings(result, project_root: Path, timeout: int,
+                                       verbose: bool) -> bool:
+    """Run official `uip rpa analyze`. Returns True when official CLI handled it."""
+    import os as _os
+    import tempfile
+    import shutil as _shutil
+    from ._types import Finding
+    from .official_uip import (
+        discover_official_uip,
+        iter_analyzer_records,
+        run_official_uip,
+    )
+
+    if not _official_uip_enabled():
+        return False
+    official = discover_official_uip()
+    if official is None:
+        return False
+    if not _check_official_uip_compatibility(result, official, source="analyzer-gate"):
+        return True
+
+    engine_root = Path(__file__).resolve().parents[2]
+    base_tmp = engine_root / ".tmp" / "official_uip_analyze"
+    base_tmp.mkdir(parents=True, exist_ok=True)
+    tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="analyze_"))
+    try:
+        nuget_config = _write_official_nuget_config(tmpdir)
+        detailed_log = tmpdir / "analyze.log"
+        args = [
+            "rpa", "analyze", str(project_root),
+            "--output", "json",
+            "--detailed-log-path", str(detailed_log),
+        ]
+        if nuget_config is not None:
+            args.extend(["--nuget-sources-config-path", str(nuget_config)])
+        governance = _os.environ.get("UIPATH_GOVERNANCE_FILE_PATH")
+        if governance:
+            args.extend(["--governance-file-path", governance])
+            gtype = _os.environ.get("UIPATH_GOVERNANCE_FILE_TYPE")
+            if gtype:
+                args.extend(["--governance-file-type", gtype])
+        if verbose:
+            print(f"[analyzer-gate] running official uip rpa analyze via {official}",
+                  file=sys.stderr)
+        try:
+            res = run_official_uip(args, timeout=timeout, uip_path=official)
+        except Exception as exc:
+            result.add(Finding(
+                rule_id="UIPATH:ANALYZE_HALT",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"[analyzer-gate] official uip rpa analyze failed: "
+                        f"{type(exc).__name__}: {exc}",
+            ))
+            print(f"[analyzer-gate] official uip rpa analyze failed: {exc}",
+                  file=sys.stderr)
+            return True
+
+        injected = 0
+        downgraded = 0
+        for raw in iter_analyzer_records(res.envelope):
+            if _add_analyzer_record_finding(result, raw, source="uip rpa analyze"):
+                downgraded += 1
+            injected += 1
+
+        if res.returncode != 0 and injected == 0:
+            from .official_uip import diagnose_official_uip_failure, official_failure_text
+
+            diagnostics = diagnose_official_uip_failure(
+                official_failure_text(res),
+                "rpa analyze",
+            )
+            for diagnostic in diagnostics:
+                _add_official_uip_diagnostic(result, diagnostic, source="analyzer-gate")
+            if diagnostics:
+                injected += len(diagnostics)
+        if res.returncode != 0 and injected == 0:
+            msg = ""
+            if res.envelope is not None:
+                msg = res.envelope.message or res.envelope.instructions or ""
+            if not msg:
+                msg = (res.stderr or res.stdout).strip().splitlines()[-1:] or [""]
+                msg = msg[0]
+            result.add(Finding(
+                rule_id="UIPATH:ANALYZE_HALT",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"[analyzer-gate] official uip rpa analyze exit "
+                        f"{res.returncode}: {str(msg)[:400]}",
+            ))
+            injected += 1
+        if verbose:
+            print(f"[analyzer-gate] official uip injected {injected} findings "
+                  f"({downgraded} downgraded; exit {res.returncode}).",
+                  file=sys.stderr)
+        return True
+    finally:
+        _shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
@@ -887,6 +1519,9 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
         if verbose:
             print(f"[analyzer-gate] no project.json at {project_root} — skipped.",
                   file=sys.stderr)
+        return
+
+    if _inject_official_analyzer_findings(result, project_root, timeout, verbose):
         return
 
     # Pre-flight: uipcli responsive + cloud reachable. Severity = ERROR —
@@ -946,57 +1581,8 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     injected = 0
     policy_downgraded = 0
     for raw in issues:
-        sev_str = raw.get("ErrorSeverity") or ""
-        sev = _ANALYZER_SEVERITY_MAP.get(sev_str)
-        if sev is None:
-            continue
-        code = raw.get("ErrorCode") or "LOAD"
-        fp = raw.get("FilePath") or ""
-        item = raw.get("Item") or ""
-        act = raw.get("ActivityDisplayName") or ""
-        desc = (raw.get("Description") or "").strip()
-        # Policy override Sicoob — declared whitelist (not mass-suppress).
-        category = "uipath"
-        policy_note = _ANALYZER_SICOOB_POLICY.get(code)
-        if policy_note is not None:
-            sev = Severity.INFO
-            category = "uipath_sicoob_policy"
-            desc = f"{desc} | POLICY-ACEITA: {policy_note}"
+        if _add_analyzer_record_finding(result, raw, source="uipcli analyze"):
             policy_downgraded += 1
-        else:
-            # Path-scoped whitelist (rule X is OK em paths Y).
-            scope = _ANALYZER_TEST_SCOPE_WHITELIST.get(code)
-            if scope is not None:
-                substrs, scope_note = scope
-                if any(s in fp for s in substrs):
-                    sev = Severity.INFO
-                    category = "uipath_test_scope"
-                    desc = f"{desc} | SCOPE-WHITELIST: {scope_note}"
-                    policy_downgraded += 1
-            # Framework/* scope whitelist (REFramework template — A-4 protegido).
-            fw_scope = _ANALYZER_FRAMEWORK_SCOPE_WHITELIST.get(code)
-            if fw_scope is not None and category == "uipath":
-                substrs, scope_note = fw_scope
-                if any(s in fp for s in substrs):
-                    sev = Severity.INFO
-                    category = "uipath_framework_scope"
-                    desc = f"{desc} | FRAMEWORK-WHITELIST: {scope_note}"
-                    policy_downgraded += 1
-        # Compose readable message
-        msg_parts = [desc]
-        if item:
-            msg_parts.append(f"[{item}]")
-        if act:
-            msg_parts.append(f"@{act}")
-        msg = " ".join(msg_parts)
-        result.add(Finding(
-            rule_id=f"UIPATH:{code}",
-            severity=sev,
-            category=category,
-            file=fp or "(project)",
-            line=0,
-            message=msg,
-        ))
         injected += 1
 
     for code, desc in nu_errors:
@@ -1171,6 +1757,123 @@ _PACK_ERROR_ANCHORS = (
 )
 
 
+def _run_official_pack_gate(result, project_root: Path, timeout: int,
+                            verbose: bool) -> bool:
+    """Run official `uip rpa pack`. Returns True when official CLI handled it."""
+    import tempfile
+    import shutil as _shutil
+    from ._types import Finding
+    from .official_uip import discover_official_uip, iter_analyzer_records, run_official_uip
+
+    if not _official_uip_enabled():
+        return False
+    official = discover_official_uip()
+    if official is None:
+        return False
+    if not _check_official_uip_compatibility(result, official, source="PACK-GATE"):
+        return True
+
+    engine_root = Path(__file__).resolve().parents[2]
+    base_tmp = engine_root / ".tmp" / "official_uip_pack"
+    base_tmp.mkdir(parents=True, exist_ok=True)
+    tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="pack_"))
+    outdir = tmpdir / "out"
+    outdir.mkdir(parents=True, exist_ok=True)
+    project_json = project_root / "project.json"
+    project_json_pre_bytes = project_json.read_bytes() if project_json.is_file() else None
+    try:
+        nuget_config = _write_official_nuget_config(tmpdir)
+        detailed_log = tmpdir / "pack.log"
+        args = [
+            "rpa", "pack", str(project_root), str(outdir),
+            "--output", "json",
+            "--detailed-log-path", str(detailed_log),
+        ]
+        if nuget_config is not None:
+            args.extend(["--nuget-sources-config-path", str(nuget_config)])
+        if verbose:
+            print(f"[PACK-GATE] running official uip rpa pack via {official}",
+                  file=sys.stderr)
+        try:
+            res = run_official_uip(args, timeout=timeout, uip_path=official)
+        except Exception as exc:
+            result.add(Finding(
+                rule_id="UIPATH:PACK_HALT",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"[PACK-GATE] official uip rpa pack failed: "
+                        f"{type(exc).__name__}: {exc}",
+            ))
+            print(f"[PACK-GATE] official uip rpa pack failed: {exc}",
+                  file=sys.stderr)
+            return True
+
+        injected = 0
+        for raw in iter_analyzer_records(res.envelope):
+            _add_analyzer_record_finding(result, raw, source="uip rpa pack")
+            injected += 1
+
+        output = "\n".join(
+            part for part in (
+                res.stdout,
+                res.stderr,
+                res.envelope.message if res.envelope is not None else "",
+                res.envelope.instructions if res.envelope is not None else "",
+            )
+            if part
+        )
+        injected += _parse_pack_output_and_inject(result, output, project_root)
+
+        if res.returncode != 0 and injected == 0:
+            from .official_uip import diagnose_official_uip_failure, official_failure_text
+
+            diagnostics = diagnose_official_uip_failure(
+                official_failure_text(res),
+                "rpa pack",
+            )
+            for diagnostic in diagnostics:
+                _add_official_uip_diagnostic(result, diagnostic, source="PACK-GATE")
+            if diagnostics:
+                injected += len(diagnostics)
+        if res.returncode != 0 and injected == 0:
+            fallback_msg = ""
+            for line in reversed(output.splitlines()):
+                s = line.strip()
+                if s:
+                    fallback_msg = s
+                    break
+            result.add(Finding(
+                rule_id="UIPATH:PACK",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=f"official uip rpa pack returned exit {res.returncode}. "
+                        f"Last line: {fallback_msg[:300]}",
+            ))
+            injected += 1
+        if verbose:
+            print(f"[PACK-GATE] official uip injected {injected} findings "
+                  f"(exit {res.returncode}).", file=sys.stderr)
+        return True
+    finally:
+        if project_json_pre_bytes is not None:
+            try:
+                if project_json.read_bytes() != project_json_pre_bytes:
+                    project_json.write_bytes(project_json_pre_bytes)
+                    if verbose:
+                        print("[PACK-GATE] restored project.json "
+                              "(official uip rpa pack mutou source — revertido)",
+                              file=sys.stderr)
+            except OSError as exc:
+                if verbose:
+                    print(f"[PACK-GATE] cannot restore project.json: {exc}",
+                          file=sys.stderr)
+        _shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                           verbose: bool = False) -> None:
     """Run `uipcli publish` to a local tmpdir as a pack dry-run.
@@ -1202,6 +1905,9 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
         if verbose:
             print(f"[PACK-GATE] no project.json at {project_root} — skipped.",
                   file=sys.stderr)
+        return
+
+    if _run_official_pack_gate(result, project_root, timeout, verbose):
         return
 
     # Fix #5 (2026-05): cache pack-gate. Re-runs consecutivos sem mudança em
@@ -1858,10 +2564,12 @@ def _cmd_fix(args) -> int:
     if analyzer_gate_enabled:
         from .analyzer import (discover_uipcli, run_analyzer,
                                 load_cached_baseline, save_cached_baseline)
+        from .official_uip import discover_official_uip
         analyzer_cli_path = discover_uipcli()
-        if analyzer_cli_path is None:
-            print("# analyzer-gate: uipcli não encontrado. Defina UIPATH_STUDIO_CLI ou "
-                  "instale UiPath Studio. Skipping gate.")
+        official_uip_path = discover_official_uip() if _official_uip_enabled() else None
+        if analyzer_cli_path is None and official_uip_path is None:
+            print("# analyzer-gate: official uip/Studio uipcli não encontrado. "
+                  "Defina UIPATH_UIP_CLI ou UIPATH_STUDIO_CLI. Skipping gate.")
         else:
             # Cache lookup (F27): re-run consecutivos paga só uipcli post-diff.
             analyzer_baseline = load_cached_baseline(project_root)
@@ -1869,7 +2577,15 @@ def _cmd_fix(args) -> int:
                 print(f"# analyzer-gate: baseline cache HIT "
                       f"({len(analyzer_baseline)} issues). Skipping baseline run.")
             else:
-                print(f"# analyzer-gate: baseline run via {analyzer_cli_path.name}...")
+                if official_uip_path is not None:
+                    fallback = (
+                        f" (fallback: {analyzer_cli_path.name})"
+                        if analyzer_cli_path is not None else ""
+                    )
+                    print("# analyzer-gate: baseline run via official uip rpa analyze"
+                          f"{fallback}...")
+                else:
+                    print(f"# analyzer-gate: baseline run via {analyzer_cli_path.name}...")
                 analyzer_baseline = run_analyzer(project_root, analyzer_cli_path)
                 if analyzer_baseline is None:
                     print("# analyzer-gate: baseline failed/timeout. Skipping gate.")
@@ -2159,7 +2875,12 @@ def _cmd_fix(args) -> int:
             f" (retry {analyzer_retry}/{ANALYZER_GATE_MAX_RETRIES})"
             if analyzer_retry > 0 else ""
         )
-        print(f"\n# analyzer-gate: post-fix re-run{retry_tag}...")
+        runner_label = (
+            "official uip rpa analyze"
+            if _official_uip_enabled() else
+            (analyzer_cli_path.name if analyzer_cli_path is not None else "analyzer")
+        )
+        print(f"\n# analyzer-gate: post-fix re-run via {runner_label}{retry_tag}...")
         analyzer_post = run_analyzer(project_root, analyzer_cli_path)
         if analyzer_post is None:
             print("# analyzer-gate: post run failed/timeout. Diff incomplete.")
@@ -2298,8 +3019,27 @@ def _cmd_fix(args) -> int:
                 continue
             if path.resolve() in frozen_files:
                 continue  # já rollback'd em retry anterior
+            if _is_project_metadata_snapshot_path(path, project_root):
+                print(
+                    "# analyzer-gate: preservando metadata em rollback "
+                    f"granular: {path.name}"
+                )
+                continue
             try:
-                path.write_bytes(pre_bytes)
+                current_bytes = path.read_bytes() if path.exists() else b""
+                if path.suffix.lower() == ".xaml":
+                    rollback_bytes = _rollback_bytes_preserving_refs_namespaces(
+                        pre_bytes,
+                        current_bytes,
+                    )
+                    if rollback_bytes != pre_bytes:
+                        print(
+                            "# analyzer-gate: rollback preservou refs/imports "
+                            f"em {path.name}"
+                        )
+                else:
+                    rollback_bytes = pre_bytes
+                path.write_bytes(rollback_bytes)
                 rolled_back_paths.append(path)
             except OSError as e:
                 rollback_failed.append((path.name, str(e)))
@@ -2328,19 +3068,44 @@ def _cmd_fix(args) -> int:
                                 "# analyzer-gate: ATTRIBUTE rollback candidate "
                                 f"{path.name}: {snippet}"
                             )
-                            path.write_bytes(pre_bytes)
+                            rollback_bytes = (
+                                _rollback_bytes_preserving_refs_namespaces(
+                                    pre_bytes,
+                                    path.read_bytes(),
+                                )
+                            )
+                            if rollback_bytes != pre_bytes:
+                                print(
+                                    "# analyzer-gate: rollback preservou "
+                                    f"refs/imports em {path.name}"
+                                )
+                            path.write_bytes(rollback_bytes)
                             rolled_back_paths.append(path)
                 except OSError as e:
                     rollback_failed.append((path.name, str(e)))
 
+        metadata_or_cli_infra_only = (
+            bool(new_errs)
+            and all(_is_analyzer_metadata_or_cli_infra_issue(i) for i in new_errs)
+        )
+
         # FULL-SNAPSHOT fallback: granular rollback falhou (err_files vazio
         # ou todos basenames ausentes do snapshot — típico de analyzer-error
         # project-level sem FilePath, ex.: "Não foi possível realizar análise
-        # do projeto"). Engine NUNCA pode deixar projeto pior que estado
-        # pré-fix loop — restaura TODOS arquivos relevantes divergentes desde
-        # snapshot e remove arquivos novos criados pelo fix loop.
+        # do projeto"). Engine NUNCA pode deixar XAML/config pior que estado
+        # pré-fix loop. Project metadata is intentionally excluded here:
+        # dependency pins and manifests are governed by restore/pack gates and
+        # rolling them back would hide the real remaining dependency diagnosis.
         # Regression test: pilot contestacao-de-compras (5/27) — granular
         # rollback nunca disparou pq err_files = {""} (FilePath vazio).
+        if not rolled_back_paths and metadata_or_cli_infra_only:
+            print(
+                "# analyzer-gate: erro metadata/infra-only da CLI oficial; "
+                "sem FULL-SNAPSHOT rollback de XAML. Diagnóstico segue para "
+                "PHASE 2."
+            )
+            break
+
         if not rolled_back_paths and new_errs:
             print(
                 "# analyzer-gate: granular rollback inexequível "
@@ -2350,10 +3115,42 @@ def _cmd_fix(args) -> int:
             for path, pre_bytes in pre_loop_bytes.items():
                 if path.resolve() in frozen_files:
                     continue
+                if _is_project_metadata_snapshot_path(path, project_root):
+                    continue
                 try:
-                    if not path.exists() or path.read_bytes() != pre_bytes:
+                    if not path.exists():
                         path.write_bytes(pre_bytes)
                         rolled_back_paths.append(path)
+                        continue
+                    current_bytes = path.read_bytes()
+                    if current_bytes == pre_bytes:
+                        continue
+                    if (
+                        path.suffix.lower() == ".xaml"
+                        and _is_reference_namespace_only_delta(
+                            pre_bytes, current_bytes
+                        )
+                    ):
+                        print(
+                            "# analyzer-gate: preservando refs/imports "
+                            f"em rollback amplo: {path.name}"
+                        )
+                        continue
+                    rollback_bytes = (
+                        _rollback_bytes_preserving_refs_namespaces(
+                            pre_bytes,
+                            current_bytes,
+                        )
+                        if path.suffix.lower() == ".xaml"
+                        else pre_bytes
+                    )
+                    if rollback_bytes != pre_bytes:
+                        print(
+                            "# analyzer-gate: rollback preservou refs/imports "
+                            f"em {path.name}"
+                        )
+                    path.write_bytes(rollback_bytes)
+                    rolled_back_paths.append(path)
                 except OSError as e:
                     rollback_failed.append((path.name, str(e)))
             for path in _iter_analyzer_snapshot_paths(project_root):
@@ -2362,6 +3159,8 @@ def _cmd_fix(args) -> int:
                 except OSError:
                     continue
                 if resolved in pre_loop_bytes or resolved in frozen_files:
+                    continue
+                if _is_project_metadata_snapshot_path(path, project_root):
                     continue
                 try:
                     path.unlink()
@@ -2682,6 +3481,7 @@ _GATE_INTEGRITY_BLOCKING_RULES = frozenset({
     "UIPATH:PREFLIGHT",       # uipcli não encontrado / project.json missing
     "UIPATH:ANALYZE_HALT",    # uipcli analyze hung/timeout
     "UIPATH:PACK_HALT",       # uipcli publish hung/timeout
+    "UIPATH:CLI_REQUIRED_PACKAGE_MISSING",  # dependência obrigatória ausente
 })
 
 
@@ -2755,7 +3555,7 @@ def _is_blocking_error(finding, rule_index) -> bool:
 
 
 def _classify_deploy_blockers(result, rule_index) -> list:
-    """Findings que bloqueiam deploy no contrato público `uip <path>`.
+    """Findings que bloqueiam deploy no contrato público `ccs-uip <path>`.
 
     Contextual/structural ERRORs aparecem como notas em PASS-WITH-NOTES, mas
     não entram nesta lista. HALT sempre bloqueia porque indica política crítica
@@ -2771,7 +3571,7 @@ def _classify_deploy_blockers(result, rule_index) -> list:
 
 
 def _print_uip_header(project: Path, iter_no: int) -> None:
-    print(f"\n[uip] {project.name} — iter {iter_no}")
+    print(f"\n[ccs-uip] {project.name} — iter {iter_no}")
     print("=" * (8 + len(project.name) + 12))
 
 
@@ -2790,7 +3590,7 @@ def _print_status(status: str, *, project: Path, apply_contextual: bool) -> None
         else:
             print("[PASS-WITH-NOTES] sem blockers. Contextual findings são "
                   "informacionais — projeto deploy-safe.")
-            print(f"  Opt-in fix: uip {project} --apply-contextual")
+            print(f"  Opt-in fix: ccs-uip {project} --apply-contextual")
     elif status == "FAIL":
         print("[FAIL] deploy blockers residuais.")
 
@@ -2846,7 +3646,7 @@ def _cmd_all(args) -> int:
         print(f"[BOOT] orphan engine-temp NuGet.config removed from {project.name}",
               file=sys.stderr)
 
-    # Interface pública = `uip <path> [--apply-contextual]`. Demais settings
+    # Interface pública = `ccs-uip <path> [--apply-contextual]`. Demais settings
     # são intrínsecos: defaults internos sobreescritos só via env vars
     # (escape hatches debug) ou via `_ns(...)` direto (tests).
     import os as _os_all

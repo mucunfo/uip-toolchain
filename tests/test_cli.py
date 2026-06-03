@@ -2,6 +2,7 @@
 from pathlib import Path
 import subprocess
 import sys
+import tomllib
 import pytest
 from uip_engine import cli
 
@@ -77,26 +78,29 @@ def test_cli_validate_command_checks_schema(tmp_path):
     assert proc.returncode >= 10  # internal error range
 
 
-def test_uip_public_help_only_documents_two_modes(capsys):
-    rc = cli.uip_main(["--help"])
+def test_ccs_uip_public_help_only_documents_two_modes(capsys):
+    rc = cli.ccs_uip_main(["--help"])
 
     out = capsys.readouterr().out
     assert rc == cli.EXIT_OK
-    assert "uip <project_path> [--apply-contextual]" in out
-    assert "uip <subcommand>" not in out
+    assert "ccs-uip <project_path> [--apply-contextual]" in out
+    assert "ccs-uip <subcommand>" not in out
+    assert "  uip <project_path>" not in out
+    assert "`uip <project_path>`" not in out
     assert "python -m uip_engine.cli <subcommand>" in out
 
 
-def test_uip_rejects_internal_subcommands(capsys):
-    rc = cli.uip_main(["review", "C:/tmp/project"])
+def test_ccs_uip_rejects_internal_subcommands(capsys):
+    rc = cli.ccs_uip_main(["review", "C:/tmp/project"])
 
     captured = capsys.readouterr()
     assert rc == cli.EXIT_ERROR
     assert "não é interface pública" in captured.err
+    assert "ccs-uip review" in captured.err
     assert "python -m uip_engine.cli review" in captured.err
 
 
-def test_uip_path_injects_all(monkeypatch):
+def test_ccs_uip_path_injects_all(monkeypatch):
     calls = []
 
     def fake_main(argv):
@@ -104,8 +108,17 @@ def test_uip_path_injects_all(monkeypatch):
         return cli.EXIT_OK
 
     monkeypatch.setattr(cli, "main", fake_main)
+    monkeypatch.setenv("UIP_TOOLCHAIN_SKIP_DOCTOR", "1")
 
-    rc = cli.uip_main(["C:/tmp/project", "--apply-contextual"])
+    rc = cli.ccs_uip_main(["C:/tmp/project", "--apply-contextual"])
 
     assert rc == cli.EXIT_OK
     assert calls == [["all", "C:/tmp/project", "--apply-contextual"]]
+
+
+def test_public_console_script_reserves_uip_for_official_cli():
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts = metadata["project"]["scripts"]
+
+    assert scripts["ccs-uip"] == "uip_engine.cli:ccs_uip_main"
+    assert "uip" not in scripts

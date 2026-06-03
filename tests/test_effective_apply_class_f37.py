@@ -9,7 +9,7 @@ Cobertura:
   - Rule deterministic + fix_mechanical=None → contextual (PENDING)
   - Rule contextual → contextual (existing)
   - Rule structural → structural (existing)
-  - Gate-injected UIPATH:PREFLIGHT/ANALYZE_HALT/PACK_HALT → deterministic (blocking)
+  - Gate-injected UIPATH:PREFLIGHT/ANALYZE_HALT/PACK_HALT/CLI_REQUIRED_PACKAGE_MISSING → deterministic (blocking)
   - Gate-injected UIPATH:LOAD/ST-SEC-008/PACK → contextual (PENDING)
   - Gate-injected NU1605 → contextual (PENDING)
 """
@@ -107,6 +107,7 @@ def test_structural_rule_never_blocks():
     "UIPATH:PREFLIGHT",
     "UIPATH:ANALYZE_HALT",
     "UIPATH:PACK_HALT",
+    "UIPATH:CLI_REQUIRED_PACKAGE_MISSING",
 ])
 def test_pipeline_integrity_unknown_rules_block(rid):
     """Pipeline-integrity rule_ids = engine não pôde validar projeto.

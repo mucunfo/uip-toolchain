@@ -73,10 +73,16 @@ pins:
   - id: D-1i
     package: UiPath.Mail.Activities
     exact: "1.24.2"
+    required_when_assemblies:
+      - UiPath.Mail
+      - UiPath.Mail.Activities
+      - UiPath.Mail.Activities.Design
 
   - id: D-1j
     package: UiPath.MicrosoftOffice365.Activities
     exact: "2.7.24"
+    required_when_assemblies:
+      - UiPath.MicrosoftOffice365.Activities
 
   - id: D-1k
     package: UiPath.OCR.Activities
@@ -100,4 +106,17 @@ pins:
 
   - id: D-1p
     package: UiPath.ComputerVision.LocalServer
-    exact: "21.10.1"
+    exact: "25.10.0"
+    required_when_xaml_patterns:
+      - 'UseLocalServer="True"'
+    rationale: |
+      Projetos Windows com UIAutomation 25.x e OCR/CV local precisam do
+      LocalServer alinhado à stack 25.x. O pin 21.10.1 declara CoreIpc legacy e
+      faz a CLI oficial 1.1.0 parar antes do analyzer com erro CoreIPC.
+
+  - id: D-1r
+    package: UiPath.CoreIpc
+    exact: "2.0.1"
+    rationale: |
+      Pin conhecido para projetos que ainda declarem CoreIpc diretamente. Não
+      deve ser auto-adicionado para ComputerVision.LocalServer 25.x.

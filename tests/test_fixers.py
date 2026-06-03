@@ -7,6 +7,13 @@ from uip_engine.fixers import (
     apply_rename_invoke_arg_key,
     apply_expand_self_closed_inarg,
     apply_strip_string_quotes_numeric_default,
+    apply_wrap_typed_empty_array_literal,
+    apply_strip_terminal_vb_line_continuation,
+    apply_strip_string_format_tostring_with_delimiter,
+    apply_expand_read_as_datatable_signature,
+    apply_rewrite_ccs_sipagdirect_legacy_login,
+    apply_rewrite_ntake_screenshot_to_classic,
+    apply_set_dependency_pin,
     REGISTRY,
 )
 
@@ -45,6 +52,273 @@ def test_regex_replace_no_match_returns_false(tmp_path):
     f.write_text("nothing to change")
     spec = {"type": "regex_replace", "pattern": "X", "replacement": "Y"}
     assert apply_regex_replace(f, spec, dry_run=False) is False
+
+
+def test_set_dependency_pin_normalizes_package_casing(tmp_path):
+    f = tmp_path / "project.json"
+    f.write_text(
+        '{"dependencies": {"UiPath.CoreIPC": "[2.0.1]"}}',
+        encoding="utf-8",
+    )
+    changed = apply_set_dependency_pin(
+        f,
+        {
+            "type": "set_dependency_pin",
+            "package": "UiPath.CoreIpc",
+            "version": "[2.0.1]",
+        },
+        dry_run=False,
+    )
+    assert changed is True
+    text = f.read_text(encoding="utf-8")
+    assert "UiPath.CoreIpc" in text
+    assert "UiPath.CoreIPC" not in text
+
+
+def test_regex_replace_w16_preserves_isnull_method(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity Condition="[foo.IsNullOrEmpty OrElse bar.IsNullOrWhiteSpace]" />',
+        encoding="utf-8",
+    )
+    spec = {
+        "type": "regex_replace",
+        "pattern": (
+            r'(?<![A-Za-z_:.])'
+            r'(?![Ss]tring\.IsNullOr(?:Empty|WhiteSpace)\b)'
+            r'([a-zA-Z_]\w*)\.(IsNullOrEmpty|IsNullOrWhiteSpace)\b'
+        ),
+        "replacement": r"String.\2(\1)",
+    }
+    assert apply_regex_replace(f, spec, dry_run=False) is True
+    assert (
+        'Condition="[String.IsNullOrEmpty(foo) OrElse String.IsNullOrWhiteSpace(bar)]"'
+        in f.read_text(encoding="utf-8")
+    )
+
+
+def test_regex_replace_w39_system_net_webutility(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Assign To="[out_St]" Value="[Net.WebUtility.HtmlDecode(in_St)]" />',
+        encoding="utf-8",
+    )
+    spec = {
+        "type": "regex_replace",
+        "pattern": r"(?<![A-Za-z0-9_.])Net\.WebUtility\b",
+        "replacement": "System.Net.WebUtility",
+    }
+    assert apply_regex_replace(f, spec, dry_run=False) is True
+    assert "System.Net.WebUtility.HtmlDecode" in f.read_text(encoding="utf-8")
+
+
+def test_rewrite_ntake_screenshot_to_classic_preserves_outimage(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:uix="http://schemas.uipath.com/workflow/activities/uix" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
+        '  <uix:NTakeScreenshot DisplayName="Take screenshot" '
+        'sap2010:WorkflowViewState.IdRef="TakeScreenshot_1" '
+        'OutImage="[Screenshot]" Version="V5" />\n'
+        '</Activity>',
+        encoding="utf-8",
+    )
+    assert apply_rewrite_ntake_screenshot_to_classic(f, {}, dry_run=False) is True
+    out = f.read_text(encoding="utf-8")
+    assert "<uix:NTakeScreenshot" not in out
+    assert '<ui:TakeScreenshot DisplayName="Take screenshot"' in out
+    assert 'Screenshot="[Screenshot]"' in out
+    assert 'WaitBefore="{x:Null}"' in out
+
+
+def test_rewrite_ntake_screenshot_to_classic_maps_inuielement_target(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="http://schemas.uipath.com/workflow/activities" '
+        'xmlns:uix="http://schemas.uipath.com/workflow/activities/uix">\n'
+        '  <uix:NTakeScreenshot DisplayName="Take Screenshot" '
+        'InUiElement="[vUIFormato]" OutImage="[vImgObjFormato]" Version="V4" />\n'
+        '</Activity>',
+        encoding="utf-8",
+    )
+    assert apply_rewrite_ntake_screenshot_to_classic(f, {}, dry_run=False) is True
+    out = f.read_text(encoding="utf-8")
+    assert '<ui:TakeScreenshot.Target>' in out
+    assert '<ui:Target Element="[vUIFormato]" />' in out
+    assert 'Screenshot="[vImgObjFormato]"' in out
+
+
+def test_wrap_typed_empty_array_literal_default(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:umm="clr-namespace:UiPath.MicrosoftOffice365.Models;assembly=UiPath.MicrosoftOffice365">'
+        '<Variable x:TypeArguments="umm:Office365Message[]" '
+        'Default="[{}]" Name="vArrMail" />',
+        encoding="utf-8",
+    )
+
+    assert apply_wrap_typed_empty_array_literal(f, {}, dry_run=False) is True
+    assert (
+        'Default="[New UiPath.MicrosoftOffice365.Models.Office365Message() {}]"'
+        in f.read_text(encoding="utf-8")
+    )
+
+
+def test_wrap_typed_nonempty_array_literal_default(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Variable x:TypeArguments="s:String[]" '
+        'Default="[{&quot;dd/MM/yyyy HH:mm:ss&quot;, &quot;dd/MM/yyyy&quot;}]" '
+        'Name="vArrFormatos" />',
+        encoding="utf-8",
+    )
+
+    assert apply_wrap_typed_empty_array_literal(f, {}, dry_run=False) is True
+    assert (
+        'Default="[New String() {&quot;dd/MM/yyyy HH:mm:ss&quot;, &quot;dd/MM/yyyy&quot;}]"'
+        in f.read_text(encoding="utf-8")
+    )
+
+
+def test_wrap_typed_empty_array_literal_inargument(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<InArgument x:TypeArguments="s:String[]" x:Key="in_Arr">[{}]</InArgument>',
+        encoding="utf-8",
+    )
+
+    assert apply_wrap_typed_empty_array_literal(f, {}, dry_run=False) is True
+    assert ">[New String() {}]</InArgument>" in f.read_text(encoding="utf-8")
+
+
+def test_wrap_typed_nonempty_array_literal_inargument(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<InArgument x:TypeArguments="s:String[]" '
+        'x:Key="in_Arr">[{"Settings","Constants"}]</InArgument>',
+        encoding="utf-8",
+    )
+
+    assert apply_wrap_typed_empty_array_literal(f, {}, dry_run=False) is True
+    assert (
+        '>[New String() {"Settings","Constants"}]</InArgument>'
+        in f.read_text(encoding="utf-8")
+    )
+
+
+def test_wrap_typed_visualbasicvalue_corrupt_empty_array(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<mva:VisualBasicValue x:TypeArguments="s:String[]" ExpressionText="{}{}" />',
+        encoding="utf-8",
+    )
+
+    assert apply_wrap_typed_empty_array_literal(f, {}, dry_run=False) is True
+    assert 'ExpressionText="New String() {}"' in f.read_text(encoding="utf-8")
+
+
+def test_strip_terminal_vb_line_continuation(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity><FlowDecision Condition="[(foo IsNot Nothing) _]" />'
+        '<Assign Value="[foo_]" /></Activity>',
+        encoding="utf-8",
+    )
+
+    assert apply_strip_terminal_vb_line_continuation(f, {}, dry_run=False) is True
+    content = f.read_text(encoding="utf-8")
+    assert 'Condition="[(foo IsNot Nothing) ]"' in content
+    assert 'Value="[foo_]"' in content
+
+
+def test_strip_terminal_vb_line_continuation_dry_run(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = '<Activity><FlowDecision Condition="[(foo) _&#xA;]" /></Activity>'
+    f.write_text(original, encoding="utf-8")
+
+    assert apply_strip_terminal_vb_line_continuation(f, {}, dry_run=True) is True
+    assert f.read_text(encoding="utf-8") == original
+
+
+def test_strip_string_format_tostring_with_delimiter(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity><uix:TargetApp Selector="[(String.Format(&quot;&lt;wnd title='
+        "'{0}' /&gt;&quot;, in_Title)).ToStringWithDelimiter()]\" />"
+        '<Assign Value="[items.ToStringWithDelimiter()]" /></Activity>',
+        encoding="utf-8",
+    )
+
+    assert apply_strip_string_format_tostring_with_delimiter(f, {}, dry_run=False) is True
+    content = f.read_text(encoding="utf-8")
+    assert "String.Format" in content
+    assert "String.Format(&quot;" in content
+    assert ")).ToStringWithDelimiter()" not in content
+    assert "items.ToStringWithDelimiter()" in content
+
+
+def test_expand_read_as_datatable_signature(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<If Condition="[CurrentSheet.ReadAsDataTable(True,False,Nothing).Columns.Contains(&quot;X&quot;)]" />',
+        encoding="utf-8",
+    )
+
+    assert apply_expand_read_as_datatable_signature(f, {}, dry_run=False) is True
+    assert (
+        "CurrentSheet.ReadAsDataTable(True,False,Nothing,False,Nothing).Columns"
+        in f.read_text(encoding="utf-8")
+    )
+
+
+def test_expand_read_as_datatable_signature_ignores_already_expanded(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = (
+        '<If Condition="[CurrentSheet.ReadAsDataTable(True,False,Nothing,False,Nothing).Columns.Contains(&quot;X&quot;)]" />'
+    )
+    f.write_text(original, encoding="utf-8")
+
+    assert apply_expand_read_as_datatable_signature(f, {}, dry_run=False) is False
+    assert f.read_text(encoding="utf-8") == original
+
+
+def test_rewrite_ccs_sipagdirect_legacy_login(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:cs="clr-namespace:CCS_SipagDirect.Sessão;assembly=CCS_SipagDirect">'
+        '<x:String>CCS_SipagDirect.Sessão</x:String>'
+        '<cs:LoginSipagDirect in_SSSenha="[vSenha]" '
+        'in_StUrlSipagDirect="[in_Config(&quot;URLSipagDirect&quot;).ToString]" '
+        'in_StUsuario="[vUsuario]" />'
+        '</Activity>',
+        encoding="utf-8",
+    )
+
+    assert apply_rewrite_ccs_sipagdirect_legacy_login(f, {}, dry_run=False) is True
+    content = f.read_text(encoding="utf-8")
+    assert 'xmlns:cs="clr-namespace:CCS_SipagDirect;assembly=CCS_SipagDirect"' in content
+    assert "<x:String>CCS_SipagDirect</x:String>" in content
+    assert "<cs:Login " in content
+    assert "in_Senha=" in content
+    assert "in_URL=" in content
+    assert "in_Usuario=" in content
+    assert "LoginSipagDirect" not in content
+
+
+def test_rewrite_ccs_sipagdirect_legacy_login_preserves_local_property(tmp_path):
+    f = tmp_path / "x.xaml"
+    original = (
+        '<Activity x:Class="LoginSipagDirect" xmlns:this="clr-namespace:">'
+        '<this:LoginSipagDirect.in_StPrefixoLog>'
+        '<InArgument x:TypeArguments="x:String" />'
+        '</this:LoginSipagDirect.in_StPrefixoLog>'
+        '</Activity>'
+    )
+    f.write_text(original, encoding="utf-8")
+
+    assert apply_rewrite_ccs_sipagdirect_legacy_login(f, {}, dry_run=False) is False
+    assert f.read_text(encoding="utf-8") == original
 
 
 # ---- rename_attribute ----
