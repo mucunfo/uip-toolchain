@@ -1035,8 +1035,15 @@ def apply_set_dependency_pin(file: Path, spec: dict, dry_run: bool = True) -> bo
     deps = data.get("dependencies")
     if not isinstance(deps, dict):
         return False
-    if deps.get(package) == version:
+    existing_key = None
+    for key in deps:
+        if str(key).lower() == str(package).lower():
+            existing_key = key
+            break
+    if existing_key == package and deps.get(package) == version:
         return False
+    if existing_key is not None and existing_key != package:
+        deps.pop(existing_key, None)
     deps[package] = version
     new_text = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     if not dry_run:
@@ -3222,6 +3229,259 @@ def apply_wrap_arrayrow_object(file: Path, spec: dict, dry_run: bool = True,
     return True
 
 
+@register("wrap_typed_empty_array_literal")
+def apply_wrap_typed_empty_array_literal(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """W-12 fixer: `[{...}]` in `x:TypeArguments="T[]"` -> `[New T() {...}]`.
+
+    VB array literals often cannot infer an element type under Option Strict.
+    When XAML declares the array type locally, the conversion is mechanical:
+    `s:String[]` becomes `New String() {...}` and
+    `umm:Office365Message[]` becomes `New UiPath...Office365Message() {...}`.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+
+    primitive_aliases = {
+        "String": "String",
+        "Boolean": "Boolean",
+        "Int16": "Short",
+        "Int32": "Integer",
+        "Int64": "Long",
+        "Double": "Double",
+        "Decimal": "Decimal",
+        "DateTime": "Date",
+        "Object": "Object",
+    }
+
+    def vb_type(array_type: str) -> str:
+        element_type = array_type.strip()[:-2].strip()
+        if ":" not in element_type:
+            return primitive_aliases.get(element_type, element_type)
+
+        prefix, name = element_type.split(":", 1)
+        if prefix in {"x", "s"} and name in primitive_aliases:
+            return primitive_aliases[name]
+
+        ns_m = re.search(
+            rf'\bxmlns:{re.escape(prefix)}="clr-namespace:([^;"]+)',
+            content,
+        )
+        if ns_m:
+            return f"{ns_m.group(1)}.{name}"
+        return element_type
+
+    def expr(array_type: str, items: str = "") -> str:
+        element_type = vb_type(array_type)
+        return f"[New {element_type}() {{{items}}}]"
+
+    def expr_inner(array_type: str, items: str = "") -> str:
+        return expr(array_type, items)[1:-1]
+
+    tag_pat = re.compile(
+        r"<[^<>]*\bDefault=\"\[\{(?P<items>[^\"<>]*?)\}\]\"[^<>]*>"
+    )
+
+    def repl_default(m: re.Match) -> str:
+        tag = m.group(0)
+        type_m = re.search(r'\bx:TypeArguments="([^"]+\[\])"', tag)
+        if not type_m:
+            return tag
+        items = m.group("items")
+        if items.lstrip().startswith("New "):
+            return tag
+        return tag.replace(
+            f'Default="[{{{items}}}]"',
+            f'Default="{expr(type_m.group(1), items)}"',
+        )
+
+    vbvalue_pat = re.compile(
+        r"<[^<>]*\bx:TypeArguments=\"(?P<type>[^\"]+\[\])\""
+        r"[^<>]*\bExpressionText=\"\{\}\{\}\"[^<>]*>"
+    )
+
+    def repl_vbvalue(m: re.Match) -> str:
+        tag = m.group(0)
+        return tag.replace(
+            'ExpressionText="{}{}"',
+            f'ExpressionText="{expr_inner(m.group("type"))}"',
+        )
+
+    elem_pat = re.compile(
+        r'(<(?P<tag>[A-Za-z_][\w:.-]*)\b[^>]*'
+        r'\bx:TypeArguments="(?P<type>[^"]+\[\])"[^>]*>)'
+        r'\[\{(?P<items>[^<>\r\n]*?)\}\]'
+        r'(</(?P=tag)>)'
+    )
+
+    def repl_element(m: re.Match) -> str:
+        if m.group("items").lstrip().startswith("New "):
+            return m.group(0)
+        return f"{m.group(1)}{expr(m.group('type'), m.group('items'))}{m.group(5)}"
+
+    new_content = tag_pat.sub(repl_default, content)
+    new_content = vbvalue_pat.sub(repl_vbvalue, new_content)
+    new_content = elem_pat.sub(repl_element, new_content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        raw = file.read_bytes()
+        prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
+        file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("strip_terminal_vb_line_continuation")
+def apply_strip_terminal_vb_line_continuation(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """W-35 fixer: remove terminal VB line-continuation `_` before `]`.
+
+    Example:
+      `Condition="[(foo) _]"` -> `Condition="[(foo) ]"`
+
+    The matcher requires whitespace or encoded XML whitespace before `_`, so
+    identifiers ending with underscore are preserved.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    pat = re.compile(
+        r'(?P<prefix>(?:[ \t\r\n]|&#x(?:A|D|9);|&#(?:10|13|9);)+)'
+        r'_'
+        r'(?P<suffix>(?:[ \t\r\n]|&#x(?:A|D|9);|&#(?:10|13|9);)*)'
+        r'\]'
+    )
+    new_content, n = pat.subn(r'\g<prefix>\g<suffix>]', content)
+    if n == 0 or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("strip_string_format_tostring_with_delimiter")
+def apply_strip_string_format_tostring_with_delimiter(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """W-36 fixer: remove legacy `.ToStringWithDelimiter()` after String.Format.
+
+    The Windows compiler sees the receiver as String and raises BC30456. In
+    selector attributes generated as `String.Format(...).ToStringWithDelimiter()`
+    the delimiter call is a legacy no-op.
+    """
+    content = file.read_text(encoding="utf-8-sig")
+    pat = re.compile(
+        r'(?P<receiver>\(?[sS]tring\.Format\([^]]*?\)\)?)'
+        r'\.ToStringWithDelimiter\(\)'
+    )
+    lines = content.splitlines(keepends=True)
+    changed = False
+    new_lines: list[str] = []
+    for line in lines:
+        if "ToStringWithDelimiter()" in line and re.search(r'(?i)string\.format\(', line):
+            new_line = pat.sub(r'\g<receiver>', line)
+            changed = changed or new_line != line
+            new_lines.append(new_line)
+        else:
+            new_lines.append(line)
+    if not changed:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, "".join(new_lines), _file_has_bom(file))
+    return True
+
+
+@register("expand_read_as_datatable_signature")
+def apply_expand_read_as_datatable_signature(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """W-37 fixer: `.ReadAsDataTable(a,b,c)` -> 5-argument Excel 3.x call."""
+    content = file.read_text(encoding="utf-8-sig")
+    pat = re.compile(
+        r'\.ReadAsDataTable\('
+        r'(?P<a1>[^(),\r\n]+),'
+        r'(?P<a2>[^(),\r\n]+),'
+        r'(?P<a3>[^(),\r\n]+)'
+        r'\)'
+    )
+
+    def repl(m: re.Match) -> str:
+        return (
+            ".ReadAsDataTable("
+            f"{m.group('a1')},{m.group('a2')},{m.group('a3')},False,Nothing)"
+        )
+
+    new_content = pat.sub(repl, content)
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+@register("rewrite_ccs_sipagdirect_legacy_login")
+def apply_rewrite_ccs_sipagdirect_legacy_login(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """W-38 fixer: CCS_SipagDirect.Sessão.LoginSipagDirect -> CCS_SipagDirect.Login."""
+    content = file.read_text(encoding="utf-8-sig")
+    new_content = content
+    new_content = new_content.replace(
+        "clr-namespace:CCS_SipagDirect.Sessão;assembly=CCS_SipagDirect",
+        "clr-namespace:CCS_SipagDirect;assembly=CCS_SipagDirect",
+    )
+    new_content = new_content.replace(
+        "clr-namespace:CCS_SipagDirect.Sessao;assembly=CCS_SipagDirect",
+        "clr-namespace:CCS_SipagDirect;assembly=CCS_SipagDirect",
+    )
+    new_content = new_content.replace(
+        "<x:String>CCS_SipagDirect.Sessão</x:String>",
+        "<x:String>CCS_SipagDirect</x:String>",
+    )
+    new_content = new_content.replace(
+        "<x:String>CCS_SipagDirect.Sessao</x:String>",
+        "<x:String>CCS_SipagDirect</x:String>",
+    )
+    new_content = re.sub(
+        r'<(?P<prefix>[A-Za-z_]\w*):LoginSipagDirect(?=[\s/>])',
+        r'<\g<prefix>:Login',
+        new_content,
+    )
+    new_content = re.sub(
+        r'</(?P<prefix>[A-Za-z_]\w*):LoginSipagDirect>',
+        r'</\g<prefix>:Login>',
+        new_content,
+    )
+    arg_map = {
+        "in_StUrlSipagDirect": "in_URL",
+        "in_StUsuario": "in_Usuario",
+        "in_SSSenha": "in_Senha",
+    }
+    for old, new in arg_map.items():
+        new_content = re.sub(rf'\b{re.escape(old)}=', f"{new}=", new_content)
+
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
 @register("strip_empty_ocrengine_block")
 def apply_strip_empty_ocrengine_block(file: Path, spec: dict, dry_run: bool = True,
                                        project_root: Path | None = None) -> bool:
@@ -3854,6 +4114,198 @@ def apply_strip_xml_attribute(file: Path, spec: dict, dry_run: bool = True,
         raw = file.read_bytes()
         prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
         file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("remove_sharepoint_2x_current_user_probe")
+def apply_remove_sharepoint_2x_current_user_probe(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """SP-7: remove legacy CSOM current-user probe left by SharePoint 1.x."""
+    var = (spec or {}).get("variable")
+    if not var or not re.fullmatch(r"[A-Za-z_]\w*", var):
+        return False
+    content = file.read_text(encoding="utf-8-sig")
+    original = content
+
+    content = re.sub(
+        rf'\s*<Variable\b(?=[^>]*\bx:TypeArguments="msc:User")'
+        rf'(?=[^>]*\bName="{re.escape(var)}")[^>]*/>\s*',
+        "\n",
+        content,
+        count=1,
+    )
+    content = re.sub(
+        rf'\s*<usa:GetWebLoginUser\b'
+        rf'(?=[^>]*\bSharePointUser="\[{re.escape(var)}\]")[^>]*/>\s*',
+        "\n",
+        content,
+        count=1,
+    )
+    content = re.sub(
+        rf'\+If\(\s*{re.escape(var)}\s+IsNot\s+Nothing,'
+        rf'\s*[^]]*?{re.escape(var)}\.Email[^]]*?\)',
+        "",
+        content,
+        count=1,
+        flags=re.DOTALL,
+    )
+    content = re.sub(
+        r'\s*<Sequence\.Variables>\s*</Sequence\.Variables>\s*',
+        "\n",
+        content,
+        count=1,
+    )
+
+    if content == original:
+        return False
+    if re.search(rf"(?<![A-Za-z0-9_]){re.escape(var)}(?![A-Za-z0-9_])", content):
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, content, _file_has_bom(file))
+    return True
+
+
+def _has_msc_runtime_usage(content: str) -> bool:
+    without_xmlns = re.sub(r'\s+xmlns:msc="[^"]+"', "", content, count=1)
+    return "msc:" in without_xmlns
+
+
+@register("remove_stale_csom_imports_and_refs")
+def apply_remove_stale_csom_imports_and_refs(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """SP-8: remove stale Microsoft.SharePoint.Client imports/refs."""
+    content = file.read_text(encoding="utf-8-sig")
+    if _has_msc_runtime_usage(content):
+        return False
+    original = content
+    content = re.sub(
+        r'\s+xmlns:msc="clr-namespace:Microsoft\.SharePoint\.Client;'
+        r'assembly=Microsoft\.SharePoint\.Client"',
+        "",
+        content,
+        count=1,
+    )
+    content = re.sub(
+        r'\s*<x:String>Microsoft\.SharePoint\.Client(?:\.Runtime)?</x:String>\s*',
+        "\n",
+        content,
+    )
+    content = re.sub(
+        r'\s*<AssemblyReference>Microsoft\.SharePoint\.Client(?:\.Runtime)?'
+        r'</AssemblyReference>\s*',
+        "\n",
+        content,
+    )
+    if content == original:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, content, _file_has_bom(file))
+    return True
+
+
+_XAML_ATTR_RE = re.compile(r'([A-Za-z_][\w:.-]*)\s*=\s*"([^"]*)"')
+
+
+def _xaml_attrs(text: str) -> dict[str, str]:
+    return {m.group(1): m.group(2) for m in _XAML_ATTR_RE.finditer(text)}
+
+
+def _classic_target_from_ntake(attrs: dict[str, str], body: str, indent: str) -> str:
+    element = attrs.get("InUiElement")
+    target_attrs: list[str] = []
+    if element:
+        target_attrs.append(f'Element="{element}"')
+    else:
+        target_match = re.search(
+            r'<uix:TargetAnchorable\b(?P<attrs>[^>]*)/?>',
+            body,
+            flags=re.DOTALL,
+        )
+        if target_match:
+            tattrs = _xaml_attrs(target_match.group("attrs"))
+            full = tattrs.get("FullSelectorArgument")
+            scope = tattrs.get("ScopeSelectorArgument")
+            selector = ""
+            if full and not full.startswith("["):
+                selector = (scope or "") + full if scope and not scope.startswith("[") else full
+            if selector:
+                target_attrs.append(f'Selector="{selector}"')
+            for old, new in (
+                ("InformativeScreenshot", "InformativeScreenshot"),
+                ("Reference", "Reference"),
+                ("ContentHash", "ContentHash"),
+            ):
+                if old in tattrs:
+                    target_attrs.append(f'{new}="{tattrs[old]}"')
+    if not target_attrs:
+        return ""
+    inner = indent + "  "
+    return (
+        ">\n"
+        f"{inner}<ui:TakeScreenshot.Target>\n"
+        f"{inner}  <ui:Target {' '.join(target_attrs)} />\n"
+        f"{inner}</ui:TakeScreenshot.Target>\n"
+        f"{indent}</ui:TakeScreenshot>"
+    )
+
+
+def _rewrite_ntake_match(match: re.Match) -> str:
+    indent = match.group("indent") or ""
+    attrs = _xaml_attrs(match.group("attrs") or "")
+    body = match.groupdict().get("body") or ""
+    keep: list[str] = []
+    for attr in (
+        "DisplayName",
+        "sap:VirtualizedContainerService.HintSize",
+        "sap2010:WorkflowViewState.IdRef",
+        "ContinueOnError",
+    ):
+        if attr in attrs:
+            keep.append(f'{attr}="{attrs[attr]}"')
+    if attrs.get("OutImage"):
+        keep.append(f'Screenshot="{attrs["OutImage"]}"')
+    keep.append('WaitBefore="{x:Null}"')
+    target = _classic_target_from_ntake(attrs, body, indent)
+    open_tag = f"{indent}<ui:TakeScreenshot {' '.join(keep)}"
+    if target:
+        return open_tag + target
+    return open_tag + " />"
+
+
+@register("rewrite_ntake_screenshot_to_classic")
+def apply_rewrite_ntake_screenshot_to_classic(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """D-PINALERT: downgrade UIA Next NTakeScreenshot to classic screenshot."""
+    content = file.read_text(encoding="utf-8-sig")
+    original = content
+    pair_re = re.compile(
+        r'(?P<indent>[ \t]*)<uix:NTakeScreenshot(?!\.)\b'
+        r'(?P<attrs>[^>]*?)(?<!/)>(?P<body>.*?)</uix:NTakeScreenshot>',
+        flags=re.DOTALL,
+    )
+    self_re = re.compile(
+        r'(?P<indent>[ \t]*)<uix:NTakeScreenshot(?!\.)\b'
+        r'(?P<attrs>[^>]*)/>',
+        flags=re.DOTALL,
+    )
+    content = pair_re.sub(_rewrite_ntake_match, content)
+    content = self_re.sub(_rewrite_ntake_match, content)
+    if content == original:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, content, _file_has_bom(file))
     return True
 
 

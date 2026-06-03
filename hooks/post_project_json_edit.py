@@ -46,8 +46,8 @@ def main() -> int:
 
     # Hook = feedback rápido pós-edit (não pre-publish gate). Desabilita gates
     # externos (uipcli analyze/nuget/pack — 180+300+600s) que estouram qualquer
-    # timeout do hook. Só detectores python. Pre-publish completo = `uip
-    # <project>` separado.
+    # timeout do hook. Só detectores python. Pre-publish completo =
+    # `ccs-uip <project>` separado.
     env = {**os.environ, "UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES": "1"}
     try:
         proc = subprocess.run(

@@ -6,7 +6,7 @@ from other logs.
 
 OFFLINE: delega para `llm_validator.validate_messages`, que desde 2026-05-30 é
 uma HEURÍSTICA PURA em Python — NÃO chama `claude -p` nem qualquer LLM/rede/
-subprocess. `uip` é 100% script offline. Opt-out via env `UIP_TOOLCHAIN_NO_LLM=1`.
+subprocess. `ccs-uip` é 100% script offline. Opt-out via env `UIP_TOOLCHAIN_NO_LLM=1`.
 """
 from __future__ import annotations
 

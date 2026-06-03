@@ -154,7 +154,7 @@ def test_gate_persistent_regression_exits_after_retries(
     fake_project: Path, monkeypatch, capsys, disable_baseline_cache
 ):
     """Regression persiste em file fora do snapshot → FULL-SNAPSHOT fallback
-    reverte tudo modificado (engine NUNCA deixa projeto pior) → loop sai
+    reverte XAML/config modificado (engine NUNCA deixa workflow pior) → loop sai
     gracefully, EXIT_OK.
 
     Atualizado 2026-05-27: pré-fix esse caso simplesmente abortava com
@@ -167,7 +167,6 @@ def test_gate_persistent_regression_exits_after_retries(
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
-    project_json_baseline = (fake_project / "project.json").read_bytes()
     call_log: list = []
 
     def fake_run(project_root, cli_path, **kwargs):
@@ -189,10 +188,8 @@ def test_gate_persistent_regression_exits_after_retries(
     # Mensagem "granular rollback inexequível" sinaliza fallback ativo
     assert "rollback inexequível" in out
     assert "FULL-SNAPSHOT rollback" in out
-    # Bad.xaml restaurado pra estado pré-loop (engine NUNCA deixa pior)
+    # Bad.xaml restaurado pra estado pré-loop (engine NUNCA deixa workflow pior)
     assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
-    assert (fake_project / "project.json").read_bytes() == project_json_baseline
-    assert not (fake_project / ".gitignore").exists()
 
 
 def test_gate_empty_filepath_triggers_full_snapshot_rollback(
@@ -209,7 +206,6 @@ def test_gate_empty_filepath_triggers_full_snapshot_rollback(
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
-    project_json_baseline = (fake_project / "project.json").read_bytes()
     call_log: list = []
 
     def fake_run(project_root, cli_path, **kwargs):
@@ -234,8 +230,245 @@ def test_gate_empty_filepath_triggers_full_snapshot_rollback(
     )
     # Bad.xaml restaurado mesmo sem basename match
     assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
-    assert (fake_project / "project.json").read_bytes() == project_json_baseline
-    assert not (fake_project / ".gitignore").exists()
+
+
+def test_full_snapshot_rollback_preserves_project_metadata_pins(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """Project-level analyzer regressions must not undo dependency fixes.
+
+    This emulates a deterministic D-2/project.json pin fix followed by an
+    analyzer error with empty FilePath. The XAML fallback should restore XAML
+    bytes, but the dependency metadata must remain available to restore/pack
+    gates instead of being reverted to stale pins.
+    """
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
+    project_json = fake_project / "project.json"
+    fixed_project_json = """{
+  "name": "test",
+  "studioVersion": "23.10.13",
+  "targetFramework": "Windows",
+  "expressionLanguage": "VisualBasic",
+  "dependencies": {
+    "UiPath.System.Activities": "[25.4.4]"
+  }
+}
+"""
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        if len(call_log) == 1:
+            return set()
+        project_json.write_text(fixed_project_json, encoding="utf-8")
+        return {_make_issue("", "ST-PROJECT-LEVEL", "Error",
+                            "Não foi possível realizar análise")}
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+
+    assert rc == _cli.EXIT_OK
+    assert "FULL-SNAPSHOT rollback" in out
+    assert (fake_project / "Bad.xaml").read_bytes() == baseline_bytes
+    assert project_json.read_text(encoding="utf-8") == fixed_project_json
+
+
+def test_granular_rollback_preserves_project_metadata_pins(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """Analyzer FilePath=project.json must not revert deterministic pins."""
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    project_json = fake_project / "project.json"
+    fixed_project_json = """{
+  "name": "test",
+  "studioVersion": "23.10.13",
+  "targetFramework": "Windows",
+  "expressionLanguage": "VisualBasic",
+  "dependencies": {
+    "UiPath.System.Activities": "[25.4.4]"
+  }
+}
+"""
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        if len(call_log) == 1:
+            return set()
+        project_json.write_text(fixed_project_json, encoding="utf-8")
+        return {_make_issue("project.json", "ST-PROJECT-JSON", "Error",
+                            "Analyze failed")}
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+
+    assert rc == _cli.EXIT_OK
+    assert "preservando metadata em rollback granular" in out
+    assert project_json.read_text(encoding="utf-8") == fixed_project_json
+
+
+def test_cli_assembly_missing_does_not_full_snapshot_rollback_xamls(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """Official CLI dependency/restore infra errors must not undo XAML fixes."""
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        if len(call_log) == 1:
+            return set()
+        return {
+            _make_issue(
+                "project.json",
+                "CLI_ASSEMBLY_MISSING",
+                "Error",
+                "official uip rpa analyze cannot load assembly "
+                "'Microsoft.VisualStudio.Services.Common'",
+            )
+        }
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+
+    assert rc == _cli.EXIT_OK
+    assert "metadata/infra-only" in out
+    assert "granular rollback inexequível" not in out
+    assert (fake_project / "Bad.xaml").read_bytes() != baseline_bytes
+
+
+def test_full_snapshot_rollback_preserves_reference_only_xaml_delta(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """Fallback rollback must not undo W-11/ENV ref/import-only fixes.
+
+    When analyzer reports a project-level error with no FilePath, the engine
+    cannot know the culprit. It should still roll back functional XAML changes,
+    but preserve XAMLs whose only delta is TextExpression refs/imports so those
+    deterministic blockers do not reappear in PHASE 2.
+    """
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    refs = fake_project / "RefsOnly.xaml"
+    refs.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<Activity x:Class="RefsOnly" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.ObjectModel"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <TextExpression.ReferencesForImplementation>
+    <sco:Collection x:TypeArguments="AssemblyReference">
+      <AssemblyReference>System</AssemblyReference>
+    </sco:Collection>
+  </TextExpression.ReferencesForImplementation>
+  <Sequence />
+</Activity>
+""",
+        encoding="utf-8",
+    )
+    bad_baseline = (fake_project / "Bad.xaml").read_bytes()
+    refs_baseline = refs.read_text(encoding="utf-8")
+    refs_fixed = refs_baseline.replace(
+        "      <AssemblyReference>System</AssemblyReference>\n",
+        "      <AssemblyReference>System</AssemblyReference>\n"
+        "      <AssemblyReference>System.Security</AssemblyReference>\n",
+    )
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        if len(call_log) == 1:
+            return set()
+        refs.write_text(refs_fixed, encoding="utf-8")
+        return {_make_issue("", "ST-PROJECT-LEVEL", "Error",
+                            "Não foi possível realizar análise")}
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+
+    assert rc == _cli.EXIT_OK
+    assert "FULL-SNAPSHOT rollback" in out
+    assert "preservando refs/imports" in out
+    assert (fake_project / "Bad.xaml").read_bytes() == bad_baseline
+    assert refs.read_text(encoding="utf-8") == refs_fixed
+
+
+def test_granular_rollback_preserves_current_refs_imports(
+    fake_project: Path, monkeypatch, capsys, disable_baseline_cache
+):
+    """Per-file rollback should keep W-11/ENV blocks from current XAML."""
+    monkeypatch.setattr(
+        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+    )
+
+    bad = fake_project / "Bad.xaml"
+    bad.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<Activity x:Class="Foo" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:sco="clr-namespace:System.Collections.ObjectModel;assembly=System.ObjectModel"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members />
+  <TextExpression.ReferencesForImplementation>
+    <sco:Collection x:TypeArguments="AssemblyReference">
+      <AssemblyReference>System</AssemblyReference>
+    </sco:Collection>
+  </TextExpression.ReferencesForImplementation>
+  <Sequence />
+</Activity>
+""",
+        encoding="utf-8",
+    )
+    baseline_text = bad.read_text(encoding="utf-8")
+    current_ref = "      <AssemblyReference>System.Security</AssemblyReference>\n"
+    call_log: list = []
+
+    def fake_run(project_root, cli_path, **kwargs):
+        call_log.append("run")
+        if len(call_log) == 1:
+            return set()
+        current = bad.read_text(encoding="utf-8")
+        if "System.Security" not in current:
+            current = current.replace(
+                "      <AssemblyReference>System</AssemblyReference>\n",
+                "      <AssemblyReference>System</AssemblyReference>\n"
+                + current_ref,
+            )
+            bad.write_text(current, encoding="utf-8")
+        if len(call_log) > 2:
+            return set()
+        return {_make_issue("Bad.xaml", "ST-FAKE-001", "Error")}
+
+    monkeypatch.setattr(_analyzer, "run_analyzer", fake_run)
+
+    rc = _cli._cmd_fix(_mk_fix_args(fake_project))
+    out = capsys.readouterr().out
+    after = bad.read_text(encoding="utf-8")
+
+    assert rc == _cli.EXIT_OK
+    assert "rollback preservou refs/imports" in out
+    assert current_ref.strip() in after
+    assert "<x:Members />" in after
+    assert after != baseline_text
 
 
 def test_parse_analyzer_output_infers_file_from_empty_filepath_description():
@@ -344,6 +577,27 @@ def test_parse_analyzer_output_infers_bare_xaml_basename_from_prose():
     assert {i.file for i in issues} == {"Bad.xaml", "Main.xaml"}
 
 
+def test_diff_new_issues_suppresses_existing_project_level_analyze_halt():
+    baseline = {
+        _analyzer.AnalyzerIssue(
+            file="",
+            error_code="ANALYZE_HALT",
+            severity="Error",
+            description="Analyze failed: old compiler halt",
+        )
+    }
+    post = {
+        _analyzer.AnalyzerIssue(
+            file="",
+            error_code="ANALYZE_HALT",
+            severity="Error",
+            description="Analyze failed: different compiler halt",
+        )
+    }
+
+    assert _analyzer.diff_new_issues(baseline, post) == set()
+
+
 def test_gate_empty_filepath_with_xaml_description_rolls_back_granular(
     fake_project: Path, monkeypatch, capsys, disable_baseline_cache
 ):
@@ -415,17 +669,20 @@ def test_gate_disabled_no_retry_logic(
     assert calls["count"] == 0  # gate desabilitado → sem analyzer call
 
 
-def test_uipcli_not_found_skips_gate(
+def test_no_analyzer_cli_found_skips_gate(
     fake_project: Path, monkeypatch, capsys
 ):
-    """Sem uipcli instalado (discover_uipcli=None) → gate skipped graceful."""
+    """Sem official uip nem legacy uipcli instalado → gate skipped graceful."""
     monkeypatch.setattr(
         _analyzer, "discover_uipcli", lambda: None
+    )
+    monkeypatch.setattr(
+        "uip_engine.official_uip.discover_official_uip", lambda: None
     )
 
     rc = _cli._cmd_fix(_mk_fix_args(fake_project))
     out = capsys.readouterr().out
 
     assert rc == _cli.EXIT_OK
-    assert "uipcli não encontrado" in out
+    assert "official uip/Studio uipcli não encontrado" in out
     assert "ANALYZER REGRESSION" not in out

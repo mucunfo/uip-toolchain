@@ -11,11 +11,26 @@ _RE_LINQ_ON_ARG = re.compile(
 )
 _RE_SENDMAIL_OPEN = re.compile(r'<ui:SendMail\s[^>]*>')
 
-_RE_ISNULLOREMPTY = re.compile(
-    r'(?<![A-Za-z_:])((?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*)\.IsNullOrEmpty\b'
+_RE_ISNULL_INSTANCE = re.compile(
+    r'(?<![A-Za-z_:])'
+    r'((?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*)'
+    r'\.(IsNullOrEmpty|IsNullOrWhiteSpace)\b'
 )
 _RE_TOINT32 = re.compile(
     r'(?<![A-Za-z_:])((?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*)\.ToInt32\b'
+)
+_RE_QUEUE_ITEM_INDEXER = re.compile(
+    r'(?<![A-Za-z_:])'
+    r'(?P<recv>(?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*)'
+    r'\.(?P<prop>SpecificContent|Output)'
+    r'\s*\(\s*(?P<key>&quot;[^&]+&quot;|"[^"]+")\s*\)'
+)
+_RE_QUEUE_ITEM_TYPED_NAME = re.compile(
+    r'\b(?:Name|x:Key)\s*=\s*"(?P<name>[A-Za-z_]\w*)"[^\n<>]{0,240}'
+    r'QueueItem\b'
+    r'|QueueItem\b[^\n<>]{0,240}'
+    r'\b(?:Name|x:Key)\s*=\s*"(?P<name2>[A-Za-z_]\w*)"',
+    re.IGNORECASE,
 )
 _INVOKE_ARGS_VARIABLE_AND_PROPERTY_RE = re.compile(
     r'<(?P<prefix>[A-Za-z_]\w*):InvokeWorkflowFile(?=[\s/>])'
@@ -24,6 +39,12 @@ _INVOKE_ARGS_VARIABLE_AND_PROPERTY_RE = re.compile(
     r'(?P<body>.*?)'
     r'</(?P=prefix):InvokeWorkflowFile>',
     re.DOTALL,
+)
+_TERMINAL_VB_LINE_CONTINUATION_RE = re.compile(
+    r'(?P<prefix>(?:[ \t\r\n]|&#x(?:A|D|9);|&#(?:10|13|9);)+)'
+    r'_'
+    r'(?P<suffix>(?:[ \t\r\n]|&#x(?:A|D|9);|&#(?:10|13|9);)*)'
+    r'\]'
 )
 
 
@@ -107,6 +128,29 @@ def detect_w34_invoke_arguments_variable_duplicate(rule, fc, pc):
     return findings
 
 
+def detect_w35_terminal_vb_line_continuation(rule, fc, pc):
+    """W-35: terminal VB `_` before a closing XAML expression bracket.
+
+    UiPath's Windows compiler reports this as opaque BC30203/BC30198. The
+    local source is mechanical: a VB line-continuation marker can continue to
+    another token, but not to the end of a bracketed XAML expression.
+    """
+    content = fc.active_content
+    findings = []
+    for m in _TERMINAL_VB_LINE_CONTINUATION_RE.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=_line_for(content, m.start()),
+            message=f"{rule.title}: '_' terminal antes de ']'",
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
 def _w2_mechanical_available(arg: str, method: str) -> bool:
     """Mirror de `fixers.apply_guard_linq_arg_ref::_default_for`.
     True quando fixer tem default sensato pra wrap. False = type-dependent,
@@ -171,7 +215,7 @@ def detect_w13_sendmail(rule, fc, pc):
 
 
 def detect_w16_isnullorempty(rule, fc, pc):
-    """W-16: `<expr>.IsNullOrEmpty` em VB Windows — usar `String.IsNullOrEmpty(<expr>)`.
+    """W-16: `<expr>.IsNullOr*` em VB Windows — usar chamada estática.
 
     Skip já-correto via params.static_class_names + params.last_segment_skip.
     """
@@ -181,8 +225,9 @@ def detect_w16_isnullorempty(rule, fc, pc):
 
     content = fc.active_content
     findings = []
-    for m in _RE_ISNULLOREMPTY.finditer(content):
+    for m in _RE_ISNULL_INSTANCE.finditer(content):
         chain = m.group(1)
+        method = m.group(2)
         if chain.lower() in static_names:
             continue
         if _last_segment(chain).lower() in skip_last:
@@ -194,7 +239,7 @@ def detect_w16_isnullorempty(rule, fc, pc):
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
-            message=f"{rule.title}: {chain}.IsNullOrEmpty",
+            message=f"{rule.title}: {chain}.{method}",
             fix_mechanical=mech_for_this,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
@@ -203,6 +248,51 @@ def detect_w16_isnullorempty(rule, fc, pc):
 
 _RE_W12_ARRAYROW = re.compile(r'ArrayRow="\[\{(?!New\s)[^"}]+\}\]"')
 _RE_W12_EMPTY = re.compile(r'>\[\{\}\]<|"\[\{\}\]"')
+_RE_W12_TYPED_LITERAL = re.compile(r'\[\{(?!New\s)(?P<items>[^<>\r\n]*?)\}\]')
+_RE_XTYPE_ARRAY = re.compile(r'\bx:TypeArguments="(?P<type>[^"]+\[\])"')
+_RE_W12_TYPED_VBVALUE_EMPTY = re.compile(
+    r'<[^<>]*\bx:TypeArguments="[^"]+\[\]"'
+    r'[^<>]*\bExpressionText="\{\}\{\}"[^<>]*>'
+)
+_RE_STRING_FORMAT_TOSTRING_WITH_DELIMITER = re.compile(
+    r'(?i)string\.format\([^"\r\n]*(?:"[^"\r\n]*"[^"\r\n]*)*\)'
+    r'\)\.ToStringWithDelimiter\(\)'
+    r'|(?i:string\.format\([^"\r\n]*(?:"[^"\r\n]*"[^"\r\n]*)*\)'
+    r'\.ToStringWithDelimiter\(\))'
+)
+_RE_READ_AS_DATATABLE_THREE_ARGS = re.compile(
+    r'\.ReadAsDataTable\('
+    r'(?P<a1>[^(),\r\n]+),'
+    r'(?P<a2>[^(),\r\n]+),'
+    r'(?P<a3>[^(),\r\n]+)'
+    r'\)'
+)
+_RE_CCS_SIPAGDIRECT_LEGACY_LOGIN = re.compile(
+    r'clr-namespace:CCS_SipagDirect\.Sessão;assembly=CCS_SipagDirect'
+    r'|<(?P<prefix>[A-Za-z_]\w*):LoginSipagDirect(?=[\s/>])'
+)
+
+
+def _typed_empty_array_mechanical(content: str, start: int) -> dict | None:
+    """Return mechanical fix when `[{}]` sits in a typed array context."""
+    line_start = content.rfind("\n", 0, start) + 1
+    tag_start = content.rfind("<", 0, start)
+    if tag_start < line_start:
+        tag_start = line_start
+    tag_end = content.find(">", start)
+    if tag_end < 0:
+        tag_end = content.find("\n", start)
+    if tag_end < 0:
+        tag_end = len(content)
+    window = content[tag_start:tag_end + 1]
+    if _RE_XTYPE_ARRAY.search(window):
+        return {"type": "wrap_typed_empty_array_literal"}
+    return None
+
+
+def _is_arrayrow_literal(content: str, start: int) -> bool:
+    prefix = content[max(0, start - 20):start]
+    return bool(re.search(r'ArrayRow\s*=\s*"$', prefix))
 
 
 def detect_w12_array_literal(rule, fc, pc):
@@ -210,9 +300,10 @@ def detect_w12_array_literal(rule, fc, pc):
 
     Distingue:
       - `ArrayRow="[{a,b}]"` em AddDataRow — wrap mecânico Object().
-      - `[{}]` vazio (`>[{}]<` ou `"[{}]"`) — manual (precisa context p/ type).
+      - `[{}]` vazio em contexto `x:TypeArguments="T[]"` — wrap mecânico T().
+      - `[{}]` vazio sem tipo próximo — manual (precisa context p/ type).
 
-    Emite fix_mechanical APENAS pro caso ArrayRow.
+    Emite fix_mechanical apenas quando o tipo pode ser inferido localmente.
     """
     content = fc.active_content
     findings: list[Finding] = []
@@ -226,13 +317,102 @@ def detect_w12_array_literal(rule, fc, pc):
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     for m in _RE_W12_EMPTY.finditer(content):
+        empty_mech = _typed_empty_array_mechanical(content, m.start())
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
-            message=f"{rule.title}: array vazio sem tipo — manual (context-dependent)",
-            fix_mechanical=None,  # context-dependent
+            message=(
+                f"{rule.title}: array vazio sem tipo — "
+                + ("auto-wrap por x:TypeArguments" if empty_mech else "manual (context-dependent)")
+            ),
+            fix_mechanical=empty_mech,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
+    seen_empty_offsets = {m.start() for m in _RE_W12_EMPTY.finditer(content)}
+    for m in _RE_W12_TYPED_LITERAL.finditer(content):
+        if not m.group("items").strip() or m.start() in seen_empty_offsets or _is_arrayrow_literal(content, m.start()):
+            continue
+        typed_mech = _typed_empty_array_mechanical(content, m.start())
+        if not typed_mech:
+            continue
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=f"{rule.title}: array tipado sem New T() — auto-wrap por x:TypeArguments",
+            fix_mechanical=typed_mech,
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    for m in _RE_W12_TYPED_VBVALUE_EMPTY.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id, severity=rule.severity, category=rule.category,
+            file=str(fc.path), line=_line_for(content, m.start()),
+            message=f"{rule.title}: VisualBasicValue array vazio corrompido — auto-wrap por x:TypeArguments",
+            fix_mechanical={"type": "wrap_typed_empty_array_literal"},
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+def detect_w36_string_format_tostring_with_delimiter(rule, fc, pc):
+    """W-36: `(String.Format(...)).ToStringWithDelimiter()` no longer compiles.
+
+    Activity Migrator/Windows compiler treats the receiver as String and
+    raises BC30456. In this selector pattern the legacy call is a no-op.
+    """
+    content = fc.active_content
+    findings = []
+    for line_no, line in enumerate(content.splitlines(), start=1):
+        if "ToStringWithDelimiter()" not in line:
+            continue
+        if not re.search(r'(?i)string\.format\(', line):
+            continue
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=line_no,
+            message=f"{rule.title}: String.Format(...).ToStringWithDelimiter()",
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+def detect_w37_read_as_datatable_three_args(rule, fc, pc):
+    """W-37: UiPath.Excel 3.x ReadAsDataTable requires 5 arguments."""
+    content = fc.active_content
+    findings = []
+    for m in _RE_READ_AS_DATATABLE_THREE_ARGS.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=_line_for(content, m.start()),
+            message=f"{rule.title}: ReadAsDataTable com 3 argumentos",
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+def detect_w38_ccs_sipagdirect_legacy_login(rule, fc, pc):
+    """W-38: CCS_SipagDirect 3.x exposes Login, not Sessão.LoginSipagDirect."""
+    content = fc.active_content
+    findings = []
+    for m in _RE_CCS_SIPAGDIRECT_LEGACY_LOGIN.finditer(content):
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=_line_for(content, m.start()),
+            message=f"{rule.title}: namespace/activity legacy CCS_SipagDirect",
+            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+        break
     return findings
 
 
@@ -291,6 +471,64 @@ def detect_w17_toint32(rule, fc, pc):
             file=str(fc.path), line=_line_for(content, m.start()),
             message=f"{rule.title}: {chain}.ToInt32",
             fix_mechanical=mech_for_this,
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+def _queue_item_names(content: str) -> set[str]:
+    names = {
+        "TransactionItem",
+        "in_TransactionItem",
+        "io_TransactionItem",
+        "out_TransactionItem",
+    }
+    for m in _RE_QUEUE_ITEM_TYPED_NAME.finditer(content):
+        name = m.group("name") or m.group("name2")
+        if name:
+            names.add(name)
+    return names
+
+
+def _is_safe_queue_item_receiver(receiver: str, queue_names: set[str]) -> bool:
+    # Keep this intentionally conservative. Chained receivers are only safe
+    # when the last segment is a known QueueItem-shaped variable name.
+    last = receiver.rsplit(".", 1)[-1]
+    return (
+        receiver in queue_names
+        or last in queue_names
+        or last.endswith("TransactionItem")
+        or last.endswith("QueueItem")
+    )
+
+
+def detect_w19_queue_item_indexer(rule, fc, pc):
+    """W-19: SpecificContent/Output indexer rewrite only when receiver is safe.
+
+    The old regex detector offered the mechanical fix for every
+    `.SpecificContent("x")` shape. That can be wrong when the receiver is not
+    a UiPath QueueItem, so ambiguous findings are reported without
+    fix_mechanical and become contextual notes instead of deploy blockers.
+    """
+    content = fc.active_content
+    queue_names = _queue_item_names(content)
+    rule_mech = (rule.fix or {}).get("mechanical")
+    findings = []
+    for m in _RE_QUEUE_ITEM_INDEXER.finditer(content):
+        receiver = m.group("recv")
+        safe = _is_safe_queue_item_receiver(receiver, queue_names)
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=_line_for(content, m.start()),
+            message=(
+                f"{rule.title}: {receiver}."
+                f"{m.group('prop')}({m.group('key')})"
+                + ("" if safe else " (receiver não tipado como QueueItem)")
+            ),
+            fix_mechanical=rule_mech if safe else None,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings

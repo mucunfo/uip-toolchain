@@ -36,7 +36,7 @@ def _mk_rule(cache_dir: Path | None = None) -> Rule:
         description="",
         detect={"type": "python", "params": params},
         fix={
-            "apply_class": "contextual",
+            "apply_class": "deterministic",
             "prose": "Resolver conflito atualizando pin.",
         },
     )
@@ -242,6 +242,7 @@ def test_d2_flags_peer_pin_below_required(tmp_path):
     assert "Runtime" in f.message
     assert "25.10.29" in f.message
     assert "25.10.8" in f.message
+    assert f.fix_mechanical is None
 
 
 def test_d2_silent_when_peer_pin_matches_required(tmp_path):
@@ -267,7 +268,7 @@ def test_d2_silent_when_peer_pin_matches_required(tmp_path):
 
 def test_d2_silent_when_peer_not_in_project_deps(tmp_path):
     """Peer requirement existe no nuspec mas peer NÃO está em project.json
-    → 0 findings (NuGet resolve transitivamente sem conflito)."""
+    → 0 findings quando o peer não tem pin canônico seguro."""
     cache = tmp_path / "cache"
     cache.mkdir()
     _make_nuspec_hierarchical(
@@ -279,6 +280,23 @@ def test_d2_silent_when_peer_not_in_project_deps(tmp_path):
     _, pc, fc = _mk_project(
         tmp_path, {"UiPath.UIAutomation.Activities": "[25.10.8]"}
     )
+    assert detect_nuget_peer_conflict(_mk_rule(cache), fc, pc) == []
+
+
+def test_d2_does_not_auto_add_coreipc_for_legacy_computervision(tmp_path):
+    """ComputerVision 21.x é corrigido pelo pin D-1p, não por peer CoreIpc."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    _make_nuspec_hierarchical(
+        cache,
+        "UiPath.ComputerVision.LocalServer",
+        "21.10.1",
+        [("UiPath.CoreIpc", "2.0.1")],
+    )
+    _, pc, fc = _mk_project(
+        tmp_path, {"UiPath.ComputerVision.LocalServer": "[21.10.1]"}
+    )
+
     assert detect_nuget_peer_conflict(_mk_rule(cache), fc, pc) == []
 
 
@@ -319,6 +337,37 @@ def test_d2_handles_flat_nupkg_layout(tmp_path):
     findings = detect_nuget_peer_conflict(_mk_rule(cache), fc, pc)
     assert len(findings) == 1
     assert "CCS_Peer" in findings[0].message
+    assert findings[0].fix_mechanical is None
+
+
+def test_d2_emits_mechanical_fix_when_peer_has_safe_canonical_pin(tmp_path):
+    """CCS policy has a single canonical pin for UiPath.System.Activities.
+
+    If a primary package requires <= that canonical version, D-2 can be fixed
+    deterministically by pinning the peer to canonical.
+    """
+    cache = tmp_path / "flat_cache"
+    cache.mkdir()
+    _make_nuspec_flat_nupkg(
+        cache,
+        "CCS_Controle",
+        "1.1.0",
+        [("UiPath.System.Activities", "25.4.4")],
+    )
+    _, pc, fc = _mk_project(
+        tmp_path,
+        {
+            "CCS_Controle": "[1.1.0]",
+            "UiPath.System.Activities": "[23.10.3]",
+        },
+    )
+    findings = detect_nuget_peer_conflict(_mk_rule(cache), fc, pc)
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical == {
+        "type": "set_dependency_pin",
+        "package": "UiPath.System.Activities",
+        "version": "[25.4.4]",
+    }
 
 
 def test_d2_skips_non_project_json_files(tmp_path):
@@ -388,4 +437,4 @@ def test_d2_loader_validates_apply_class():
     d2 = next((r for r in rules if r.id == "D-2"), None)
     assert d2 is not None
     assert d2.severity == Severity.ERROR
-    assert d2.fix and d2.fix.get("apply_class") == "contextual"
+    assert d2.fix and d2.fix.get("apply_class") == "deterministic"

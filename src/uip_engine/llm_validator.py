@@ -5,8 +5,8 @@ específica + contexto runtime) ou é ruído genérico.
 
 HISTÓRICO (2026-05-30): versão anterior chamava `claude -p` (Claude Code CLI,
 haiku) via subprocess por mensagem não-cacheada. Isso consumia o limite semanal
-de tokens em TODA run de `uip` (N-16 dispara no review). REMOVIDO POR COMPLETO:
-nenhum spawn de `claude`, nenhuma chamada de rede, nenhum subprocess. `uip` é
+de tokens em TODA run de `ccs-uip` (N-16 dispara no review). REMOVIDO POR COMPLETO:
+nenhum spawn de `claude`, nenhuma chamada de rede, nenhum subprocess. `ccs-uip` é
 100% script offline. A heurística abaixo replica as regras do antigo
 system-prompt de forma determinística.
 

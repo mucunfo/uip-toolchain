@@ -310,7 +310,7 @@ def _parse_output(stdout: str, project_root: Path, stderr: str = "") -> list[Fin
                         f"REFramework standard, ou (c) Sicoob Hungarian "
                         f"convention (St=String, Int=Int32, Bol=Boolean, "
                         f"Dt=DateTime, Dtb=DataTable, etc.). Após fix manual, "
-                        f"re-run `uip <project>` pra confirmar gate verde."
+                        f"re-run `ccs-uip <project>` pra confirmar gate verde."
                     ),
                 ))
                 # Only process first not-declared identifier per finding pra

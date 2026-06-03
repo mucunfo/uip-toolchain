@@ -13,11 +13,11 @@ Pipeline:
      (naming, structural, W-* enforcement) que Migrator não cobre.
   4. Final review: relatório consolidado.
 
-Activity Migrator NÃO é instalado por default. Resolve binário via:
+Activity Migrator é artefato interno da toolchain. Resolve binário via:
   - Flag `--migrator-path`
   - Env var `UIPATH_ACTIVITY_MIGRATOR`
-  - PATH (`uipath-activity-migrator`)
-  - Studio install dir
+  - `tools/UiPathActivityMigrator` dentro do repo
+  - `vendor/UiPathActivityMigrator` dentro do repo
 """
 from __future__ import annotations
 
@@ -299,7 +299,11 @@ def _align_ccs_deps_to_local_nupkgs(project_root: Path) -> int:
 
 
 def find_migrator(explicit: str | None) -> Path | None:
-    """Resolve Activity Migrator binary. Order: explicit → env → PATH → Studio."""
+    """Resolve Activity Migrator binary.
+
+    Default ownership is inside the toolchain repo; machine-global folders,
+    PATH, and Studio installs are not used implicitly.
+    """
     if explicit:
         p = Path(explicit).expanduser().resolve()
         return p if p.is_file() else None
@@ -310,16 +314,9 @@ def find_migrator(explicit: str | None) -> Path | None:
         if p.is_file():
             return p
 
-    for name in _MIGRATOR_BIN_NAMES:
-        which = shutil.which(name)
-        if which:
-            return Path(which).resolve()
-
     search_roots = [
-        Path("C:/Tools/UiPathActivityMigrator"),
-        Path(os.environ.get("LOCALAPPDATA", "")) / "UiPath",
-        Path(os.environ.get("PROGRAMFILES", "")) / "UiPath" / "Studio",
-        Path(os.environ.get("PROGRAMFILES(X86)", "")) / "UiPath" / "Studio",
+        Path(__file__).resolve().parents[2] / "tools" / "UiPathActivityMigrator",
+        Path(__file__).resolve().parents[2] / "vendor" / "UiPathActivityMigrator",
     ]
     for root in search_roots:
         if not root.exists():
@@ -425,11 +422,9 @@ def cmd_migrate_windows(args) -> int:
     print("## [2/4] UiPath Activity Migrator")
     migrator = find_migrator(args.migrator_path)
     if migrator is None:
-        print("[INTERNAL] Activity Migrator binary não encontrado. Instale via:", file=sys.stderr)
-        print("  - Studio v25.10+: já incluso. Procure em %LOCALAPPDATA%\\UiPath\\Studio\\", file=sys.stderr)
-        print("  - Standalone: download em forum.uipath.com/t/uipath-activity-migrator-is-generally-available/", file=sys.stderr)
-        print("  - Setar env var UIPATH_ACTIVITY_MIGRATOR=<full path>", file=sys.stderr)
-        print("  - Ou passar --migrator-path <full path>", file=sys.stderr)
+        print("[INTERNAL] Activity Migrator binary não encontrado.", file=sys.stderr)
+        print("  - Esperado: tools/UiPathActivityMigrator/UiPath.Upgrade.exe dentro da toolchain", file=sys.stderr)
+        print("  - Override técnico: UIPATH_ACTIVITY_MIGRATOR=<full path> ou --migrator-path <full path>", file=sys.stderr)
         return EXIT_INTERNAL
     print(f"# binary : {migrator}")
 
@@ -580,7 +575,7 @@ def cmd_migrate_windows(args) -> int:
     final_rc = _cmd_review(final_args)
 
     # ---- Phase 5: swap source ↔ _Migrated -------------------------------
-    # Sem swap, source segue tf=Legacy e proximos `uip` re-disparam Migrator
+    # Sem swap, source segue tf=Legacy e proximos `ccs-uip` re-disparam Migrator
     # eternamente (loop não-progressivo). Critério atomic swap:
     #   - Migrator exit=0
     #   - out/project.json tem tf=Windows (já validado linha 330)
@@ -609,6 +604,21 @@ def cmd_migrate_windows(args) -> int:
         print(f"# swap: backup target já existe {backup.name}; abortando swap.",
               file=sys.stderr)
         return final_rc
+
+    try:
+        cwd = Path.cwd().resolve()
+        src_resolved = src.resolve()
+        out_resolved = out.resolve()
+        cwd_inside_source = cwd == src_resolved or src_resolved in cwd.parents
+        cwd_inside_output = cwd == out_resolved or out_resolved in cwd.parents
+        if cwd_inside_source or cwd_inside_output:
+            os.chdir(src.parent)
+            print(
+                f"# swap: cwd estava dentro do projeto; alterado para {src.parent} "
+                "antes do rename Windows."
+            )
+    except OSError as e:
+        print(f"# swap: não foi possível validar cwd antes do rename: {e}", file=sys.stderr)
 
     print("\n## [5/5] Swap source ↔ _Migrated")
     print(f"# {src.name} → {backup.name}")

@@ -1,4 +1,4 @@
-"""Adaptive `uip all` batch runner — validate many projects without manual retry.
+"""Adaptive `ccs-uip` batch runner — validate many projects without manual retry.
 
 Usage:
     python tools/batch_uip.py <input> [--report NAME.md] [--workers N] [--t1 S] [--t2 S]
@@ -11,7 +11,7 @@ Usage:
     - a .json file: a JSON array of absolute project paths.
 
 WHY THIS EXISTS — timeout root-cause (observed 2026-05-28):
-  `uip all` on a heavy project chains EXTERNAL .NET subprocesses that are
+  `ccs-uip` on a heavy project chains EXTERNAL .NET subprocesses that are
   legitimately CPU-busy (the engine's run_uipcli_guarded watchdog correctly
   leaves them alive, since they are NOT hung):
     - PHASE 0 Activity Migrator (target != Windows) -> full pipeline re-runs.
@@ -54,7 +54,7 @@ def discover(inp: Path) -> list[str]:
                               ".nuget", "obj", "bin") for s in p.parts)}
     res = []
     for line in inp.read_text(encoding="utf-8").splitlines():
-        leaf = line.strip()
+        leaf = line.strip().lstrip("\ufeff")
         if not leaf:
             continue
         cand = Path(leaf)
@@ -83,7 +83,7 @@ def run_one(proj: str, timeout: int) -> dict:
     t0 = time.perf_counter()
     rec = {"name": name, "path": proj}
     try:
-        p = subprocess.run([sys.executable, "-m", "uip_engine.cli", "all", proj],
+        p = subprocess.run(["ccs-uip", proj],
                            cwd=str(ENGINE), capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=timeout)
         out = (p.stdout or "") + "\n--- STDERR ---\n" + (p.stderr or "")
@@ -98,14 +98,14 @@ def run_one(proj: str, timeout: int) -> dict:
     g = lambda pat: (lambda m: int(m.group(1)) if m else None)(re.search(pat, out))
     rec.update(applied=g(r"applied=(\d+)"), roll=g(r"regressions-rolled-back=(\d+)"),
                blocking=g(r"blocking=(\d+)"), pending=g(r"(\d+) findings PENDING"))
-    md = re.search(r"\[(PASS-WITH-NOTES|PASS|FAIL|HALT|PENDING_REVIEW)\]", out)
-    rec["decision"] = md.group(1) if md else ("TIMEOUT" if rec["exit"] == "TIMEOUT" else "?")
+    matches = re.findall(r"\[(PASS-WITH-NOTES|PASS|FAIL|HALT|PENDING_REVIEW)\]", out)
+    rec["decision"] = matches[-1] if matches else ("TIMEOUT" if rec["exit"] == "TIMEOUT" else "?")
     return rec
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Run `uip all` across many UiPath projects with adaptive retry for slow projects."
+        description="Run `ccs-uip` across many UiPath projects with adaptive retry for slow projects."
     )
     ap.add_argument(
         "input",
@@ -155,7 +155,7 @@ def main() -> int:
     final = [results[Path(p).name] for p in projects]
     npass = sum(1 for r in final if r["decision"] in ("PASS", "PASS-WITH-NOTES", "PENDING_REVIEW"))
     pct = round(100 * npass / len(final), 1) if final else 0.0
-    out = [f"# Adaptive uip batch — {len(final)} projects", "",
+    out = [f"# Adaptive ccs-uip batch — {len(final)} projects", "",
            f"- **PASS: {npass}/{len(final)} = {pct}%**",
            f"- FAIL: {[r['name'] for r in final if r['decision']=='FAIL'] or 'none'}",
            f"- TIMEOUT (after Phase B): {[r['name'] for r in final if r['exit']=='TIMEOUT'] or 'none'}", "",
@@ -164,8 +164,18 @@ def main() -> int:
     for r in sorted(final, key=lambda x: x["name"]):
         out.append(f"| {r['name']} | {r['exit']} | {r['decision']} | {r.get('applied')} | "
                    f"{r.get('roll')} | {r.get('blocking')} | {r.get('pending')} | {r['secs']} |")
-    (ENGINE / ".tmp" / a.report).write_text("\n".join(out), encoding="utf-8")
-    print(f"\nPASS {npass}/{len(final)} = {pct}% | report -> .tmp/{a.report}")
+    report_path = Path(a.report)
+    if not report_path.is_absolute():
+        report_path = ENGINE / report_path
+        if report_path.parent == ENGINE:
+            report_path = ENGINE / ".tmp" / a.report
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("\n".join(out), encoding="utf-8")
+    try:
+        shown_report = report_path.relative_to(ENGINE)
+    except ValueError:
+        shown_report = report_path
+    print(f"\nPASS {npass}/{len(final)} = {pct}% | report -> {shown_report}")
     return 0 if pct >= 95 else 1
 
 
