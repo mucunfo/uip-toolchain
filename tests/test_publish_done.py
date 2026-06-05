@@ -117,7 +117,6 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     assert sum(1 for c in calls if c[:2] == ["login", "status"]) == 1
     assert calls[2] == [
         "rpa", "pack", str((tmp_path / "RepoA").resolve()), str(tmp_path / "out" / "RepoA" / "pack"),
-        "--output-type", "Process",
         "--package-version", "1.0.1",
         "--output", "json",
     ]

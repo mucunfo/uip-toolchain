@@ -103,7 +103,6 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     ]
     assert calls[2] == [
         "rpa", "pack", str(project.resolve()), str(tmp_path / "out" / "pack"),
-        "--output-type", "Process",
         "--package-version", "1.0.1",
         "--output", "json",
     ]

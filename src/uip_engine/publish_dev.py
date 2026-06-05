@@ -260,7 +260,6 @@ def execute(
         runner,
         [
             "rpa", "pack", str(project_root), str(pack_dir),
-            "--output-type", "Process",
             "--package-version", next_version,
             "--output", "json",
         ],
