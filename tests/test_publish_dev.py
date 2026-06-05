@@ -88,6 +88,8 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
         "patch",
         "--out-dir",
         str(tmp_path / "out"),
+        "--download-dir",
+        str(tmp_path / "downloads"),
     ])
 
     plan = publish_dev.execute(args, run_uip=fake_run)
@@ -115,6 +117,9 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     assert "--tenant" in calls[3]
     assert "RPA_Desenvolvimento" in calls[3]
     assert calls[4][0:4] == ["or", "packages", "download", "InvoiceProcessing:1.0.1"]
+    assert calls[4][calls[4].index("--destination") + 1] == str(
+        tmp_path / "downloads" / "InvoiceProcessing.1.0.1.nupkg"
+    )
 
 
 def test_execute_runs_interactive_login_when_status_fails(tmp_path):

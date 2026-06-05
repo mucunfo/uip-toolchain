@@ -153,7 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out-dir",
         default=None,
-        help="Batch output folder. Default: <root>/.publish-dev-handoff",
+        help="Folder where downloaded .nupkg files are written directly. "
+             "Default: <root>/.publish-dev-handoff",
     )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument(
@@ -192,7 +193,9 @@ def _single_args(
         "--dev-tenant",
         DEV_TENANT,
         "--out-dir",
-        str(out_dir / candidate.folder_name),
+        str(out_dir / ".work" / candidate.folder_name),
+        "--download-dir",
+        str(out_dir),
         "--timeout",
         str(batch_args.timeout),
     ]

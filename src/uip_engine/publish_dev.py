@@ -215,6 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for pack output and downloaded handoff nupkg. "
              "Default: <project>/.tmp/publish-dev/<package>.<version>",
     )
+    parser.add_argument(
+        "--download-dir",
+        default=None,
+        help="Directory where the uploaded .nupkg is downloaded. "
+             "Default: <out-dir>/download",
+    )
     parser.add_argument("--timeout", type=int, default=600)
     return parser
 
@@ -252,7 +258,7 @@ def execute(
     if work_dir.exists():
         shutil.rmtree(work_dir)
     pack_dir = work_dir / "pack"
-    download_dir = work_dir / "download"
+    download_dir = Path(args.download_dir).resolve() if args.download_dir else work_dir / "download"
     pack_dir.mkdir(parents=True, exist_ok=True)
     download_dir.mkdir(parents=True, exist_ok=True)
 
@@ -277,7 +283,7 @@ def execute(
 
     downloaded_nupkg = download_dir / packed_nupkg.name
     if downloaded_nupkg.exists():
-        downloaded_nupkg.unlink()
+        raise RuntimeError(f"download target already exists: {downloaded_nupkg}")
     _run_checked(
         runner,
         [
