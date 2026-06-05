@@ -119,11 +119,16 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     assert len(results) == 1
     assert results[0].ok
     assert results[0].candidate.folder_name == "RepoA"
+    assert not (tmp_path / "out" / ".work").exists()
     assert calls[0] == ["login", "status", "--output", "json"]
     assert calls[1] == ["login", "tenant", "list", "--output", "json"]
     assert sum(1 for c in calls if c[:2] == ["login", "status"]) == 1
-    assert calls[2] == [
-        "rpa", "pack", str((tmp_path / "RepoA").resolve()), str(tmp_path / "out" / ".work" / "RepoA" / "pack"),
+    assert calls[2][:3] == [
+        "rpa", "pack", str((tmp_path / "RepoA").resolve()),
+    ]
+    assert calls[2][3].endswith(str(Path("RepoA") / "pack"))
+    assert str(tmp_path / "out" / ".work") not in calls[2][3]
+    assert calls[2][4:] == [
         "--package-version", "1.0.1",
         "--output", "json",
     ]

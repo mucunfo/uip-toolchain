@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -189,6 +190,7 @@ def _single_args(
     candidate: ProjectCandidate,
     batch_args: argparse.Namespace,
     out_dir: Path,
+    work_root: Path,
 ) -> argparse.Namespace:
     argv = [
         str(candidate.root),
@@ -196,7 +198,7 @@ def _single_args(
         "--dev-tenant",
         DEV_TENANT,
         "--out-dir",
-        str(out_dir / ".work" / candidate.folder_name),
+        str(work_root / candidate.folder_name),
         "--download-dir",
         str(out_dir),
         "--timeout",
@@ -308,33 +310,42 @@ def execute(
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    work_root = Path(tempfile.mkdtemp(prefix="ccs-uip-publish-"))
     results: list[BatchItemResult] = []
-    for candidate in selected:
-        print(f"\n[{candidate.index}/{len(candidates)}] {candidate.folder_name}")
-        try:
-            plan = execute_one(
-                _single_args(candidate=candidate, batch_args=args, out_dir=out_dir),
-                run_uip=runner,
-                ensure_auth=False,
-            )
-            print(f"  OK {plan.current_version} -> {plan.next_version}")
-            print(f"  nupkg: {plan.downloaded_nupkg}")
-            results.append(
-                BatchItemResult(
-                    candidate=candidate,
-                    ok=True,
-                    plan=plan,
+    try:
+        for candidate in selected:
+            print(f"\n[{candidate.index}/{len(candidates)}] {candidate.folder_name}")
+            try:
+                plan = execute_one(
+                    _single_args(
+                        candidate=candidate,
+                        batch_args=args,
+                        out_dir=out_dir,
+                        work_root=work_root,
+                    ),
+                    run_uip=runner,
+                    ensure_auth=False,
                 )
-            )
-        except Exception as exc:
-            print(f"  FAIL {exc}")
-            results.append(
-                BatchItemResult(
-                    candidate=candidate,
-                    ok=False,
-                    error=str(exc),
+                print(f"  OK {plan.current_version} -> {plan.next_version}")
+                print(f"  nupkg: {plan.downloaded_nupkg}")
+                results.append(
+                    BatchItemResult(
+                        candidate=candidate,
+                        ok=True,
+                        plan=plan,
+                    )
                 )
-            )
+            except Exception as exc:
+                print(f"  FAIL {exc}")
+                results.append(
+                    BatchItemResult(
+                        candidate=candidate,
+                        ok=False,
+                        error=str(exc),
+                    )
+                )
+    finally:
+        shutil.rmtree(work_root, ignore_errors=True)
 
     return results
 
