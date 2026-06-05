@@ -16,6 +16,7 @@ dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [project.scripts]
 ccs-uip = "uip_engine.cli:ccs_uip_main"
+ccs-uip-publish-dev = "uip_engine.publish_dev:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
