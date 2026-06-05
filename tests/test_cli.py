@@ -121,4 +121,8 @@ def test_public_console_script_reserves_uip_for_official_cli():
     scripts = metadata["project"]["scripts"]
 
     assert scripts["ccs-uip"] == "uip_engine.cli:ccs_uip_main"
+    assert scripts["ccs-uip-publish"] == "uip_engine.publish_done:main"
     assert "uip" not in scripts
+    assert "publish" not in scripts
+    assert "ccs-uip-publish-dev" not in scripts
+    assert "ccs-uip-publish-done" not in scripts

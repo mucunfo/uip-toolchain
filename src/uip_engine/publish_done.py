@@ -1,4 +1,4 @@
-"""One-shot batch publisher for projects under Sicoob's ``3. done`` folder."""
+"""One-shot publisher for UiPath projects to RPA_Desenvolvimento."""
 from __future__ import annotations
 
 import argparse
@@ -132,10 +132,10 @@ def choose_projects(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ccs-uip-publish-done",
+        prog="ccs-uip-publish",
         description=(
-            "Batch publish selected projects from the Sicoob '3. done' folder "
-            "to RPA_Desenvolvimento and download the handoff nupkgs."
+            "Publish selected UiPath projects to RPA_Desenvolvimento and "
+            "download the handoff nupkgs."
         ),
     )
     parser.add_argument("bump", choices=VALID_BUMPS)
@@ -150,7 +150,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Compatibility alias for path.",
     )
-    parser.add_argument("--dev-tenant", default=DEV_TENANT)
     parser.add_argument(
         "--out-dir",
         default=None,
@@ -191,7 +190,7 @@ def _single_args(
         str(candidate.root),
         batch_args.bump,
         "--dev-tenant",
-        batch_args.dev_tenant,
+        DEV_TENANT,
         "--out-dir",
         str(out_dir / candidate.folder_name),
         "--timeout",
@@ -214,7 +213,7 @@ def execute(
     for candidate in selected:
         print(f"  - {candidate.folder_name} [project: {candidate.project_name}]")
     print(f"\nBump: {args.bump}")
-    print(f"RPA DEV: {args.dev_tenant}")
+    print(f"RPA DEV: {DEV_TENANT}")
 
     if args.dry_run:
         return [
@@ -233,7 +232,7 @@ def execute(
         return run_official_uip(command, timeout=timeout)
 
     runner = run_uip or _default_run_uip
-    ensure_login(runner, dev_tenant=args.dev_tenant)
+    ensure_login(runner, dev_tenant=DEV_TENANT)
 
     out_dir = (
         Path(args.out_dir).resolve()
@@ -253,10 +252,22 @@ def execute(
             )
             print(f"  OK {plan.current_version} -> {plan.next_version}")
             print(f"  nupkg: {plan.downloaded_nupkg}")
-            results.append(BatchItemResult(candidate=candidate, ok=True, plan=plan))
+            results.append(
+                BatchItemResult(
+                    candidate=candidate,
+                    ok=True,
+                    plan=plan,
+                )
+            )
         except Exception as exc:
             print(f"  FAIL {exc}")
-            results.append(BatchItemResult(candidate=candidate, ok=False, error=str(exc)))
+            results.append(
+                BatchItemResult(
+                    candidate=candidate,
+                    ok=False,
+                    error=str(exc),
+                )
+            )
 
     return results
 
