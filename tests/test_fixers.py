@@ -14,6 +14,8 @@ from uip_engine.fixers import (
     apply_rewrite_ccs_sipagdirect_legacy_login,
     apply_rewrite_ntake_screenshot_to_classic,
     apply_set_dependency_pin,
+    apply_force_attribute_in_activity_with_guards,
+    apply_clear_search_steps_semantic,
     REGISTRY,
 )
 
@@ -625,6 +627,27 @@ def test_force_attribute_replaces(tmp_path):
     assert 'Level="Info"' not in f.read_text()
 
 
+def test_force_attribute_sendmail_use_is_connection_true_to_false(tmp_path):
+    from uip_engine.fixers import apply_force_attribute
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<root xmlns:ui="urn:ui">'
+        '<ui:SendMail UseISConnection="True" Subject="x"/>'
+        '</root>'
+    )
+    spec = {
+        "type": "force_attribute",
+        "tag": "ui:SendMail",
+        "attribute": "UseISConnection",
+        "value": "False",
+    }
+    changed = apply_force_attribute(f, spec, dry_run=False)
+    assert changed
+    out = f.read_text()
+    assert 'UseISConnection="False"' in out
+    assert 'UseISConnection="True"' not in out
+
+
 def test_force_attribute_adds(tmp_path):
     from uip_engine.fixers import apply_force_attribute
     f = tmp_path / "x.xaml"
@@ -645,6 +668,101 @@ def test_force_attribute_idempotent(tmp_path):
             "attribute": "Level", "value": "Trace"}
     changed = apply_force_attribute(f, spec, dry_run=False)
     assert changed is False
+
+
+def test_force_attribute_in_activity_with_guards_only_matches_all_guards(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:ui="http://schemas.uipath.com/workflow/activities">'
+        '<ui:HttpClient Method="GET" ContinueOnError="True" />'
+        '<ui:HttpClient Method="POST" Endpoint="u" />'
+        '<ui:HttpClient ContinueOnError="True" Method="POST" />'
+        '</Activity>',
+        encoding="utf-8",
+    )
+    spec = {
+        "type": "force_attribute_in_activity_with_guards",
+        "prefix": "ui",
+        "activity_local": "HttpClient",
+        "guards": {"Method": "POST", "ContinueOnError": "True"},
+        "attr_name": "ContinueOnError",
+        "target_value": "False",
+    }
+
+    changed = apply_force_attribute_in_activity_with_guards(f, spec, dry_run=False)
+
+    assert changed is True
+    text = f.read_text(encoding="utf-8")
+    assert '<ui:HttpClient Method="GET" ContinueOnError="True" />' in text
+    assert '<ui:HttpClient Method="POST" Endpoint="u" />' in text
+    assert '<ui:HttpClient ContinueOnError="False" Method="POST" />' in text
+    assert apply_force_attribute_in_activity_with_guards(f, spec, dry_run=False) is False
+
+
+def test_clear_search_steps_semantic_attribute_text(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="http://schemas.uipath.com/workflow/activities/uix">'
+        '<uix:TargetAnchorable SearchSteps="Selector | Image | SemanticSelector" />'
+        '</Activity>',
+        encoding="utf-8",
+    )
+
+    changed = apply_clear_search_steps_semantic(
+        f, {"type": "clear_search_steps_semantic"}, dry_run=False
+    )
+
+    assert changed is True
+    assert 'SearchSteps="Selector | Image"' in f.read_text(encoding="utf-8")
+    assert apply_clear_search_steps_semantic(
+        f, {"type": "clear_search_steps_semantic"}, dry_run=False
+    ) is False
+
+
+def test_clear_search_steps_semantic_numeric_and_empty_result_default(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="http://schemas.uipath.com/workflow/activities/uix">'
+        '<uix:TargetAnchorable SearchSteps="0x184" />'
+        '<uix:TargetAnchorable SearchSteps="0x80" />'
+        '</Activity>',
+        encoding="utf-8",
+    )
+
+    apply_clear_search_steps_semantic(
+        f, {"type": "clear_search_steps_semantic"}, dry_run=False
+    )
+
+    text = f.read_text(encoding="utf-8")
+    assert 'SearchSteps="0x4"' in text
+    assert 'SearchSteps="Selector | FuzzySelector"' in text
+
+
+def test_clear_search_steps_semantic_property_element_static(tmp_path):
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        '<Activity xmlns:uix="http://schemas.uipath.com/workflow/activities/uix" '
+        'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+        '<uix:TargetAnchorable>'
+        '<uix:TargetAnchorable.SearchSteps>'
+        '<x:Static Member="uix:TargetSearchStep.SemanticSelector" />'
+        '</uix:TargetAnchorable.SearchSteps>'
+        '</uix:TargetAnchorable>'
+        '</Activity>',
+        encoding="utf-8",
+    )
+
+    changed = apply_clear_search_steps_semantic(
+        f, {"type": "clear_search_steps_semantic"}, dry_run=False
+    )
+
+    assert changed is True
+    text = f.read_text(encoding="utf-8")
+    assert (
+        "<uix:TargetAnchorable.SearchSteps>Selector | FuzzySelector"
+        "</uix:TargetAnchorable.SearchSteps>"
+    ) in text
+    assert "SemanticSelector" not in text
 
 
 def test_set_json_field(tmp_path):

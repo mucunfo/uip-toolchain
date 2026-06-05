@@ -9,7 +9,7 @@ qual arquivo modificar para qual tipo de mudança.
 |---------|--------|--------------------|
 | `rules.yaml` | Todas as regras (id, severity, category, target, description, applies_to, detect, fix). | **Sempre. Único.** |
 | `ARCHITECTURE.md` | Este arquivo. | Quando arquitetura mudar |
-| `pyproject.toml` | Deps + scripts. | Raramente |
+| `pyproject.toml` | Deps + console scripts (`ccs-uip`, `ccs-uip-publish-dev`). | Quando entrada pública mudar |
 | `src/uip_engine/loader.py` | Parse YAML + schema validation. | Nunca (só se schema mudar) |
 | `src/uip_engine/_types.py` | Rule, Finding, Severity, Category, Target. | Quando schema mudar |
 | `src/uip_engine/encoding.py` | BOM detect + decode. | Nunca |
@@ -18,7 +18,10 @@ qual arquivo modificar para qual tipo de mudança.
 | `src/uip_engine/detectors.py` | Registry de detectores. Cada `detect.type` em rules.yaml mapeia para função aqui. | Só se aparecer **novo tipo de detecção** |
 | `src/uip_engine/fixers.py` | Registry de fixers mecânicos. | Só se aparecer **novo tipo de fix** |
 | `src/uip_engine/runner.py` | Orquestrador: itera regras × arquivos. | Nunca |
-| `src/uip_engine/cli.py` | CLI: `review`, `fix`, `list`, `validate`. | Nunca |
+| `src/uip_engine/cli.py` | CLI interna: `all`, `review`, `fix`, `list`, `validate`, gates e utilitários. | Quando contrato de execução mudar |
+| `src/uip_engine/publish_dev.py` | Console script `ccs-uip-publish-dev`: pack/upload DEV/download handoff via CLI oficial `uip`. | Quando fluxo DEV/handoff mudar |
+| `src/uip_engine/official_uip.py` | Adapter da CLI oficial UiPath (`uip`) com discovery, versão e envelope JSON. | Quando contrato da CLI oficial mudar |
+| `src/uip_engine/agent_skills.py` | Sync idempotente dos skills CCS para Codex/Claude. | Quando skill global mudar |
 | `src/uip_engine/heuristics/*.py` | Escape hatches python para regras `detect.type: python`. | Quando regra precisar de lógica não-declarativa |
 | `src/uip_engine/safety.py` | Post-fix gate (XML well-formedness + VB ref↔decl). Snapshot+rollback. | Só se gate strategy mudar |
 | `src/uip_engine/vb_validator.py` | VB ref orphan detector (BC30451-class). | Quando whitelist mudar |
@@ -181,14 +184,14 @@ deterministic` — fixer reusa `strip_annotation_text` com `text_prefix:
 "[PostMigration Action Required]"`, removendo só os markers (preserva
 annotations legítimas no mesmo file).
 
-## God command (`ccs-uip` = canonical entrypoint)
+## God command (`ccs-uip` = canonical gate entrypoint)
 
-**Único comando para tudo** — `ccs-uip <project>` orquestra todas as fases:
+`ccs-uip <project>` é o comando único do **gate local**. Ele orquestra:
 
 ```
 PHASE 0  migration probe   (Activity Migrator se targetFramework != Windows)
 PHASE 1  deterministic fix (auto-apply, fixpoint loop, cascade rollback)
-PHASE 2  gates             (Layer 2 uipcli + Layer 3 nuget + Layer 5 pack)
+PHASE 2  gates             (engine + official uip / legacy fallbacks)
 PHASE 3  contextual        (dry-run default; --apply-contextual aplica)
 PHASE 4  decisão           PASS / PASS-WITH-NOTES / FAIL
 ```
@@ -197,15 +200,15 @@ Em **FAIL**, exit imediato (modo CI/agentic) com exit 2. Em **PASS**, exit 0.
 Em **PASS-WITH-NOTES** (contextual/structural/governança residual), exit 0:
 deploy-safe, com notas para IA/humano.
 
-**Interface pública** — só 2 variações aceitas:
+**Interface pública do gate local** — só 2 variações aceitas:
 
 | Cenário | Comando |
 |---|---|
 | Dia-a-dia / CI / aprovação publish | `ccs-uip <project>` |
 | Aprovar contextual da 1ª run | `ccs-uip <project> --apply-contextual` |
 
-Tudo o resto é intrínseco (defaults internos). Escape hatches debug via
-env vars apenas:
+Tudo o resto no gate local é intrínseco (defaults internos). Escape hatches
+debug via env vars apenas:
 
 | Env var | Default | Efeito |
 |---|---|---|
@@ -217,14 +220,24 @@ env vars apenas:
 | `UIP_TOOLCHAIN_MAX_ITERS` | `0` | limite iters loop (0 = ilimitado) |
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
 
-Underlying: `python -m uip_engine.cli all <project>`. Console script público
-`ccs-uip` é instalado via `pyproject.toml`. O comando `uip` fica reservado para
-a CLI oficial da UiPath (`@uipath/cli`) e não deve ser publicado por esta
-toolchain.
+Underlying: `python -m uip_engine.cli all <project>`. Console scripts
+instalados via `pyproject.toml`:
 
-Subcomandos atomicos (`review`, `fix`, `migrate-windows`, etc.) seguem
+| Script | Função |
+|---|---|
+| `ccs-uip` | gate local completo, sem upload |
+| `ccs-uip-publish-dev` | operação autenticada: versão ativa PROD → bump → `uip rpa pack` → upload DEV → download `.nupkg` |
+
+O comando `uip` fica reservado para a CLI oficial da UiPath (`@uipath/cli`) e
+não deve ser publicado por esta toolchain.
+
+Subcomandos atômicos (`review`, `fix`, `migrate-windows`, `pack-scrub`,
+`doctor-uipath-cli`, etc.) seguem
 existindo para debug e para o pipeline interno do `cli all`, mas somente via
 `python -m uip_engine.cli ...`; o comando público `ccs-uip` rejeita subcomandos.
+
+`ccs-uip-publish-dev` fica fora do `ccs-uip` porque usa sessão/login e muda
+estado em tenant DEV. Ele deve permanecer explícito no shell e nos logs.
 
 ## Pre-publish gate (`review` = canonical do gate, chamado dentro do `ccs-uip`)
 
@@ -247,10 +260,10 @@ sem opt-out. Se passa, projeto é publish-safe garantido.
 | Concern | Gate primário |
 |---|---|
 | Sicoob conventions (naming, log patterns, prefixo) | 1 |
-| Activity contracts (args required, OverloadGroup) | 3 |
-| VB compile errors em XAML (BC30002/BC30451/etc.) | 5 (publish dry-run força full compile) |
+| Activity contracts (args required, OverloadGroup) | 4/6 |
+| VB compile errors em XAML (BC30002/BC30451/etc.) | 4/6 |
 | Peer dep resolution (Sicoob feed visible) | 3 |
-| Package signing / metadata | 3/5 |
+| Package signing / metadata | 6 |
 | Final publish-safety | 6 (autoritativo) |
 
 ### Opt-out
@@ -259,7 +272,7 @@ Sem opt-out via CLI. `--no-analyzer-gate` flag mantida apenas como deprecation
 warning — emite `[WARNING] --no-analyzer-gate is deprecated and ignored; review always runs analyzer gate.` e ignora.
 
 **Env override (test harness apenas)**: `UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1`
-pula gates 3/4/5 (não invoca uipcli/nuget). Usado pelo pytest harness (em
+pula gates externos analyzer/nuget/pack (não invoca `uip`/uipcli/nuget). Usado pelo pytest harness (em
 `tests/conftest.py`) para evitar dependência de binaries externos durante
 unit tests. NÃO usar em produção.
 
@@ -309,7 +322,9 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 **Graceful degradation**: skip silencioso se official `uip` e legacy uipcli não forem encontrados.
 
-**Default**: ON. Flag `--no-analyzer-gate` desativa explicitamente.
+**Default**: ON. Flag `--no-analyzer-gate` é mantida só para back-compat,
+emite warning e é ignorada; `review` sempre tenta o gate externo quando o
+ambiente permite.
 
 ### Layer separation rationale
 
@@ -327,10 +342,11 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 `tests/test_smoke.py` roda engine em projetos reais Sicoob (REF, dispatcher,
 performer) verificando que não crasha (`exit < 10`). Findings podem existir
-— teste só confirma estabilidade. `analyzer-gate`/`pack-gate` via uipcli são
-fontes de verdade pra correção semântica. Golden project manifest com
+— teste só confirma estabilidade. `analyzer-gate`/`pack-gate` via CLI oficial
+`uip` (com fallback uipcli quando aplicável) são fontes de verdade pra correção
+semântica. Golden project manifest com
 `known_exceptions` foi removido — manutenção alta, cobertura redundante vs
-uipcli gates + unit tests por heurística.
+gates externos + unit tests por heurística.
 
 ## Política de versionamento
 

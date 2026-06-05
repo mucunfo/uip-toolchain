@@ -389,6 +389,7 @@ def detect_semantic_leak(*args, **kwargs) -> list[Finding]:
     category = getattr(rule, "category", "breaking") if rule is not None else "breaking"
     fix_prose = ((rule.fix or {}).get("prose")
                  if rule is not None and getattr(rule, "fix", None) else None)
+    fix_mech = {"type": "clear_search_steps_semantic"}
 
     findings: list[Finding] = []
     for line_no, raw_value, value_int in _iter_target_anchorables(path):
@@ -408,7 +409,7 @@ def detect_semantic_leak(*args, **kwargs) -> list[Finding]:
                     f"screenshot. VIOLA POLICY SICOOB (dados internos para cloud "
                     f"externa). Raw: '{raw_value}'."
                 ),
-                fix_mechanical=None,
+                fix_mechanical=fix_mech,
                 fix_prose=fix_prose,
             )
         )

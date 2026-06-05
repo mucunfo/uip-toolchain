@@ -18,7 +18,12 @@ Official docs reviewed:
 ## Decision
 
 Reserve `uip` for the official UiPath CLI distributed as `@uipath/cli`.
-This toolchain publishes `ccs-uip` as its public full-gate command.
+This toolchain publishes two CCS console scripts:
+
+- `ccs-uip`: local full-gate command; never uploads packages.
+- `ccs-uip-publish-dev`: authenticated DEV handoff command; reads the active
+  production version, bumps it, packs with official `uip`, uploads to
+  `RPA_Desenvolvimento`, then downloads the uploaded `.nupkg`.
 
 The internal debug entrypoint remains:
 
@@ -91,13 +96,23 @@ Compatibility diagnostics emitted by the CCS gate:
 
 ## Current Toolchain Boundary
 
-The CCS public command is `ccs-uip`. The official UiPath CLI owns `uip`.
+The CCS local gate command is `ccs-uip`. The authenticated DEV handoff command
+is `ccs-uip-publish-dev`. The official UiPath CLI owns `uip`.
 
 The engine now prefers official `uip` for migrated gates:
 
 - `uip rpa restore` for dependency resolution before analyzer/pack.
 - `uip rpa analyze` for the Analyzer gate.
 - `uip rpa pack` for the pack/publish dry-run gate.
+
+`ccs-uip-publish-dev` also uses official `uip` directly for tenant operations:
+
+- `uip login status` / `uip login --interactive` / `uip login tenant list`.
+- `uip or processes list` against production to identify the active package
+  version.
+- `uip rpa pack` with the computed SemVer bump.
+- `uip or packages upload` to DEV.
+- `uip or packages download` from DEV for the handoff `.nupkg`.
 
 Legacy `UiPath.Studio.CommandLine.exe` remains as fallback through
 `src/uip_engine/analyzer.py` and `src/uip_engine/uipcli_runner.py`.
@@ -107,7 +122,7 @@ for that exact binary name, or well-known Studio install paths.
 
 ## Safe Migration Path
 
-1. Keep `ccs-uip` as the CCS public command.
+1. Keep `ccs-uip` as the CCS local gate command.
 2. Add a separate official-CLI adapter for `uip`, with explicit discovery such
    as `UIPATH_UIP_CLI` or `shutil.which("uip")`.
 3. Parse official CLI stdout as the JSON envelope, not as legacy `#json...#json`
@@ -118,9 +133,12 @@ for that exact binary name, or well-known Studio install paths.
 6. Keep `uip rpa pack` as the preferred pack gate, with legacy fallback.
 7. Keep network/npm/tool auto-install visible in logs and docs. Do not hide it
    inside offline CCS phases.
+8. Keep tenant-mutating commands outside `ccs-uip`; use
+   `ccs-uip-publish-dev` for explicit DEV upload/download only.
 
 Official adapter file: `src/uip_engine/official_uip.py`. It discovers the
 official CLI, runs migrated `uip rpa` commands, and parses the JSON envelope.
+DEV handoff file: `src/uip_engine/publish_dev.py`.
 
 ## Agent Skill Boundary
 

@@ -494,7 +494,7 @@ def ccs_uip_main(argv: list[str] | None = None) -> int:
             "USAGE:\n"
             "  ccs-uip <project_path> [--apply-contextual]\n"
             "      Pipeline completo (migration probe → deterministic fix →\n"
-            "      gates Layer2/3/5 → contextual report). FAIL só para\n"
+            "      external gates → contextual report). FAIL só para\n"
             "      deploy blockers mecânicos/pipeline/HALT.\n"
             "      --apply-contextual: modo assistido por IA para aplicar fixes\n"
             "      contextuais (default: lista como PASS-WITH-NOTES, sem aplicar).\n"
@@ -546,9 +546,12 @@ def build_parser() -> argparse.ArgumentParser:
                           "(pre-publish gate canonical, sem opt-out). Flag emite "
                           "warning e é ignorada — mantida só por backwards-compat.")
     rev.add_argument("--analyzer-gate-timeout", type=int, default=180,
-                     help="Timeout uipcli em segundos (default 180).")
+                     help="Timeout analyzer gate em segundos (default 180). "
+                          "Prefere `uip rpa analyze`; fallback legacy usa uipcli.")
     rev.add_argument("--pack-gate-timeout", type=int, default=600,
-                     help="Timeout uipcli publish (pack dry-run) em segundos (default 600).")
+                     help="Timeout pack gate em segundos (default 600). "
+                          "Prefere `uip rpa pack`; fallback legacy usa "
+                          "uipcli publish como dry-run.")
     rev.add_argument("--nuget-gate-timeout", type=int, default=300,
                      help="Timeout NuGet restore em segundos (default 300).")
     # Phase 1B (2026-05): activity-compile gate paralelo. AOT compile VB
@@ -727,7 +730,7 @@ def build_parser() -> argparse.ArgumentParser:
     al = sub.add_parser(
         "all",
         help="GOD COMMAND — pipeline completo: migration probe + "
-             "deterministic auto-fix + gates Layer2/3/5 + contextual "
+             "deterministic auto-fix + external gates + contextual "
              "report. FAIL só para deploy blockers.",
     )
     al.add_argument("path", help="Project root path")
@@ -789,8 +792,8 @@ def _cmd_review(args) -> int:
     Sem opt-out CLI. Se review passa, projeto é publish-safe.
 
     Env opt-out (tests apenas):
-      UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 → pula gates 3/4/5 (não usa
-      subprocess externo). Não é meant for production — apenas test harness.
+      UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 → pula gates externos
+      analyzer/nuget/pack. Não é meant for production — apenas test harness.
     """
     import os as _os
     rules = _load_rules_or_die(args.rules_file)
@@ -822,10 +825,10 @@ def _cmd_review(args) -> int:
         )
 
         # P1 (2026-05): gates 4/5/6 paralelos via ThreadPoolExecutor.
-        # Cada gate é uma invocação subprocess externa independente (uipcli
-        # analyze, nuget restore, uipcli publish) — sem shared state mutável
+        # Cada gate é uma invocação subprocess externa independente
+        # (uip/uipcli analyze, nuget restore, uip/uipcli pack) — sem shared state mutável
         # além de `result.add(...)` (list.append é GIL-atomic em CPython).
-        # Ganho típico ~2x em PHASE 2 quando uipcli não está stalled.
+        # Ganho típico ~2x em PHASE 2 quando gates externos não estão stalled.
         # Cap = 3 workers (um por gate). Não usa nproc cap pois são 3 fixos.
         from concurrent.futures import ThreadPoolExecutor, as_completed
         gates = []

@@ -154,23 +154,18 @@ def test_v3_fix_repairs_gt_lt_operators_in_scope():
 
 
 # --------------------------------------------------------------------------
-# API-1 — order-independent detect + corrected description (default False)
+# API-1 — python detector + corrected description (default False)
 # --------------------------------------------------------------------------
 
-def test_api1_detect_order_independent():
-    pat = re.compile(RULES["API-1"]["detect"]["pattern"])
-    # BAD that WAS silently missed: ContinueOnError serialized BEFORE Method
-    reversed_order = (
-        '<ui:HttpClient ContinueOnError="True" DisplayName="POST x" '
-        'Method="POST" Endpoint="u" />'
+def test_api1_uses_python_detector_with_deterministic_apply_class():
+    rule = RULES["API-1"]
+    assert rule["detect"]["type"] == "python"
+    assert rule["detect"]["params"]["module"] == "uip_engine.heuristics.api"
+    assert (
+        rule["detect"]["params"]["function"]
+        == "detect_api1_mutating_http_continue_on_error"
     )
-    assert pat.search(reversed_order)
-    # BAD normal order still matches
-    assert pat.search('<ui:HttpClient Method="POST" ContinueOnError="True" />')
-    # GOOD: idempotent verb is safe
-    assert not pat.search('<ui:HttpClient Method="GET" ContinueOnError="True" />')
-    # GOOD: no explicit ContinueOnError="True"
-    assert not pat.search('<ui:HttpClient Method="POST" Endpoint="u" />')
+    assert rule["fix"]["apply_class"] == "deterministic"
 
 
 def test_api1_description_default_is_false():

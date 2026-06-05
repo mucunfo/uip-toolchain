@@ -2,7 +2,7 @@
 
 Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML-driven (`src/uip_engine`)**. Fonte única = **`rules.yaml`**.
 
-## Quick start — comando único `ccs-uip`
+## Quick start — gate local `ccs-uip`
 
 **Pipeline completo (god command)**:
 
@@ -15,7 +15,8 @@ ccs-uip <project_path>
 ccs-uip <project_path> --apply-contextual
 ```
 
-Interface pública = `ccs-uip <path> [--apply-contextual]` **e nada mais**.
+Interface pública do gate local = `ccs-uip <path> [--apply-contextual]`
+**e nada mais**.
 Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 é intrínseco — defaults internos sobreescritos só via env vars (debug):
 
@@ -41,21 +42,29 @@ Status final do `ccs-uip <path>`:
 correções que exigem interpretação semântica (mensagem, refactor, camada correta,
 decisão arquitetural) com IA/humano no loop.
 
-Console script público: `ccs-uip`. O namespace `uip` fica reservado para a
-CLI oficial da UiPath (`@uipath/cli`). Underlying:
-`python -m uip_engine.cli all <project>`. Subcomandos atômicos
-(`review`, `fix`, `migrate-windows`) seguem existindo **somente** para debug
-interno via `python -m uip_engine.cli ...`; não são aceitos pelo comando
-público `ccs-uip`.
+Console scripts públicos:
+
+| Comando | Uso |
+|---|---|
+| `ccs-uip <project>` | gate local completo: migrate/fix/review/report |
+| `ccs-uip <project> --apply-contextual` | aplica fixes contextuais aprovados |
+| `ccs-uip-publish-dev <project> <major|minor|patch> --prod-folder-path <path>` | operação autenticada: lê versão ativa em produção, empacota próxima versão, faz upload em DEV e baixa `.nupkg` de handoff |
+
+O namespace `uip` fica reservado para a CLI oficial da UiPath (`@uipath/cli`).
+Underlying do gate local: `python -m uip_engine.cli all <project>`.
+Subcomandos atômicos (`review`, `fix`, `migrate-windows`, `pack-scrub`,
+`doctor-uipath-cli`, etc.) seguem existindo **somente** para debug interno via
+`python -m uip_engine.cli ...`; não são aceitos pelo comando público `ccs-uip`.
 
 ## Arquivos ativos
 
 | Arquivo | Papel |
 |---|---|
 | `README.md` | este — setup, hooks, scripts, fluxo |
-| `rules.yaml` | **fonte única** de regras (291 hoje: A/S/P/I/T/W/D/J/X + per-package; 110 deterministic + 174 contextual + 7 structural) |
+| `rules.yaml` | **fonte única** de regras. Contagem efetiva atual: `python -m uip_engine.cli validate` / `list --by-class` |
 | `ARCHITECTURE.md` | manual operacional (schema, decision tree, file map) |
-| `models.conf` | paths de projetos modelo (lookup de exemplos via `xaml_example.py`) |
+| `models.conf.example` | template versionado para lista local de projetos modelo |
+| `models.conf` | arquivo local/gitignored com paths de projetos modelo (lookup de exemplos via `xaml_example.py`) |
 
 ## Como Claude opera
 
@@ -70,10 +79,10 @@ público `ccs-uip`.
 
 | Script | Automação | Uso |
 |---|---|---|
-| `uip_engine` (pacote, `src/uip_engine/`) | auto via hooks PostToolUse | review/validate/list/fix |
+| `uip_engine` (pacote, `src/uip_engine/`) | auto via hooks PostToolUse | review/validate/list/fix/all/gates |
 | `xaml_summary.py` | auto via hook PreToolUse Read `.xaml >500` | resumo estrutural compacto |
 | `xaml_find.py` | manual | lookup por DisplayName/arg/var/invokes/linha |
-| `xaml_example.py` | manual | exemplo real de activity (fonte: `models.conf`) |
+| `xaml_example.py` | manual | exemplo real de activity (fonte local: `models.conf`) |
 | `config_xlsx_manager.py` | manual | inspecionar/alterar Config.xlsx |
 | `resolve_nuget.py --add/--all` | manual | adicionar pacote nova dependência |
 | `tools/batch_uip.py` | manual | valida muitos projetos com retry adaptativo e relatório em `.tmp/` |
@@ -116,9 +125,30 @@ python -m uip_engine.cli review <workspace> --multi-project
 
 # Batch de validação/fix multi-projeto com retry para projetos lentos
 python tools/batch_uip.py C:\Users\lisan\Desktop\temp\_uip_relacao.txt --workers 3 --t1 900 --t2 2400
+
+# Diagnóstico da CLI oficial UiPath usada pelos gates externos
+python -m uip_engine.cli doctor-uipath-cli
 ```
 
 Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).
+
+## Publicação DEV / handoff
+
+`ccs-uip-publish-dev` é separado do gate local por design: ele faz login e
+opera tenants/pacotes via a CLI oficial `uip`.
+
+```powershell
+ccs-uip-publish-dev <project_path> patch --prod-folder-path "Shared/RPA"
+ccs-uip-publish-dev <project_path> minor --prod-folder-key <folder_key>
+```
+
+Fluxo:
+1. valida sessão `uip login` e acesso aos tenants `Producao` e `RPA_Desenvolvimento`;
+2. lê o processo ativo em produção e sua versão atual;
+3. calcula o bump `major|minor|patch`;
+4. roda `uip rpa pack`;
+5. faz upload do pacote em DEV;
+6. baixa o `.nupkg` final para `<project>/.tmp/publish-dev/<package>.<version>/download/`.
 
 ## Apply-class taxonomy
 
@@ -199,11 +229,15 @@ Hooks silenciam quando nada a reportar — zero ruído em tarefas normais.
 
 Engine, hooks, agentes e CLI **NUNCA** rodam `git add/commit/push` em projetos UiPath. Toda alteração fica como modificação local pendente; usuário commita manualmente. Volume alto de modificações é normal em batch fixes.
 
-`.uip-toolchain/` em si não é repo git.
+`.uip-toolchain/` é repo git próprio (`mucunfo/uip-toolchain`, branch `main`).
+Essa política vale para projetos UiPath processados pela toolchain, não para o
+desenvolvimento da toolchain em si.
 
 ## Configurar novo projeto modelo
 
-Editar `models.conf` e adicionar path absoluto do projeto (1 linha). Ordem = prioridade. `xaml_example.py` busca na ordem declarada.
+Copiar `models.conf.example` para `models.conf` e adicionar paths absolutos de
+projetos modelo (1 linha por projeto). Ordem = prioridade. `models.conf` é
+gitignored por conter paths locais; `xaml_example.py` busca na ordem declarada.
 
 ## Referência de IDs
 

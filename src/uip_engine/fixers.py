@@ -4583,6 +4583,212 @@ def apply_force_attribute_in_activity_with_guard(
     return True
 
 
+@register("force_attribute_in_activity_with_guards")
+def apply_force_attribute_in_activity_with_guards(
+    file: Path, spec: dict, dry_run: bool = True
+) -> bool:
+    """Force attr=value inside activity tags matching all guard attributes."""
+    prefix = (spec or {}).get("prefix") or ""
+    local = (spec or {}).get("activity_local") or ""
+    guards = (spec or {}).get("guards") or {}
+    attr = (spec or {}).get("attr_name") or ""
+    target = (spec or {}).get("target_value")
+    if not prefix or not local or not guards or not attr or target is None:
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", prefix):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.-]*", local):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][\w.:.-]*", attr):
+        return False
+    if not isinstance(guards, dict):
+        return False
+    for guard_attr in guards:
+        if not re.fullmatch(r"[A-Za-z_][\w.:.-]*", str(guard_attr)):
+            return False
+
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+
+    tag_open_re = re.compile(
+        rf'<{re.escape(prefix)}:{re.escape(local)}\b([^>]*?)(/?>)',
+        re.DOTALL,
+    )
+    attr_kv_re = re.compile(r'([A-Za-z_][\w.:.-]*)="([^"]*)"')
+    target_attr_re = re.compile(rf'(\s){re.escape(attr)}="([^"]*)"')
+    target_str = str(target)
+    changed = False
+
+    def _patch_tag(m: re.Match) -> str:
+        nonlocal changed
+        attrs_blob = m.group(1)
+        closer = m.group(2)
+        attrs = {am.group(1): am.group(2) for am in attr_kv_re.finditer(attrs_blob)}
+        if any(attrs.get(str(k)) != str(v) for k, v in guards.items()):
+            return m.group(0)
+        existing = target_attr_re.search(attrs_blob)
+        if existing:
+            if existing.group(2) == target_str:
+                return m.group(0)
+            new_blob = target_attr_re.sub(
+                rf'\1{attr}="{target_str}"', attrs_blob, count=1
+            )
+        else:
+            sep = "" if (attrs_blob == "" or attrs_blob.endswith(" ")) else " "
+            new_blob = f'{attrs_blob}{sep}{attr}="{target_str}"'
+        if new_blob == attrs_blob:
+            return m.group(0)
+        changed = True
+        return f'<{prefix}:{local}{new_blob}{closer}'
+
+    new_content = tag_open_re.sub(_patch_tag, content)
+    if not changed or new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
+_SEARCH_STEPS_SEMANTIC_MASK = 0x80 | 0x100
+_SEARCH_STEPS_DEFAULT_TEXT = "Selector | FuzzySelector"
+_SEARCH_STEPS_ALL_NAMES = (
+    "None",
+    "Selector",
+    "FuzzySelector",
+    "Image",
+    "TextFindAll",
+    "TextOcr",
+    "TextNative",
+    "CV",
+    "Semantic",
+    "SemanticSelector",
+)
+_SEARCH_STEPS_SEMANTIC_NAMES = {"semantic", "semanticselector"}
+
+
+def _search_step_token_key(token: str) -> str:
+    m = re.search(r"([A-Za-z_][\w]*)\s*$", token.strip())
+    return (m.group(1) if m else token.strip()).lower()
+
+
+def _clear_search_steps_value(raw_value: str) -> tuple[str, bool]:
+    value = raw_value.strip()
+    if not value:
+        return raw_value, False
+
+    lower = value.lower()
+    if lower.startswith("0x"):
+        try:
+            parsed = int(value, 16)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            cleared = parsed & ~_SEARCH_STEPS_SEMANTIC_MASK
+            if cleared == parsed:
+                return raw_value, False
+            return (_SEARCH_STEPS_DEFAULT_TEXT if cleared == 0 else f"0x{cleared:X}", True)
+
+    if value.lstrip("+-").isdigit():
+        try:
+            parsed = int(value)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            cleared = parsed & ~_SEARCH_STEPS_SEMANTIC_MASK
+            if cleared == parsed:
+                return raw_value, False
+            return (_SEARCH_STEPS_DEFAULT_TEXT if cleared == 0 else str(cleared), True)
+
+    if "|" in value:
+        tokens = value.split("|")
+    elif "," in value:
+        tokens = value.split(",")
+    else:
+        tokens = value.split()
+    kept: list[str] = []
+    removed = False
+    for token in tokens:
+        stripped = token.strip()
+        if not stripped:
+            continue
+        if _search_step_token_key(stripped) in _SEARCH_STEPS_SEMANTIC_NAMES:
+            removed = True
+            continue
+        kept.append(stripped)
+    if not removed:
+        return raw_value, False
+    return (" | ".join(kept) if kept else _SEARCH_STEPS_DEFAULT_TEXT, True)
+
+
+def _clear_search_steps_markup_body(body: str) -> tuple[str, bool]:
+    if "<" not in body and ">" not in body:
+        return _clear_search_steps_value(body)
+
+    names = [
+        m.group(1)
+        for m in re.finditer(
+            r"\b(" + "|".join(re.escape(n) for n in _SEARCH_STEPS_ALL_NAMES) + r")\b",
+            body,
+        )
+    ]
+    if not any(n.lower() in _SEARCH_STEPS_SEMANTIC_NAMES for n in names):
+        return body, False
+    kept = [n for n in names if n.lower() not in _SEARCH_STEPS_SEMANTIC_NAMES]
+    return (" | ".join(kept) if kept else _SEARCH_STEPS_DEFAULT_TEXT, True)
+
+
+@register("clear_search_steps_semantic")
+def apply_clear_search_steps_semantic(
+    file: Path, spec: dict, dry_run: bool = True
+) -> bool:
+    """Clear Semantic/SemanticSelector SearchSteps bits in TargetAnchorable."""
+    raw = file.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    content = raw.decode("utf-8-sig")
+    changed = False
+
+    attr_re = re.compile(
+        r'(<(?:[A-Za-z_][\w.-]*:)?TargetAnchorable(?=[\s/>])'
+        r'[^>]*?\s(?:[A-Za-z_][\w.-]*:)?SearchSteps=")([^"]*)(")',
+        re.DOTALL,
+    )
+
+    def _patch_attr(m: re.Match) -> str:
+        nonlocal changed
+        new_value, did_change = _clear_search_steps_value(m.group(2))
+        if not did_change:
+            return m.group(0)
+        changed = True
+        return f"{m.group(1)}{new_value}{m.group(3)}"
+
+    new_content = attr_re.sub(_patch_attr, content)
+
+    prop_re = re.compile(
+        r"<(?P<tag>(?:[A-Za-z_][\w.-]*:)?TargetAnchorable\.SearchSteps)"
+        r"(?=[\s>])(?P<attrs>[^>]*)>(?P<body>.*?)</(?P=tag)>",
+        re.DOTALL,
+    )
+
+    def _patch_prop(m: re.Match) -> str:
+        nonlocal changed
+        new_body, did_change = _clear_search_steps_markup_body(m.group("body"))
+        if not did_change:
+            return m.group(0)
+        changed = True
+        return f'<{m.group("tag")}{m.group("attrs")}>{new_body}</{m.group("tag")}>'
+
+    new_content = prop_re.sub(_patch_prop, new_content)
+
+    if not changed or new_content == content:
+        return False
+    if not dry_run:
+        out = (b"\xef\xbb\xbf" if bom else b"") + new_content.encode("utf-8")
+        file.write_bytes(out)
+    return True
+
+
 @register("xmlns_declare")
 def apply_xmlns_declare(file: Path, spec: dict, dry_run: bool = True) -> bool:
     """M-6 fixer: adiciona `xmlns:<prefix>="<uri>"` no <Activity> root.

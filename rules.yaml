@@ -1310,8 +1310,9 @@ rules:
     description: |
       Default em `UiPath.Mail.Activities` pós-migração tenta rotear pelo
       Integration Service e falha com NullReferenceException sem ele configurado.
-      Aplicar via Studio property panel "Use Integration Service" = False.
-      Studio serializa o toggle + ConnectionDetailsBackupSlot/AttachmentsBackup.
+      A toolchain deve manter `UseISConnection="False"` sempre. O Studio pode
+      serializar também campos de backup, mas o gate autoritativo é o toggle
+      desligado no XAML.
     applies_to:
       include: ["**/*.xaml"]
     detect:
@@ -1320,10 +1321,16 @@ rules:
         module: uip_engine.heuristics.windows
         function: detect_w13_sendmail
     fix:
+      apply_class: deterministic
+      mechanical:
+        type: force_attribute
+        tag: ui:SendMail
+        attribute: UseISConnection
+        value: "False"
       prose: |
-        Studio: abrir XAML, property panel `Send SMTP Mail Message`,
-        desmarcar "Use Integration Service", salvar. NÃO editar manualmente
-        — Studio garante backup slots e namespaces consistentes.
+        Forçar `UseISConnection="False"` em `<ui:SendMail>`.
+        Se ausente, adiciona; se `True`, substitui. O objetivo é nunca rotear
+        SMTP pelo Integration Service neste stack.
 
   - id: W-14
     severity: ERROR
@@ -4890,9 +4897,17 @@ rules:
     applies_to:
       include: ["**/*.xaml"]
     detect:
-      type: regex
-      # Order-independent: UiPath serializa ContinueOnError (base-class) ANTES de Method.
-      pattern: '<ui:HttpClient\b(?=[^>]*\bMethod="(?:POST|PUT|PATCH|DELETE)")(?=[^>]*\bContinueOnError="True")[^>]*>'
+      type: python
+      params:
+        module: uip_engine.heuristics.api
+        function: detect_api1_mutating_http_continue_on_error
+    fix:
+      apply_class: deterministic
+      prose: |
+        Forçar `ContinueOnError="False"` somente em `HttpClient` com verbo
+        não-idempotente (`POST|PUT|PATCH|DELETE`) e
+        `ContinueOnError="True"` explícito. Chamadas que dependem do default
+        `False` não recebem atributo novo.
 
   - id: API-2
     severity: ERROR
@@ -7367,11 +7382,12 @@ rules:
         module: uip_engine.heuristics.selector_audit
         function: detect_semantic_leak
     fix:
-      apply_class: contextual
+      apply_class: deterministic
       prose: |
-        Remover Semantic + SemanticSelector dos SearchSteps. Bitflag mask: clear
-        0x80 (Semantic) e 0x100 (SemanticSelector). Fallback selector + image
-        gates internamente (S-HEALCHAIN warning aceita se necessário).
+        Remover `Semantic` + `SemanticSelector` dos SearchSteps. Bitflag mask:
+        clear 0x80 (Semantic) e 0x100 (SemanticSelector), preservando os
+        demais bits. Quando o resultado ficaria vazio, usar o default seguro
+        `Selector | FuzzySelector`.
 
 # ============================================================
 # Phase 9E (2026-05-26) — Missing arg declaration auto-inject

@@ -142,6 +142,7 @@ def test_detect_semantic_leak_semantic_selector(tmp_path):
     findings = list(detect_semantic_leak(xaml))
     assert len(findings) == 1
     assert "SemanticSelector" in findings[0].message
+    assert findings[0].fix_mechanical == {"type": "clear_search_steps_semantic"}
 
 
 def test_detect_clean(tmp_path):

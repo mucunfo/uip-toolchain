@@ -18,6 +18,7 @@ from uip_engine._types import Rule, Severity
 from uip_engine.context import FileContext, ProjectContext
 from uip_engine.heuristics.windows import (
     detect_w12_array_literal,
+    detect_w13_sendmail,
     detect_w16_isnullorempty,
     detect_w17_toint32,
     detect_w19_queue_item_indexer,
@@ -161,6 +162,40 @@ def test_w12_arrayrow_with_only_spaces_not_matched_by_arrayrow_branch():
     # but the spec's intent is "non-empty". A pure-space inner still has a space
     # so ArrayRow branch matches; that is acceptable (not the empty literal).
     assert _RE_W12_ARRAYROW.search('ArrayRow="[{ }]"') is not None
+
+
+# ---------------------------------------------------------------------------
+# W-13 — SendMail must force Integration Service off
+# ---------------------------------------------------------------------------
+
+_W13_MECH = {
+    "type": "force_attribute",
+    "tag": "ui:SendMail",
+    "attribute": "UseISConnection",
+    "value": "False",
+}
+
+
+def test_w13_sendmail_true_forces_false(tmp_path):
+    body = '<Activity><ui:SendMail UseISConnection="True" /></Activity>'
+    fc = _write_xaml(tmp_path, body)
+    findings = detect_w13_sendmail(_rule("W-13", _W13_MECH), fc, _project(tmp_path))
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical == _W13_MECH
+
+
+def test_w13_sendmail_missing_forces_false(tmp_path):
+    body = '<Activity><ui:SendMail Subject="x" /></Activity>'
+    fc = _write_xaml(tmp_path, body)
+    findings = detect_w13_sendmail(_rule("W-13", _W13_MECH), fc, _project(tmp_path))
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical == _W13_MECH
+
+
+def test_w13_sendmail_false_is_ok(tmp_path):
+    body = '<Activity><ui:SendMail UseISConnection="False" /></Activity>'
+    fc = _write_xaml(tmp_path, body)
+    assert detect_w13_sendmail(_rule("W-13", _W13_MECH), fc, _project(tmp_path)) == []
 
 
 # ---------------------------------------------------------------------------

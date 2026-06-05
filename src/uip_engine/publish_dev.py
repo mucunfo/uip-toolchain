@@ -22,7 +22,6 @@ from .official_uip import (
 )
 
 
-PROD_TENANT = "Producao"
 DEV_TENANT = "RPA_Desenvolvimento"
 VALID_BUMPS = ("major", "minor", "patch")
 
@@ -32,23 +31,10 @@ EXIT_INTERNAL = 10
 
 
 @dataclass(frozen=True)
-class ActiveProcess:
-    key: str | None
-    name: str
-    package_key: str
-    version: str
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True)
 class PublishPlan:
     project_root: Path
     package_key: str
-    process_name: str
-    prod_tenant: str
     dev_tenant: str
-    prod_folder_path: str | None
-    prod_folder_key: str | None
     current_version: str
     next_version: str
     work_dir: Path
@@ -78,6 +64,14 @@ def _project_name(project_root: Path) -> str:
     if not isinstance(name, str) or not name.strip():
         raise ValueError("project.json must define a non-empty 'name'")
     return name.strip()
+
+
+def _project_version(project_root: Path) -> str:
+    data = _load_project_json(project_root)
+    version = data.get("projectVersion")
+    if not isinstance(version, str) or not version.strip():
+        raise ValueError("project.json must define a non-empty 'projectVersion'")
+    return version.strip()
 
 
 _SEMVER_RE = re.compile(r"^\s*(\d+)\.(\d+)\.(\d+)(?:\s*)$")
@@ -154,7 +148,6 @@ def _tenant_names(data: Any) -> set[str]:
 def ensure_login(
     run_uip: RunUip,
     *,
-    prod_tenant: str,
     dev_tenant: str,
 ) -> None:
     status = run_uip(["login", "status", "--output", "json"])
@@ -170,7 +163,7 @@ def ensure_login(
         tenants_data = _run_checked(run_uip, ["login", "tenant", "list", "--output", "json"])
 
     tenants = _tenant_names(tenants_data)
-    required = {prod_tenant, dev_tenant}
+    required = {dev_tenant}
     missing = sorted(required - tenants)
     if missing:
         available = ", ".join(sorted(tenants)) if tenants else "(none returned)"
@@ -178,48 +171,6 @@ def ensure_login(
             "logged-in UiPath account cannot see required tenant(s): "
             f"{', '.join(missing)}. Available tenants: {available}"
         )
-
-
-def _record_to_process(record: dict[str, Any]) -> ActiveProcess | None:
-    name = _first_str(record, "Name", "ProcessName", "DisplayName")
-    package_key = _first_str(record, "PackageKey", "PackageId", "PackageName", "ProcessKey")
-    version = _first_str(record, "Version", "PackageVersion", "ProcessVersion")
-    if not name or not version:
-        return None
-    return ActiveProcess(
-        key=_first_str(record, "Key", "ProcessKey", "Id"),
-        name=name,
-        package_key=package_key or name,
-        version=version,
-        raw=record,
-    )
-
-
-def select_active_process(
-    records: list[dict[str, Any]],
-    *,
-    process_name: str,
-    package_key: str,
-) -> ActiveProcess:
-    processes = [p for p in (_record_to_process(record) for record in records) if p]
-    exact_name = [p for p in processes if p.name.lower() == process_name.lower()]
-    if len(exact_name) == 1:
-        return exact_name[0]
-    exact_package = [p for p in processes if p.package_key.lower() == package_key.lower()]
-    if len(exact_package) == 1:
-        return exact_package[0]
-    if len(exact_name) > 1 or len(exact_package) > 1:
-        raise RuntimeError(
-            "more than one production process matched. Pass --process-name "
-            "or narrow the folder."
-        )
-    if len(processes) == 1:
-        return processes[0]
-    raise RuntimeError(
-        f"no active production process matched name '{process_name}' "
-        f"or package '{package_key}'"
-    )
-
 
 def _find_nupkg(pack_dir: Path, package_key: str, version: str) -> Path:
     expected = pack_dir / f"{package_key}.{version}.nupkg"
@@ -245,27 +196,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ccs-uip-publish-dev",
         description=(
-            "Read the active production process version, bump major/minor/patch, "
-            "pack the project, upload to RPA_Desenvolvimento, then download the "
+            "Read project.json projectVersion, bump major/minor/patch, pack "
+            "the project, upload to RPA_Desenvolvimento, then download the "
             "uploaded .nupkg for handoff."
         ),
     )
     parser.add_argument("project", help="UiPath project root containing project.json")
     parser.add_argument("bump", choices=VALID_BUMPS, help="Required automatic version bump")
-    parser.add_argument("--prod-tenant", default=PROD_TENANT)
     parser.add_argument("--dev-tenant", default=DEV_TENANT)
-    folder = parser.add_mutually_exclusive_group(required=True)
-    folder.add_argument("--prod-folder-path", default=None)
-    folder.add_argument("--prod-folder-key", default=None)
     parser.add_argument(
         "--package-key",
         default=None,
         help="Package key/id. Default: project.json name.",
-    )
-    parser.add_argument(
-        "--process-name",
-        default=None,
-        help="Production process/release name. Default: package key.",
     )
     parser.add_argument(
         "--out-dir",
@@ -282,36 +224,25 @@ def _run_checked(run_uip: RunUip, args: list[str]) -> Any:
     return _envelope_data(result)
 
 
-def execute(args: argparse.Namespace, *, run_uip: RunUip | None = None) -> PublishPlan:
+def execute(
+    args: argparse.Namespace,
+    *,
+    run_uip: RunUip | None = None,
+    ensure_auth: bool = True,
+) -> PublishPlan:
     project_root = Path(args.project).resolve()
     package_key = args.package_key or _project_name(project_root)
-    process_name = args.process_name or package_key
+    current_version = _project_version(project_root)
     timeout = int(args.timeout)
 
     def _default_run_uip(command: list[str]) -> OfficialUipResult:
         return run_official_uip(command, timeout=timeout)
 
     runner = run_uip or _default_run_uip
-    ensure_login(runner, prod_tenant=args.prod_tenant, dev_tenant=args.dev_tenant)
+    if ensure_auth:
+        ensure_login(runner, dev_tenant=args.dev_tenant)
 
-    process_cmd = [
-        "or", "processes", "list",
-        "--tenant", args.prod_tenant,
-        "--name", process_name,
-        "--output", "json",
-    ]
-    if args.prod_folder_path:
-        process_cmd.extend(["--folder-path", args.prod_folder_path])
-    else:
-        process_cmd.extend(["--folder-key", args.prod_folder_key])
-
-    prod_records = _records(_run_checked(runner, process_cmd))
-    active = select_active_process(
-        prod_records,
-        process_name=process_name,
-        package_key=package_key,
-    )
-    next_version = bump_version(active.version, args.bump)
+    next_version = bump_version(current_version, args.bump)
 
     work_dir = (
         Path(args.out_dir).resolve()
@@ -365,12 +296,8 @@ def execute(args: argparse.Namespace, *, run_uip: RunUip | None = None) -> Publi
     return PublishPlan(
         project_root=project_root,
         package_key=package_key,
-        process_name=process_name,
-        prod_tenant=args.prod_tenant,
         dev_tenant=args.dev_tenant,
-        prod_folder_path=args.prod_folder_path,
-        prod_folder_key=args.prod_folder_key,
-        current_version=active.version,
+        current_version=current_version,
         next_version=next_version,
         work_dir=work_dir,
         pack_dir=pack_dir,
@@ -391,11 +318,6 @@ def main(argv: list[str] | None = None) -> int:
 
     print("Publish DEV/export OK")
     print(f"  package: {plan.package_key}")
-    print(f"  production tenant: {plan.prod_tenant}")
-    if plan.prod_folder_path:
-        print(f"  production folder: {plan.prod_folder_path}")
-    else:
-        print(f"  production folder key: {plan.prod_folder_key}")
     print(f"  version: {plan.current_version} -> {plan.next_version}")
     print(f"  uploaded tenant: {plan.dev_tenant}")
     print(f"  handoff nupkg: {plan.downloaded_nupkg}")
