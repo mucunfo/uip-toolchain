@@ -74,6 +74,22 @@ def _project_version(project_root: Path) -> str:
     return version.strip()
 
 
+def is_packable_project(project_root: Path) -> bool:
+    return (
+        (project_root / "project.uiproj").is_file()
+        or (project_root / "webAppManifest.json").is_file()
+    )
+
+
+def validate_packable_project(project_root: Path) -> None:
+    if is_packable_project(project_root):
+        return
+    raise ValueError(
+        "official `uip rpa pack` requires project.uiproj or "
+        f"webAppManifest.json in project root: {project_root}"
+    )
+
+
 _SEMVER_RE = re.compile(r"^\s*(\d+)\.(\d+)\.(\d+)(?:\s*)$")
 
 
@@ -237,6 +253,7 @@ def execute(
     ensure_auth: bool = True,
 ) -> PublishPlan:
     project_root = Path(args.project).resolve()
+    validate_packable_project(project_root)
     package_key = args.package_key or _project_name(project_root)
     current_version = _project_version(project_root)
     timeout = int(args.timeout)

@@ -163,14 +163,30 @@ def compatibility_diagnostic(
 
 
 def parse_uip_envelope(stdout: str) -> OfficialUipEnvelope | None:
-    """Parse the official CLI JSON envelope from stdout."""
+    """Parse the official CLI JSON envelope from stdout.
+
+    Some official commands print restore/status lines before the JSON envelope.
+    Keep accepting clean JSON, but also recover the first object that contains
+    the stable ``Result`` field.
+    """
     text = stdout.strip()
     if not text:
         return None
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        return None
+        decoder = json.JSONDecoder()
+        payload = None
+        for match in re.finditer(r"{", text):
+            try:
+                candidate, _ = decoder.raw_decode(text[match.start():])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, dict) and "Result" in candidate:
+                payload = candidate
+                break
+        if payload is None:
+            return None
     if not isinstance(payload, dict) or "Result" not in payload:
         return None
     return OfficialUipEnvelope(

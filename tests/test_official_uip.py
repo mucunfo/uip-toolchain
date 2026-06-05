@@ -39,6 +39,21 @@ def test_parse_uip_envelope_failure():
     assert envelope.instructions == "Run help"
 
 
+def test_parse_uip_envelope_accepts_logs_around_json():
+    stdout = (
+        "Restoring UiPath.Studio.Helm.Windows@1.1.195 from NuGet...\n"
+        '{"Result":"Failure","Message":"Pack failed","Instructions":"Check project"}\n'
+        "[WARN] [Telemetry] flush timed out after 1000ms\n"
+    )
+
+    envelope = official_uip.parse_uip_envelope(stdout)
+
+    assert envelope is not None
+    assert not envelope.ok
+    assert envelope.message == "Pack failed"
+    assert envelope.instructions == "Check project"
+
+
 def test_parse_uip_envelope_returns_none_for_non_json():
     assert official_uip.parse_uip_envelope("plain text") is None
 

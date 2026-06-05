@@ -30,13 +30,15 @@ def _result(data, *, code="Ok", returncode=0, result="Success"):
     )
 
 
-def _project(root: Path, folder: str, name: str):
+def _project(root: Path, folder: str, name: str, *, packable: bool = True):
     path = root / folder
     path.mkdir()
     (path / "project.json").write_text(
         json.dumps({"name": name, "projectVersion": "1.0.0"}),
         encoding="utf-8",
     )
+    if packable:
+        (path / "project.uiproj").write_text("{}", encoding="utf-8")
     return path
 
 
@@ -107,7 +109,12 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
         str(tmp_path / "out"),
     ])
 
-    results = publish_done.execute(args, run_uip=fake_run, input_func=fake_input)
+    results = publish_done.execute(
+        args,
+        run_uip=fake_run,
+        input_func=fake_input,
+        check_environment=False,
+    )
 
     assert len(results) == 1
     assert results[0].ok
@@ -145,6 +152,58 @@ def test_batch_dry_run_does_not_call_uip(tmp_path):
     assert results[0].ok
 
 
+def test_batch_preflight_rejects_unmigrated_project_before_login(tmp_path):
+    _project(tmp_path, "RepoA", "ProjectA", packable=False)
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        raise AssertionError(command)
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(tmp_path),
+        "--all",
+        "--yes",
+    ])
+
+    try:
+        publish_done.execute(args, run_uip=fake_run, check_environment=False)
+    except RuntimeError as exc:
+        assert "project.uiproj/webAppManifest.json is missing" in str(exc)
+        assert "RepoA" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    assert calls == []
+
+
+def test_warn_dotnet_sdk_accepts_existing_sdk_6(monkeypatch, tmp_path, capsys):
+    dotnet = tmp_path / "dotnet.cmd"
+    dotnet.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: str(dotnet))
+
+    class Proc:
+        returncode = 0
+        stdout = "6.0.428 [C:\\Program Files\\dotnet\\sdk]\n"
+        stderr = ""
+
+    monkeypatch.setattr(publish_done.subprocess, "run", lambda *a, **k: Proc())
+
+    publish_done.warn_dotnet_sdk()
+
+    assert capsys.readouterr().err == ""
+
+
+def test_warn_dotnet_sdk_warns_when_sdk_is_missing(monkeypatch, capsys):
+    monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: None)
+
+    publish_done.warn_dotnet_sdk()
+
+    assert ".NET SDK not found" in capsys.readouterr().err
+
+
 def test_root_option_remains_supported(tmp_path):
     _project(tmp_path, "RepoA", "ProjectA")
 
@@ -156,7 +215,7 @@ def test_root_option_remains_supported(tmp_path):
         "--dry-run",
     ])
 
-    results = publish_done.execute(args)
+    results = publish_done.execute(args, check_environment=False)
 
     assert len(results) == 1
     assert results[0].ok

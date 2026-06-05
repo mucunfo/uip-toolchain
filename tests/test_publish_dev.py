@@ -55,6 +55,7 @@ def test_project_version_comes_from_project_json(tmp_path):
 def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     project = tmp_path / "Project"
     project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
     (project / "project.json").write_text(
         json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.0.0"}),
         encoding="utf-8",
@@ -125,6 +126,7 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
 def test_execute_runs_interactive_login_when_status_fails(tmp_path):
     project = tmp_path / "Project"
     project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
     (project / "project.json").write_text(
         json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.2.3"}),
         encoding="utf-8",
@@ -167,3 +169,29 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
     assert calls[0] == ["login", "status", "--output", "json"]
     assert calls[1] == ["login", "--interactive", "--output", "json"]
     assert calls[2] == ["login", "tenant", "list", "--output", "json"]
+
+
+def test_execute_rejects_unmigrated_project_before_login(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.json").write_text(
+        json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.2.3"}),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        raise AssertionError(command)
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(ValueError, match="project.uiproj"):
+        publish_dev.execute(args, run_uip=fake_run)
+
+    assert calls == []

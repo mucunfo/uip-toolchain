@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .official_uip import OfficialUipResult, run_official_uip
+from .official_uip import OfficialUipResult, _official_uip_subprocess_env, run_official_uip
 from .publish_dev import (
     DEV_TENANT,
     EXIT_ERROR,
@@ -21,6 +23,7 @@ from .publish_dev import (
     build_parser as build_single_parser,
     ensure_login,
     execute as execute_one,
+    is_packable_project,
 )
 
 
@@ -202,11 +205,68 @@ def _single_args(
     return build_single_parser().parse_args(argv)
 
 
+def validate_selected_projects(candidates: list[ProjectCandidate]) -> None:
+    invalid = [
+        candidate for candidate in candidates
+        if not is_packable_project(candidate.root)
+    ]
+    if not invalid:
+        return
+
+    lines = [
+        "selected project(s) cannot be packed by official `uip rpa pack` "
+        "because project.uiproj/webAppManifest.json is missing:"
+    ]
+    lines.extend(f"  - {candidate.folder_name}" for candidate in invalid)
+    lines.append(
+        "Migrate or fix these project roots before running publish, or remove "
+        "them from the selection."
+    )
+    raise RuntimeError("\n".join(lines))
+
+
+def _list_dotnet_sdks(dotnet: str, env: dict[str, str]) -> tuple[int, list[str], str]:
+    proc = subprocess.run(
+        [dotnet, "--list-sdks"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+        env=env,
+    )
+    output = "\n".join(part for part in (proc.stdout, proc.stderr) if part).strip()
+    sdk_lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    return proc.returncode, sdk_lines, output
+
+
+def warn_dotnet_sdk() -> None:
+    env = _official_uip_subprocess_env()
+    dotnet = shutil.which("dotnet", path=env.get("PATH", ""))
+    if dotnet is None:
+        print(
+            "[WARN] .NET SDK not found. Official `uip rpa pack` may fail; "
+            "install the SDK compatible with your UiPath Studio before publishing.",
+            file=sys.stderr,
+        )
+        return
+    returncode, sdk_lines, output = _list_dotnet_sdks(dotnet, env)
+    if returncode != 0 or not sdk_lines:
+        print(
+            "[WARN] `dotnet --list-sdks` did not return an installed SDK. "
+            "Official `uip rpa pack` may fail; install the SDK compatible "
+            f"with your UiPath Studio before publishing. Output: {output or '(empty)'}",
+            file=sys.stderr,
+        )
+
+
 def execute(
     args: argparse.Namespace,
     *,
     run_uip: RunUip | None = None,
     input_func: Callable[[str], str] = input,
+    check_environment: bool = True,
 ) -> list[BatchItemResult]:
     root = _resolve_root(args)
     candidates = discover_projects(root)
@@ -216,13 +276,17 @@ def execute(
     for candidate in selected:
         print(f"  - {candidate.folder_name} [project: {candidate.project_name}]")
     print(f"\nBump: {args.bump}")
-    print(f"RPA DEV: {DEV_TENANT}")
+    print(f"RPA DEV: {DEV_TENANT}", flush=True)
 
     if args.dry_run:
         return [
             BatchItemResult(candidate=candidate, ok=True)
             for candidate in selected
         ]
+
+    validate_selected_projects(selected)
+    if check_environment:
+        warn_dotnet_sdk()
 
     if not args.yes:
         confirm = input_func("\nConfirmar upload/download desses repos? [y/N]: ")

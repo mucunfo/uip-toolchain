@@ -21,9 +21,9 @@ Reserve `uip` for the official UiPath CLI distributed as `@uipath/cli`.
 This toolchain publishes two CCS console scripts:
 
 - `ccs-uip`: local full-gate command; never uploads packages.
-- `ccs-uip-publish-dev`: authenticated DEV handoff command; reads the active
-  production version, bumps it, packs with official `uip`, uploads to
-  `RPA_Desenvolvimento`, then downloads the uploaded `.nupkg`.
+- `ccs-uip-publish`: authenticated DEV handoff command; scans/selects projects,
+  reads `project.json::projectVersion`, bumps it, packs with official `uip`,
+  uploads to `RPA_Desenvolvimento`, then downloads the uploaded `.nupkg`.
 
 The internal debug entrypoint remains:
 
@@ -97,7 +97,7 @@ Compatibility diagnostics emitted by the CCS gate:
 ## Current Toolchain Boundary
 
 The CCS local gate command is `ccs-uip`. The authenticated DEV handoff command
-is `ccs-uip-publish-dev`. The official UiPath CLI owns `uip`.
+is `ccs-uip-publish`. The official UiPath CLI owns `uip`.
 
 The engine now prefers official `uip` for migrated gates:
 
@@ -105,12 +105,10 @@ The engine now prefers official `uip` for migrated gates:
 - `uip rpa analyze` for the Analyzer gate.
 - `uip rpa pack` for the pack/publish dry-run gate.
 
-`ccs-uip-publish-dev` also uses official `uip` directly for tenant operations:
+`ccs-uip-publish` also uses official `uip` directly for tenant operations:
 
 - `uip login status` / `uip login --interactive` / `uip login tenant list`.
-- `uip or processes list` against production to identify the active package
-  version.
-- `uip rpa pack` with the computed SemVer bump.
+- `uip rpa pack` with the computed SemVer bump from `project.json`.
 - `uip or packages upload` to DEV.
 - `uip or packages download` from DEV for the handoff `.nupkg`.
 
@@ -132,9 +130,11 @@ for that exact binary name, or well-known Studio install paths.
 5. Keep `uip rpa analyze` as the preferred analyzer gate, with legacy fallback.
 6. Keep `uip rpa pack` as the preferred pack gate, with legacy fallback.
 7. Keep network/npm/tool auto-install visible in logs and docs. Do not hide it
-   inside offline CCS phases.
+   inside offline CCS phases. `ccs-uip-publish` does not install .NET SDK; it
+   emits a warning when no SDK is found because official `uip rpa pack` may
+   require the SDK compatible with the local UiPath Studio.
 8. Keep tenant-mutating commands outside `ccs-uip`; use
-   `ccs-uip-publish-dev` for explicit DEV upload/download only.
+   `ccs-uip-publish` for explicit DEV upload/download only.
 
 Official adapter file: `src/uip_engine/official_uip.py`. It discovers the
 official CLI, runs migrated `uip rpa` commands, and parses the JSON envelope.

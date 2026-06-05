@@ -48,7 +48,7 @@ Console scripts públicos:
 |---|---|
 | `ccs-uip <project>` | gate local completo: migrate/fix/review/report |
 | `ccs-uip <project> --apply-contextual` | aplica fixes contextuais aprovados |
-| `ccs-uip-publish-dev <project> <major|minor|patch> --prod-folder-path <path>` | operação autenticada: lê versão ativa em produção, empacota próxima versão, faz upload em DEV e baixa `.nupkg` de handoff |
+| `ccs-uip-publish <major|minor|patch> [path]` | operação autenticada: seleciona projetos, lê `projectVersion`, empacota próxima versão, faz upload em DEV e baixa `.nupkg` de handoff |
 
 O namespace `uip` fica reservado para a CLI oficial da UiPath (`@uipath/cli`).
 Underlying do gate local: `python -m uip_engine.cli all <project>`.
@@ -134,21 +134,22 @@ Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).
 
 ## Publicação DEV / handoff
 
-`ccs-uip-publish-dev` é separado do gate local por design: ele faz login e
-opera tenants/pacotes via a CLI oficial `uip`.
+`ccs-uip-publish` é separado do gate local por design: ele faz login e opera
+tenant/pacotes via a CLI oficial `uip`.
 
 ```powershell
-ccs-uip-publish-dev <project_path> patch --prod-folder-path "Shared/RPA"
-ccs-uip-publish-dev <project_path> minor --prod-folder-key <folder_key>
+ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done"
 ```
 
 Fluxo:
-1. valida sessão `uip login` e acesso aos tenants `Producao` e `RPA_Desenvolvimento`;
-2. lê o processo ativo em produção e sua versão atual;
-3. calcula o bump `major|minor|patch`;
-4. roda `uip rpa pack`;
-5. faz upload do pacote em DEV;
-6. baixa o `.nupkg` final para `<project>/.tmp/publish-dev/<package>.<version>/download/`.
+1. varre a pasta informada e permite selecionar os projetos;
+2. exige bump explícito `major`, `minor` ou `patch`;
+3. lê a versão atual de `project.json::projectVersion`;
+4. valida que o projeto pode ser empacotado pelo SDK oficial;
+5. avisa quando não encontrar .NET SDK local, pois o `uip rpa pack` pode precisar dele;
+6. roda `uip rpa pack`;
+7. faz upload do pacote em `RPA_Desenvolvimento`;
+8. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`.
 
 ## Apply-class taxonomy
 
