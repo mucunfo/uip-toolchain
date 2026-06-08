@@ -1,4 +1,4 @@
-﻿# C:/Users/lisan/OneDrive - Sicoob/Projects/.uip-toolchain/rules.yaml
+# C:/Users/lisan/OneDrive - Sicoob/Projects/.uip-toolchain/rules.yaml
 # Single source of truth — edit aqui adiciona/modifica/remove regra.
 # Schema: ARCHITECTURE.md.
 version: 1
@@ -1841,7 +1841,7 @@ rules:
          arquivo recriando-o no caminho especificado ou a partir do controle
          de origem. Se preferir, simplesmente remova o caso de teste ausente."
 
-      Studio analyze (uipcli analyze) NÃO valida isso — só publish detecta.
+      Official analyze nao valida isso ? so pack/publish detecta.
 
       Causa típica: TC deletado em refactor mas manifest project.json não
       atualizado. Engine atua como guardrail antes do publish.
@@ -3418,7 +3418,7 @@ rules:
       (fora `Tests/`) referencia file que está em
       `project.json::designOptions.processOptions.ignoredFiles`.
 
-      Studio analyzer (uipcli analyze) NÃO detecta esse caso e passa
+      Official analyzer nao detecta esse caso e passa
       "production-ready" — mas Studio Publish gera ERROR:
         ```
         The following invoked workflows are missing: <file>
@@ -4900,7 +4900,7 @@ rules:
         Project pin `UiPath.UIAutomation.Activities.Runtime [25.10.8]`
         → downgrade. Studio Publish gera `NU1605: package downgrade`.
 
-      Studio analyzer (uipcli analyze) NÃO valida peer compat — passa
+      Official analyzer nao valida peer compat ? passa
       silencioso. Engine valida cruzando cache local de `.nupkg`
       (extrai `.nuspec` via ZIP) com `project.json::dependencies`.
 

@@ -1,4 +1,4 @@
-﻿"""migrator_headless wrapper — invoke .NET migrator_headless.exe subprocess.
+"""migrator_headless wrapper — invoke .NET migrator_headless.exe subprocess.
 
 Stream E §04: MigrationService.Migrate reflection-driven. Aims to cover the 130
 migrators surfaced by ``UiPath.UIAutomationNext.Migration.dll`` without depending
@@ -20,9 +20,8 @@ Subprocess exit codes (returned verbatim by ``run_migrate``):
 * ``-1`` — infra failure (binary missing, timeout, malformed JSON)
 
 The wrapper degrades gracefully: when the .NET host is not built or not found,
-``run_migrate`` returns ``(-1, [_infra_finding(...)])`` so callers can choose to
-fall back to the legacy ``ActivityMigrator`` probe path or skip the gate
-entirely.
+``run_migrate`` returns ``(-1, [_infra_finding(...)])`` so callers can treat
+the probe as unavailable without affecting modern review/fix/publish gates.
 """
 from __future__ import annotations
 
