@@ -99,10 +99,11 @@ Compatibility diagnostics emitted by the CCS gate:
 The CCS local gate command is `ccs-uip`. The authenticated DEV handoff command
 is `ccs-uip-publish`. The official UiPath CLI owns `uip`.
 
-The engine now prefers official `uip` for migrated gates:
+The engine now uses official `uip` as the source of truth for modern gates:
 
 - `uip rpa restore` for dependency resolution before analyzer/pack.
 - `uip rpa analyze` for the Analyzer gate.
+- `uip rpa build --skip-analyze` for the compile gate.
 - `uip rpa pack --skip-analyze` for the pack/publish dry-run gate. Analyzer
   remains a separate gate, so pack only proves package generation.
 
@@ -118,17 +119,13 @@ The engine now prefers official `uip` for migrated gates:
 - `uip or packages upload` to DEV.
 - `uip or packages download` from DEV for the handoff `.nupkg`.
 
-Legacy `UiPath.Studio.CommandLine.exe` remains as fallback through
-`src/uip_engine/analyzer.py` and `src/uip_engine/uipcli_runner.py`.
-Do not point legacy discovery at `uip`: `discover_uipcli()` must continue to
-find only `UiPath.Studio.CommandLine.exe` via `UIPATH_STUDIO_CLI`, PATH lookup
-for that exact binary name, or well-known Studio install paths.
+Legacy `UiPath.Studio.CommandLine.exe` remains only for `migrate-windows`,
+where the Activity Migrator is still the bridge for old Legacy/Windows-Legacy
+projects. It is not a review/fix/publish fallback.
 
-The pack gate must try official `uip rpa pack` before legacy discovery. Absence
-of `UiPath.Studio.CommandLine.exe` is not a reason to skip the official pack
-gate. The official pack gate prepares a temporary project copy through
-`publish_readiness.py`, so review gates do not mutate the source while analyzer
-and compile gates run in parallel.
+The pack gate prepares a temporary project copy through `publish_readiness.py`,
+so review gates do not mutate the source while analyzer, build and pack gates
+run through the official CLI.
 
 ## Safe Migration Path
 
@@ -139,14 +136,16 @@ and compile gates run in parallel.
    or pack/publish text.
 4. Run `uip rpa restore` before analyzer/pack. If restore fails, report the
    restore cause and skip later official analyzer/pack for that review run.
-5. Keep `uip rpa analyze` as the preferred analyzer gate, with legacy fallback.
-6. Keep `uip rpa pack --skip-analyze` as the preferred pack gate, with legacy
-   fallback only after official `uip` is unavailable or incompatible.
-7. Keep network/npm/tool auto-install visible in logs and docs. Do not hide it
+5. Keep `uip rpa analyze` as the analyzer gate, without legacy fallback.
+6. Keep `uip rpa build --skip-analyze` as the compile gate, without direct
+   compiler fallback.
+7. Keep `uip rpa pack --skip-analyze` as the pack gate, without legacy publish
+   fallback.
+8. Keep network/npm/tool auto-install visible in logs and docs. Do not hide it
    inside offline CCS phases. `ccs-uip-publish` does not install .NET SDK; it
    emits a warning when no SDK is found because official `uip rpa pack` may
    require the SDK compatible with the local UiPath Studio.
-8. Keep tenant-mutating commands outside `ccs-uip`; use
+9. Keep tenant-mutating commands outside `ccs-uip`; use
    `ccs-uip-publish` for explicit DEV upload/download only.
 
 Official adapter file: `src/uip_engine/official_uip.py`. It discovers the

@@ -550,32 +550,16 @@ def build_parser() -> argparse.ArgumentParser:
                           "warning e é ignorada — mantida só por backwards-compat.")
     rev.add_argument("--analyzer-gate-timeout", type=int, default=180,
                      help="Timeout analyzer gate em segundos (default 180). "
-                          "Prefere `uip rpa analyze`; fallback legacy usa uipcli.")
+                          "Usa `uip rpa analyze`.")
     rev.add_argument("--pack-gate-timeout", type=int, default=600,
                      help="Timeout pack gate em segundos (default 600). "
-                          "Prefere `uip rpa pack`; fallback legacy usa "
-                          "uipcli publish como dry-run.")
-    rev.add_argument("--nuget-gate-timeout", type=int, default=300,
-                     help="Timeout NuGet restore em segundos (default 300).")
-    # Phase 1B (2026-05): activity-compile gate paralelo. AOT compile VB
-    # expressions via UiPath.ActivityCompiler.CommandLine.exe (binário
-    # oficial Studio). Catches BC<NNNN> em Variable.Default / InArgument /
-    # OutArgument que escapam ao analyzer estático.
-    rev.add_argument("--activity-compile-timeout", type=int, default=180,
-                     help="Timeout (s) pra UiPath.ActivityCompiler.CommandLine "
-                          "subprocess gate (default 180). Invoca o binário "
-                          "oficial Studio (Stream E §01) pra compilar AOT as "
-                          "expressions VB de cada XAML. Catches BC<NNNN> VB "
-                          "compile errors em Variable.Default / InArgument / "
-                          "OutArgument que escapam ao analyzer estático.")
-    # Phase 6 (2026-05): executor-validate gate (opt-in via env
-    # UIP_TOOLCHAIN_EXECUTOR_GATE=1). Per-XAML invocation via UiRobot wrapper.
-    # Caro — só ativado por env, NÃO default.
-    rev.add_argument("--executor-timeout", type=int, default=300,
-                     help="Per-XAML timeout (s) para executor-validate gate "
-                          "(opt-in via UIP_TOOLCHAIN_EXECUTOR_GATE=1). "
-                          "Default 300.")
-
+                          "Usa `uip rpa pack` como dry-run.")
+    rev.add_argument("--restore-gate-timeout", dest="nuget_gate_timeout",
+                     type=int, default=300,
+                     help="Timeout `uip rpa restore` em segundos (default 300).")
+    rev.add_argument("--build-gate-timeout", type=int, default=180,
+                     help="Timeout `uip rpa build --skip-analyze` em segundos "
+                          "(default 180).")
     st = sub.add_parser("stats", help="Aggregate telemetry: top rules + trends")
     st.add_argument("--since", default="30d",
                     help="Window: <N>d (days), <N>h (hours), or 'all'. Default 30d")
@@ -611,11 +595,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "contextual, structural, all, ou comma-separated. "
                          "Default deterministic = só fixes mecânicos seguros.")
     fx.add_argument("--no-analyzer-gate", action="store_true",
-                    help="Desliga Studio Analyzer gate (uipcli) — default ON. "
+                    help="Desliga analyzer gate oficial (`uip rpa analyze`) — default ON. "
                          "Default behavior: roda baseline pré-fix + diff "
                          "pós-fix. Reporta erros INTRODUZIDOS pelos fixes "
-                         "(diff-based: pré-existentes ignorados). Skip "
-                         "automaticamente se uipcli não encontrado (graceful).")
+                         "(diff-based: pré-existentes ignorados).")
 
     po = sub.add_parser("phase-out", help="Universalize windows-only rules")
     po.add_argument("scope", choices=["windows-only"])
@@ -796,16 +779,16 @@ def _cmd_review(args) -> int:
       2. _apply_sicoob_lib_overrides(...)   # downgrade lib-contract findings
       3. publish-readiness preconditions    # J-9/W-40/A-19d
       4. _run_official_restore_gate(...)    # uip rpa restore (official)
-      5. _inject_analyzer_findings(...)     # uip rpa analyze / fallback
-      6. _run_nuget_restore_gate(...)       # legacy NuGet fallback
-      7. _run_uipcli_pack_gate(...)         # uip rpa pack / fallback
+      5. _inject_analyzer_findings(...)     # uip rpa analyze
+      6. _run_official_build_gate(...)      # uip rpa build
+      7. _run_pack_gate(...)                # uip rpa pack
       8. relatório final + exit code
 
     Sem opt-out CLI. Se review passa, projeto é publish-safe.
 
     Env opt-out (tests apenas):
       UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1 → pula gates externos
-      analyzer/nuget/pack. Não é meant for production — apenas test harness.
+      restore/analyze/build/pack. Não é meant for production — apenas test harness.
     """
     import os as _os
     rules = _load_rules_or_die(args.rules_file)
@@ -841,12 +824,10 @@ def _cmd_review(args) -> int:
             verbose=verbose,
         )
 
-        # P1 (2026-05): gates 4/5/6 paralelos via ThreadPoolExecutor.
+        # P1 (2026-05): gates externos paralelos via ThreadPoolExecutor.
         # Cada gate é uma invocação subprocess externa independente
-        # (uip/uipcli analyze, nuget restore, uip/uipcli pack) — sem shared state mutável
+        # (uip rpa analyze/build/pack) — sem shared state mutável
         # além de `result.add(...)` (list.append é GIL-atomic em CPython).
-        # Ganho típico ~2x em PHASE 2 quando gates externos não estão stalled.
-        # Cap = 3 workers (um por gate). Não usa nproc cap pois são 3 fixos.
         from concurrent.futures import ThreadPoolExecutor, as_completed
         gates = []
         if not restore_blocked:
@@ -860,8 +841,16 @@ def _cmd_review(args) -> int:
                     ),
                 ),
                 (
+                    "build-gate",
+                    lambda: _run_official_build_gate(
+                        result, args.path,
+                        timeout=getattr(args, "build_gate_timeout", 180),
+                        verbose=verbose,
+                    ),
+                ),
+                (
                     "pack-gate",
-                    lambda: _run_uipcli_pack_gate(
+                    lambda: _run_pack_gate(
                         result, args.path,
                         timeout=getattr(args, "pack_gate_timeout", 600),
                         verbose=verbose,
@@ -871,48 +860,6 @@ def _cmd_review(args) -> int:
         elif verbose:
             print("[review] restore gate blocked analyzer/pack gates.",
                   file=sys.stderr)
-        if not restore_handled:
-            gates.append((
-                "nuget-gate",
-                lambda: _run_nuget_restore_gate(
-                    result, args.path,
-                    timeout=getattr(args, "nuget_gate_timeout", 300),
-                    verbose=verbose,
-                ),
-            ))
-        elif verbose:
-            print("[review] official restore handled dependency gate; "
-                  "legacy NuGet gate skipped.", file=sys.stderr)
-        gates.extend([
-            # runtime-loadtest gate REMOVIDO (2026-05-30): o harness caseiro
-            # (.NET ActivityXamlServices.Load) carregava cada XAML ISOLADO, sem o
-            # contexto do projeto (refs de pacote, VB imports, escopo de args do
-            # root). Resultado: falso-positivo BC30451/BC30002 em todo projeto
-            # Windows REFramework — inclusive nos templates UiPath stock — porque
-            # media a propria falta de contexto, nao o projeto. Redundante com
-            # activity-compile (compilador AOT oficial do Studio) + analyzer-gate,
-            # que validam com o projeto inteiro. Ver experiments/runtime_loadtest/.
-            (
-                "activity-compile",
-                lambda: _run_activity_compile_gate(
-                    result, args.path,
-                    timeout=getattr(args, "activity_compile_timeout", 180),
-                    verbose=verbose,
-                ),
-            ),
-        ])
-        # Phase 6 (2026-05): executor-validate gate é OPT-IN via env var.
-        # Caro (15-300s/XAML), em projetos Windows target emite só INFRA.
-        # Habilita só quando há caso real de drift pack-gate-only não pega.
-        if _os.environ.get("UIP_TOOLCHAIN_EXECUTOR_GATE", "").strip() in ("1", "true", "yes"):
-            gates.append((
-                "executor-validate",
-                lambda: _run_executor_validate_gate(
-                    result, args.path,
-                    timeout=getattr(args, "executor_timeout", 300),
-                    verbose=verbose,
-                ),
-            ))
         if gates:
             with ThreadPoolExecutor(max_workers=len(gates)) as ex:
                 future_to_name = {ex.submit(fn): name for name, fn in gates}
@@ -931,7 +878,7 @@ def _cmd_review(args) -> int:
                               file=sys.stderr)
     elif external_gates_disabled and getattr(args, "verbose", False):
         print("[review] UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES set — "
-              "skipping analyzer/nuget/pack gates.", file=sys.stderr)
+              "skipping restore/analyze/build/pack gates.", file=sys.stderr)
 
     rule_index = {r.id: r for r in rules}
     if args.format == "json":
@@ -1052,31 +999,9 @@ def _official_uip_enabled() -> bool:
 
 
 def _write_official_nuget_config(base_dir: Path) -> Path | None:
-    """Create a NuGet sources config for official `uip rpa` commands."""
-    import os as _os
+    from .official_uip import write_official_nuget_config
 
-    ccs_nupkgs = _os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
-        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
-    )
-    if not Path(ccs_nupkgs).is_dir():
-        return None
-
-    base_dir.mkdir(parents=True, exist_ok=True)
-    cfg = base_dir / "NuGet.config"
-    nuget_xml = (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<configuration>\n'
-        '  <packageSources>\n'
-        '    <clear />\n'
-        f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
-        '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
-        '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
-        '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
-        '  </packageSources>\n'
-        '</configuration>\n'
-    )
-    cfg.write_text(nuget_xml, encoding="utf-8")
-    return cfg
+    return write_official_nuget_config(base_dir)
 
 
 def _apply_sicoob_lib_overrides(result, verbose: bool = False) -> int:
@@ -1544,21 +1469,13 @@ def _inject_official_analyzer_findings(result, project_root: Path, timeout: int,
 
 def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
                               verbose: bool = False) -> None:
-    """Run UiPath Analyzer and inject findings into result.
+    """Run official `uip rpa analyze` and inject findings into result.
 
-    Graceful degradation:
-      - official uip and uipcli not found -> warn on stderr, return
-      - timeout / OS error -> warn, return
-      - project.json absent -> warn, return
-
-    Each AnalyzerIssue becomes a Finding with rule_id `UIPATH:<ErrorCode>`
-    (or `UIPATH:LOAD` if no code), category `uipath`, line 0.
+    Legacy `UiPath.Studio.CommandLine.exe analyze` fallback was removed from
+    the modern validation path. If official `uip` is unavailable, review must
+    fail instead of silently validating against a different toolchain.
     """
-    from .analyzer import discover_uipcli, _parse_json_block
-    from .uipcli_runner import preflight, run_uipcli_guarded
     from ._types import Finding
-    import os
-    import re
 
     project_root = Path(project_path).resolve()
     project_json = project_root / "project.json"
@@ -1571,234 +1488,29 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     if _inject_official_analyzer_findings(result, project_root, timeout, verbose):
         return
 
-    cli = discover_uipcli()
-    if cli is None or not cli.is_file():
-        print("[analyzer-gate] official uip unavailable and uipcli not found — "
-              "gate skipped. Set UIPATH_UIP_CLI, UIPATH_STUDIO_CLI, "
-              "or install UiPath Studio. "
-              "Engine local cobre apenas regras Sicoob.", file=sys.stderr)
-        return
-
-    # Pre-flight: uipcli responsive + cloud reachable. Severity = ERROR —
-    # sem uipcli engine NÃO valida Studio analyzer nem pack/build. Skip
-    # silencioso (WARN) escondia regressões. Sicoob dev sempre tem uipcli
-    # local (Studio install); CI Windows tem; se preflight falha = ambiente
-    # quebrado, engine NÃO pode declarar PASS.
-    #
-    # Override opt-in: UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN
-    # (usar só em CI degradado conhecido; documentar reason).
-    pre = preflight(cli)
-    if not pre.ok:
-        allow_skip = os.environ.get(
-            "UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP", ""
-        ).strip() in ("1", "true", "yes")
-        sev = Severity.WARN if allow_skip else Severity.ERROR
-        result.add(Finding(
-            rule_id="UIPATH:PREFLIGHT",
-            severity=sev,
-            category="breaking",
-            file="project.json",
-            line=0,
-            message=f"[analyzer-gate] {pre.as_message()}",
-        ))
-        print(f"[analyzer-gate] {pre.as_message()}", file=sys.stderr)
-        return
-
-    if verbose:
-        print(f"[analyzer-gate] running uipcli analyze on {project_json}",
-              file=sys.stderr)
-
-    res = run_uipcli_guarded(
-        [str(cli), "analyze", "-p", str(project_json)],
-        timeout_sec=timeout,
-        preflight_result=pre,
-    )
-    if not res.completed:
-        result.add(Finding(
-            rule_id="UIPATH:ANALYZE_HALT",
-            severity=Severity.ERROR,
-            category="breaking",
-            file="project.json",
-            line=0,
-            message=f"[analyzer-gate] {res.as_diagnostic()}",
-        ))
-        print(f"[analyzer-gate] {res.as_diagnostic()}", file=sys.stderr)
-        return
-
-    issues = _parse_json_block(res.stdout)
-    # Also capture NU\d+ NuGet package errors (1 per line, not in #json)
-    nu_errors = []
-    for line in res.stdout.splitlines():
-        nu = re.match(r"^(NU\d+):\s*(.*)$", line.strip())
-        if nu:
-            nu_errors.append((nu.group(1), nu.group(2)))
-
-    injected = 0
-    policy_downgraded = 0
-    for raw in issues:
-        if _add_analyzer_record_finding(result, raw, source="uipcli analyze"):
-            policy_downgraded += 1
-        injected += 1
-
-    for code, desc in nu_errors:
-        result.add(Finding(
-            rule_id=f"UIPATH:{code}",
-            severity=Severity.ERROR,
-            category="uipath",
-            file="(project)",
-            line=0,
-            message=desc.strip(),
-        ))
-        injected += 1
-
-    if verbose:
-        print(f"[analyzer-gate] {injected} findings injected "
-              f"({policy_downgraded} downgraded por policy Sicoob; exit code "
-              f"{res.returncode}).", file=sys.stderr)
+    result.add(Finding(
+        rule_id="UIPATH:CLI_NOT_FOUND",
+        severity=Severity.ERROR,
+        category="breaking",
+        file="project.json",
+        line=0,
+        message=(
+            "[analyzer-gate] official `uip` CLI not found or disabled. Install "
+            "the current UiPath CLI, run `uip tools update`, or set "
+            "UIPATH_UIP_CLI. Legacy Studio CommandLine fallback is no longer "
+            "part of the modern validation path."
+        ),
+    ))
+    print("[analyzer-gate] official uip unavailable; gate failed.",
+          file=sys.stderr)
 
 
-# NuGet warning codes que tratamos como ERROR (blocking publish):
-#   NU1101 — package not found in source
-#   NU1102 — version not found
-#   NU1107 — version conflict
-#   NU1605 — package downgrade (warning, mas bloqueia publish)
-#   NU3026 — signature validation
-#   NU5048 — missing required metadata
-# Outros NU* WARN ficam WARN.
-_NUGET_PROMOTE_TO_ERROR = frozenset({
-    "NU1101", "NU1102", "NU1107", "NU1605", "NU3026", "NU5048",
-})
-
-_NUGET_LINE_RE = None  # lazy compile inside the gate
-
-
-def _discover_nuget_binary() -> str | None:
-    """Localize nuget.exe / dotnet executable. Priority:
-      1. env UIPATH_NUGET_CLI
-      2. nuget.exe via PATH
-      3. dotnet via PATH (fallback — `dotnet restore` paliativo).
-    Retorna o path do binary ou None se nada encontrado.
-    """
-    import os
-    import shutil as _sh
-    explicit = os.environ.get("UIPATH_NUGET_CLI")
-    if explicit and Path(explicit).is_file():
-        return explicit
-    via_path = _sh.which("nuget") or _sh.which("nuget.exe")
-    if via_path:
-        return via_path
-    dotnet = _sh.which("dotnet")
-    if dotnet:
-        return dotnet
-    return None
-
-
-def _run_nuget_restore_gate(result, project_path: str, timeout: int = 300,
-                             verbose: bool = False) -> None:
-    """Run NuGet restore and inject NU* errors/warnings as findings.
-
-    Graceful degradation: se nenhum binary NuGet disponível, warn + skip.
-    UiPath project.json não é .csproj — `dotnet restore` requer adaptador.
-    Esse gate é primarily útil quando nuget.exe é provided no env Sicoob CI.
-    """
-    import re
-    import subprocess
-    from ._types import Finding
-
-    binary = _discover_nuget_binary()
-    if binary is None:
-        print("[NUGET-GATE] nuget binary not found; skipping. "
-              "Set UIPATH_NUGET_CLI or install nuget.exe / dotnet SDK.",
-              file=sys.stderr)
-        return
-
-    project_root = Path(project_path).resolve()
-    project_json = project_root / "project.json"
-    if not project_json.is_file():
-        if verbose:
-            print(f"[NUGET-GATE] no project.json at {project_root} — skipped.",
-                  file=sys.stderr)
-        return
-
-    # nuget.exe: `nuget restore <project.json>` direto OK.
-    # dotnet: NÃO suporta project.json UiPath. Skipa com warning, evita
-    # falsos positivos de "project file not supported".
-    binary_name = Path(binary).name.lower()
-    if binary_name.startswith("dotnet"):
-        if verbose:
-            print("[NUGET-GATE] only dotnet available — project.json UiPath "
-                  "não é suportado por `dotnet restore`. Skipping.",
-                  file=sys.stderr)
-        return
-
-    if verbose:
-        print(f"[NUGET-GATE] running {binary} restore on {project_json}",
-              file=sys.stderr)
-    try:
-        proc = subprocess.run(
-            [binary, "restore", str(project_json)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=timeout, check=False, cwd=str(project_root),
-        )
-    except (subprocess.TimeoutExpired, OSError) as e:
-        print(f"[NUGET-GATE] nuget invocation failed: "
-              f"{type(e).__name__}: {e}. Gate skipped.", file=sys.stderr)
-        return
-
-    output = (proc.stdout or "") + "\n" + (proc.stderr or "")
-
-    # Capture lines with NU<NNNN>: code (error or warning prefix optional).
-    # Examples:
-    #   "[Error] NU1101: Unable to find package ..."
-    #   "warning : NU1605: Detected package downgrade ..."
-    #   "NU1102: Unable to find package version ..."
-    nu_re = re.compile(
-        r"(?P<prefix>\[?(?:Error|Warning|error|warning)\]?\s*[: ]\s*)?"
-        r"(?P<code>NU\d{4,5})\s*:\s*(?P<msg>.+?)\s*$",
-        re.MULTILINE,
-    )
-
-    injected = 0
-    seen_keys: set[tuple[str, str]] = set()
-    for m in nu_re.finditer(output):
-        code = m.group("code")
-        msg = m.group("msg").strip()
-        prefix = (m.group("prefix") or "").lower()
-        key = (code, msg[:120])
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        # Severity: promote known-blocking codes to ERROR; else use prefix hint.
-        if code in _NUGET_PROMOTE_TO_ERROR:
-            sev = Severity.ERROR
-        elif "error" in prefix:
-            sev = Severity.ERROR
-        elif "warning" in prefix:
-            sev = Severity.WARN
-        else:
-            sev = Severity.WARN
-        result.add(Finding(
-            rule_id=f"NUGET:{code}",
-            severity=sev,
-            category="breaking",
-            file="project.json",
-            line=1,
-            message=f"{code}: {msg}",
-        ))
-        injected += 1
-
-    if verbose:
-        print(f"[NUGET-GATE] {injected} findings injected (exit {proc.returncode}).",
-              file=sys.stderr)
-
-
-# Pattern p/ extrair file path + line de erros uipcli publish.
-# uipcli emite "Path/To/File.xaml: BC30002: msg" e variantes
+# Pattern p/ extrair file path + line de erros do `uip rpa pack`.
+# A CLI emite "Path/To/File.xaml: BC30002: msg" e variantes
 # "Path/To/File.xaml(123,45): BC30002: msg".
 _PACK_FILE_LINE_RE = None  # lazy
 
-# Frases-âncora que indicam erro em pack/publish (PT-BR + EN, since uipcli
-# pode emitir em ambas linguagens dependendo do locale Windows).
+# Frases-âncora que indicam erro em pack/publish (PT-BR + EN).
 _PACK_ERROR_ANCHORS = (
     "O projeto tem erros de validação",
     "Project has validation errors",
@@ -1957,336 +1669,175 @@ def _run_official_pack_gate(result, project_root: Path, timeout: int,
         _shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
-                          verbose: bool = False) -> None:
-    """Run the pack dry-run gate.
 
-    Official `uip rpa pack --skip-analyze` is preferred and attempted before
-    legacy Studio CLI discovery. Analyzer is a separate review gate.
+def _run_pack_gate(result, project_path: str, timeout: int = 600,
+                   verbose: bool = False) -> None:
+    """Run the official publish dry-run gate via `uip rpa pack`.
 
-    uipcli não tem subcmd `pack` direto. `publish -p ... -o Process -f <tmpdir>`
-    com feed local é o fallback: faz restore + validation +
-    compile + .nupkg writing, sem upload. Erros (BC*, validation) capturados.
-
-    Graceful degradation: skip se official uip e uipcli não estiverem
-    disponíveis.
+    Legacy `UiPath.Studio.CommandLine.exe publish` fallback was intentionally
+    removed: the current toolchain treats official `uip` as the source of
+    truth for restore/analyze/build/pack. Legacy migration remains isolated in
+    `migrate-windows`.
     """
-    import os as _os
-    import shutil
-    import tempfile
-    from .analyzer import (discover_uipcli, load_cached_pack_findings,
-                           save_cached_pack_findings)
-    from .uipcli_runner import preflight, run_uipcli_guarded
-    from ._types import Finding
-
     project_root = Path(project_path).resolve()
     project_json = project_root / "project.json"
     if not project_json.is_file():
         if verbose:
-            print(f"[PACK-GATE] no project.json at {project_root} — skipped.",
+            print(f"[PACK-GATE] no project.json at {project_root}; skipped.",
                   file=sys.stderr)
         return
 
     if _run_official_pack_gate(result, project_root, timeout, verbose):
         return
 
-    cli = discover_uipcli()
-    if cli is None or not cli.is_file():
-        print("[PACK-GATE] official uip unavailable and uipcli not found — "
-              "gate skipped. Set UIPATH_UIP_CLI, UIPATH_STUDIO_CLI, or "
-              "install UiPath Studio.",
-              file=sys.stderr)
+    result.add(Finding(
+        rule_id="UIPATH:CLI_NOT_FOUND",
+        severity=Severity.ERROR,
+        category="breaking",
+        file="project.json",
+        line=0,
+        message=(
+            "[PACK-GATE] official `uip` CLI not found or disabled. Install the "
+            "current UiPath CLI, run `uip tools update`, or set UIPATH_UIP_CLI. "
+            "Legacy Studio CommandLine fallback is no longer part of the "
+            "modern validation path."
+        ),
+    ))
+    print("[PACK-GATE] official uip unavailable; gate failed.", file=sys.stderr)
+
+
+def _run_official_build_gate(result, project_path: str, timeout: int = 180,
+                             verbose: bool = False) -> None:
+    """Run the official compile gate via `uip rpa build`.
+
+    The official CLI is the source of truth for project-level compile
+    diagnostics; `pack --skip-analyze` remains the packaging dry-run gate.
+    """
+    import tempfile
+    import shutil as _shutil
+    from .official_uip import (
+        diagnose_official_uip_failure,
+        discover_official_uip,
+        iter_analyzer_records,
+        official_failure_text,
+        run_official_uip,
+    )
+
+    project_root = Path(project_path).resolve()
+    if not (project_root / "project.json").is_file():
+        if verbose:
+            print(f"[BUILD-GATE] no project.json at {project_root}; skipped.",
+                  file=sys.stderr)
         return
 
-    # Fix #5 (2026-05): cache pack-gate. Re-runs consecutivos sem mudança em
-    # project.json/xamls (mesma signature) re-emitem findings cached sem pagar
-    # custo uipcli publish (3-10min). Opt-out: UIP_TOOLCHAIN_NO_CACHE=1.
-    cache_disabled = (
-        _os.environ.get("UIP_TOOLCHAIN_NO_CACHE", "").strip() in ("1", "true", "yes")
-    )
-    if not cache_disabled:
-        cached = load_cached_pack_findings(project_root)
-        if cached is not None:
-            for fd in cached:
-                try:
-                    result.add(Finding(
-                        rule_id=fd["rule_id"],
-                        severity=Severity(fd["severity"]),
-                        category=fd["category"],
-                        file=fd["file"],
-                        line=int(fd.get("line", 0)),
-                        message=fd["message"],
-                    ))
-                except (KeyError, ValueError):
-                    # Cache entry corrupto — pula essa entrada, segue resto.
-                    continue
-            if verbose:
-                print(f"[PACK-GATE] cache HIT — {len(cached)} findings re-emitted, "
-                      f"skipping uipcli publish.", file=sys.stderr)
-            return
-
-    # Pre-flight: cloud + uipcli responsive ANTES de pagar custo do spawn.
-    # Severity = ERROR (mesma justificativa que analyzer-gate): sem uipcli
-    # engine NÃO valida pack/build. Skip silencioso escondia regressões.
-    # Override opt-in via UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP=1 degrada pra WARN.
-    pre = preflight(cli)
-    if not pre.ok:
-        allow_skip = _os.environ.get(
-            "UIP_TOOLCHAIN_ALLOW_PREFLIGHT_SKIP", ""
-        ).strip() in ("1", "true", "yes")
-        sev = Severity.WARN if allow_skip else Severity.ERROR
+    official = discover_official_uip()
+    if official is None:
         result.add(Finding(
-            rule_id="UIPATH:PREFLIGHT",
-            severity=sev,
+            rule_id="UIPATH:CLI_NOT_FOUND",
+            severity=Severity.ERROR,
             category="breaking",
             file="project.json",
             line=0,
-            message=f"[PACK-GATE] {pre.as_message()}",
+            message=(
+                "[BUILD-GATE] official `uip` CLI not found. Install the current "
+                "UiPath CLI, run `uip tools update`, or set UIPATH_UIP_CLI."
+            ),
         ))
-        print(f"[PACK-GATE] {pre.as_message()}", file=sys.stderr)
+        print("[BUILD-GATE] official uip unavailable; gate failed.", file=sys.stderr)
+        return
+    if not _check_official_uip_compatibility(result, official, source="BUILD-GATE"):
         return
 
-    # tmpdir em .uip-toolchain/.tmp/pack_dryrun/<pid>/ (gitignored). NÃO usar
-    # tempfile.gettempdir() — fica fora do controle, e Windows AV pode
-    # gerar permission errors. tempfile.mkdtemp() em diretório nosso.
     engine_root = Path(__file__).resolve().parents[2]
-    base_tmp = engine_root / ".tmp" / "pack_dryrun"
+    base_tmp = engine_root / ".tmp" / "official_uip_build"
+    base_tmp.mkdir(parents=True, exist_ok=True)
+    tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="build_"))
     try:
-        base_tmp.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
+        nuget_config = _write_official_nuget_config(tmpdir)
+        detailed_log = tmpdir / "build.log"
+        args = [
+            "rpa", "build", str(project_root),
+            "--skip-analyze",
+            "--output", "json",
+            "--detailed-log-path", str(detailed_log),
+        ]
+        if nuget_config is not None:
+            args.extend(["--nuget-sources-config-path", str(nuget_config)])
+        governance = os.environ.get("UIPATH_GOVERNANCE_FILE_PATH")
+        if governance:
+            args.extend(["--governance-file-path", governance])
+            gtype = os.environ.get("UIPATH_GOVERNANCE_FILE_TYPE")
+            if gtype:
+                args.extend(["--governance-file-type", gtype])
         if verbose:
-            print(f"[PACK-GATE] cannot create tmp dir: {e}. Skipping.",
+            print(f"[BUILD-GATE] running official uip rpa build via {official}",
                   file=sys.stderr)
-        return
-
-    tmpdir = tempfile.mkdtemp(dir=str(base_tmp), prefix="pack_")
-    # Temp NuGet.config no projeto pra apontar pra `.nupkgs/` local (CCS_*).
-    # uipcli v26 NÃO suporta flag `--libraries-source` (verifiquei help — não
-    # existe). Único mecanismo: NuGet.config standard. Sem ele, uipcli usa
-    # machine config (só nuget.org) → CCS_* não resolvem → pack falha com
-    # "O projeto tem erros de validação" — false-positive engine.
-    #
-    # Idempotent: se projeto já tem NuGet.config committed, NÃO sobrescreve
-    # (respeita config dev). Cria apenas se ausente. Pós-pack, deleta SÓ se
-    # engine criou (config_created flag) — zero rastro em projeto nem machine.
-    #
-    # Path lookup: env UIPATH_CCS_NUPKGS_DIR > default Sicoob path.
-    ccs_nupkgs = _os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
-        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
-    )
-    project_nuget_config = project_root / "NuGet.config"
-    config_created_by_engine = False
-    if not project_nuget_config.exists() and Path(ccs_nupkgs).is_dir():
-        # Sentinel comment permite boot-time orphan cleanup em runs futuros
-        # (caso este finally não execute por crash hard). Ver
-        # `_cleanup_orphan_temp_nuget_config()`.
-        nuget_xml = (
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            f'<!-- {_TEMP_NUGET_CONFIG_SENTINEL} -->\n'
-            '<configuration>\n'
-            '  <packageSources>\n'
-            '    <clear />\n'
-            f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
-            '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
-            '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
-            '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
-            '  </packageSources>\n'
-            '</configuration>\n'
-        )
         try:
-            project_nuget_config.write_text(nuget_xml, encoding="utf-8")
-            config_created_by_engine = True
-            if verbose:
-                print(f"[PACK-GATE] created temp NuGet.config "
-                      f"({ccs_nupkgs} as Sicoob_Local source)", file=sys.stderr)
-        except OSError as e:
-            if verbose:
-                print(f"[PACK-GATE] cannot create temp NuGet.config: {e}",
-                      file=sys.stderr)
-
-    # Snapshot project.json bytes ANTES do uipcli publish. uipcli publish NÃO
-    # é read-only: bumpa `projectVersion` (2.1.4 → 2.1.5) no SOURCE a cada
-    # invocação e normaliza keys ausentes pra defaults (ex: runtimeOptions.
-    # mustRestoreAllDependencies absent → injeta `false`). Como esse gate é
-    # dry-run de VALIDAÇÃO (output vai pra tmpdir, descartado), o source deve
-    # ficar byte-idêntico. Sem isso: (a) projectVersion drift gera git churn +
-    # quebra idempotência (rerun engine = diff espúrio), (b) uipcli pode dropar
-    # keys ENV-1 aplicadas em PHASE 1. Restore no finally garante zero side-
-    # effect. Diagnose: .uip-toolchain pilot 2026-05-27.
-    project_json_pre_bytes = project_json.read_bytes()
-
-    try:
-        if verbose:
-            print(f"[PACK-GATE] running uipcli publish (dry-run) "
-                  f"on {project_json} -> {tmpdir}", file=sys.stderr)
-
-        publish_args = [str(cli), "publish",
-                        "-p", str(project_json),
-                        "-o", "Process",
-                        "-f", str(tmpdir)]
-
-        res = run_uipcli_guarded(
-            publish_args,
-            timeout_sec=timeout,
-            preflight_result=pre,
-        )
-
-        # Halt/timeout/preflight: emit finding diagnóstico estruturado.
-        if not res.completed:
+            res = run_official_uip(args, timeout=timeout, uip_path=official)
+        except Exception as exc:
             result.add(Finding(
-                rule_id="UIPATH:PACK_HALT",
+                rule_id="UIPATH:BUILD_HALT",
                 severity=Severity.ERROR,
                 category="breaking",
                 file="project.json",
                 line=0,
-                message=f"[PACK-GATE] {res.as_diagnostic()}",
+                message=f"[BUILD-GATE] official uip rpa build failed: "
+                        f"{type(exc).__name__}: {exc}",
             ))
-            print(f"[PACK-GATE] {res.as_diagnostic()}", file=sys.stderr)
+            print(f"[BUILD-GATE] official uip rpa build failed: {exc}",
+                  file=sys.stderr)
             return
 
-        # Snapshot pra cache save: findings injetados nesse run = slice
-        # entre len pré e pós injection.
-        pre_injection_count = len(result.findings)
+        injected = 0
+        for raw in iter_analyzer_records(res.envelope):
+            _add_analyzer_record_finding(result, raw, source="uip rpa build")
+            injected += 1
 
-        output = res.stdout + "\n" + res.stderr
-        injected = _parse_pack_output_and_inject(result, output, project_root)
+        try:
+            detailed_log_text = detailed_log.read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            detailed_log_text = ""
+        output = "\n".join(
+            part for part in (
+                official_failure_text(res),
+                detailed_log_text,
+            )
+            if part
+        )
+        injected += _parse_pack_output_and_inject(result, output, project_root)
 
-        # Se uipcli retornou erro mas nada foi capturado pelos regex acima,
-        # emit single Finding indicando publish falhou (so user sees something).
         if res.returncode != 0 and injected == 0:
-            # Try to capture last non-empty line as fallback msg.
+            diagnostics = diagnose_official_uip_failure(output, "rpa build")
+            for diagnostic in diagnostics:
+                _add_official_uip_diagnostic(result, diagnostic, source="BUILD-GATE")
+            injected += len(diagnostics)
+        if res.returncode != 0 and injected == 0:
             fallback_msg = ""
             for line in reversed(output.splitlines()):
                 s = line.strip()
-                if s and not s.startswith("UiPath.Studio.CommandLine"):
+                if s:
                     fallback_msg = s
                     break
             result.add(Finding(
-                rule_id="UIPATH:PACK",
+                rule_id="UIPATH:BUILD",
                 severity=Severity.ERROR,
                 category="breaking",
                 file="project.json",
                 line=0,
-                message=f"uipcli publish returned exit {res.returncode} "
-                        f"(no parseable errors). Last line: {fallback_msg[:300]}",
+                message=f"official uip rpa build returned exit {res.returncode}. "
+                        f"Last line: {fallback_msg[:300]}",
             ))
             injected += 1
-
-        # Fix #5: persiste findings pra cache. Salva mesmo conjunto vazio
-        # (pack OK sem findings = cache hit válido pula uipcli no próximo run).
-        if not cache_disabled:
-            new_findings = result.findings[pre_injection_count:]
-            serializable = [
-                {
-                    "rule_id": f.rule_id,
-                    "severity": int(f.severity),
-                    "category": f.category,
-                    "file": f.file,
-                    "line": f.line,
-                    "message": f.message,
-                }
-                for f in new_findings
-            ]
-            save_cached_pack_findings(project_root, serializable)
-
         if verbose:
-            print(f"[PACK-GATE] {injected} findings injected "
-                  f"(exit {res.returncode}, duration {res.duration_sec:.1f}s).",
-                  file=sys.stderr)
+            print(f"[BUILD-GATE] official uip injected {injected} findings "
+                  f"(exit {res.returncode}).", file=sys.stderr)
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-        # Restore project.json se uipcli publish mutou o source (projectVersion
-        # bump / key normalization). Dry-run gate não pode deixar rastro.
-        try:
-            if project_json.read_bytes() != project_json_pre_bytes:
-                project_json.write_bytes(project_json_pre_bytes)
-                if verbose:
-                    print("[PACK-GATE] restored project.json "
-                          "(uipcli publish mutou source — revertido)",
-                          file=sys.stderr)
-        except OSError as e:
-            if verbose:
-                print(f"[PACK-GATE] cannot restore project.json: {e}",
-                      file=sys.stderr)
-        # Cleanup temp NuGet.config: deleta SÓ se engine criou. Config pre-
-        # existente no projeto (committed) fica intacta.
-        if config_created_by_engine:
-            try:
-                project_nuget_config.unlink(missing_ok=True)
-                if verbose:
-                    print("[PACK-GATE] removed temp NuGet.config", file=sys.stderr)
-            except OSError as e:
-                if verbose:
-                    print(f"[PACK-GATE] cannot remove temp NuGet.config: {e}",
-                          file=sys.stderr)
-
-
-def _run_activity_compile_gate(result, project_path: str, timeout: int = 180,
-                                verbose: bool = False) -> None:
-    """PHASE 2 gate: AOT compile VB expressions via Studio compiler subprocess.
-
-    Invoca UiPath.ActivityCompiler.CommandLine.exe (mesmo binário que Studio
-    usa internamente durante Publish) com verb `run` em modo dry-run pra
-    capturar BC<NNNN> compile diagnostics de expressions em:
-      - Variable.Default (smart-quote bugs, parens unbalanced, identifier
-        not declared)
-      - InArgument / OutArgument expression scope
-      - Type unresolved em condições IfElse/While/Assign
-
-    Custos: mais profundo que analyzer (que só roda regras declarativas),
-    overlaps com runtime-loadtest (que carrega XAML via ActivityXamlServices
-    sem AOT-compilar expressions). Os dois são complementares:
-      - runtime-loadtest catches XAML parse + CacheMetadata + type resolution.
-      - activity-compile catches VB syntax + expression-scope compile errors.
-
-    Graceful degradation: se Studio não instalado / binary não encontrado,
-    wrapper emite AC-COMPILE-INFRA (severity WARN, não bloqueia engine PASS).
-    Override binary via env UIPATH_ACTIVITY_COMPILER_BIN.
-    """
-    from pathlib import Path as _Path
-    from .activity_compiler import run_compile
-
-    project = _Path(project_path)
-    if verbose:
-        print(f"[activity-compile] running em {project}", file=sys.stderr)
-    code, findings = run_compile(project, timeout=timeout)
-    for f in findings:
-        result.add(f)
-    if verbose:
-        print(f"[activity-compile] exit={code} findings={len(findings)}",
-              file=sys.stderr)
-
-
-def _run_executor_validate_gate(result, project_path: str, timeout: int = 300,
-                                 verbose: bool = False) -> None:
-    """PHASE 2 gate (opt-in): Robot Executor wrapper validation.
-
-    Invoca UiRobot wrapper (`executor_drive`) por XAML safe-to-run no
-    projeto. Catches drift `Activity could not be loaded` que pack-gate /
-    analyze não pegam em legacy targets ou Tests/Test_*.xaml pre-pack.
-
-    Caro: 15-60s por XAML, projetos têm 5-30 tests → adiciona 2-15min ao
-    pipeline. Por isso **opt-in** via `UIP_TOOLCHAIN_EXECUTOR_GATE=1`.
-
-    Em projetos Sicoob modernos (Windows target), UiRobot CLI rejeita raw
-    XAML — gate emite só RB-EXEC-INFRA (INFO). Use seletivamente em legacy.
-    """
-    from pathlib import Path as _Path
-    from .executor_drive import run_validate as run_executor_validate
-
-    project = _Path(project_path)
-    if verbose:
-        print(f"[executor-validate] running em {project}", file=sys.stderr)
-    code, findings = run_executor_validate(project, timeout=timeout)
-    for f in findings:
-        result.add(f)
-    if verbose:
-        print(f"[executor-validate] exit={code} findings={len(findings)}",
-              file=sys.stderr)
-
+        _shutil.rmtree(tmpdir, ignore_errors=True)
 
 def _parse_pack_output_and_inject(result, output: str, project_root: Path) -> int:
-    """Parse uipcli publish stdout/stderr, emit UIPATH:PACK findings.
+    """Parse `uip rpa pack` stdout/stderr, emit UIPATH:PACK findings.
 
     Captura:
       - Linhas `<relpath>.xaml: BC<NNNN>: <msg>` (VB compile errors).
@@ -2662,38 +2213,28 @@ def _cmd_fix(args) -> int:
     # Analyzer gate baseline. Roda uma única vez ANTES de qualquer fix iter e
     # captura set de issues pré-existentes. Diff vs post-loop dá erros
     # introduzidos. Default-on em fix --apply; use --no-analyzer-gate apenas em
-    # debug quando Studio/uipcli não deve participar.
+    # debug controlado.
     analyzer_baseline = None
-    analyzer_cli_path = None
     analyzer_gate_enabled = (not getattr(args, "no_analyzer_gate", False)) and not dry_run
     # F28: pre-loop bytes snapshot p/ rollback se Layer 2 reportar new errors.
     pre_loop_bytes: dict = {}
     if analyzer_gate_enabled:
-        from .analyzer import (discover_uipcli, run_analyzer,
-                                load_cached_baseline, save_cached_baseline)
+        from .analyzer import run_analyzer, load_cached_baseline, save_cached_baseline
         from .official_uip import discover_official_uip
-        analyzer_cli_path = discover_uipcli()
         official_uip_path = discover_official_uip() if _official_uip_enabled() else None
-        if analyzer_cli_path is None and official_uip_path is None:
-            print("# analyzer-gate: official uip/Studio uipcli não encontrado. "
-                  "Defina UIPATH_UIP_CLI ou UIPATH_STUDIO_CLI. Skipping gate.")
+        if official_uip_path is None:
+            print("# analyzer-gate: official uip não encontrado. "
+                  "Defina UIPATH_UIP_CLI. Skipping baseline.")
         else:
-            # Cache lookup (F27): re-run consecutivos paga só uipcli post-diff.
+            # Cache lookup (F27): re-runs consecutivos reaproveitam baseline
+            # oficial quando a assinatura do projeto/engine/CLI não mudou.
             analyzer_baseline = load_cached_baseline(project_root)
             if analyzer_baseline is not None:
                 print(f"# analyzer-gate: baseline cache HIT "
                       f"({len(analyzer_baseline)} issues). Skipping baseline run.")
             else:
-                if official_uip_path is not None:
-                    fallback = (
-                        f" (fallback: {analyzer_cli_path.name})"
-                        if analyzer_cli_path is not None else ""
-                    )
-                    print("# analyzer-gate: baseline run via official uip rpa analyze"
-                          f"{fallback}...")
-                else:
-                    print(f"# analyzer-gate: baseline run via {analyzer_cli_path.name}...")
-                analyzer_baseline = run_analyzer(project_root, analyzer_cli_path)
+                print("# analyzer-gate: baseline run via official uip rpa analyze...")
+                analyzer_baseline = run_analyzer(project_root)
                 if analyzer_baseline is None:
                     print("# analyzer-gate: baseline failed/timeout. Skipping gate.")
                 else:
@@ -2759,21 +2300,6 @@ def _cmd_fix(args) -> int:
     MAX_ITERATIONS = 20
     iteration = 0
 
-    # Phase 10 (2026-05-26): subprocess gates inline em runner.run via cache
-    # incremental. runtime-loadtest baseline iter 0 (full project), targeted
-    # re-run só nos files modificados em iters subsequentes. Sem cache,
-    # gate custa 30-60s × 20 iters = inviável. Cache disabled em dry_run
-    # (preview-only, runner.run não escreve → sem need de re-detect via gate).
-    # runtime-loadtest gate REMOVIDO do fix-loop (2026-05-30): era o ÚNICO gate
-    # ativado via gate_cache (runner.py default {"runtime-loadtest"}), e o harness
-    # caseiro produzia falso-positivo (ver comentário no gate list de _cmd_review)
-    # → congelava/rollback de fixes legítimos. Sem ele, `fix --apply` deixa de
-    # exigir UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1. As guardas `if gate_cache is
-    # not None` no loop abaixo viram no-op. Validação real fica no analyzer-gate +
-    # activity-compile (PHASE 2, compiladores oficiais Studio).
-    _use_runner_gates = False
-    gate_cache = None
-
     while True:  # outer: analyzer-gate retry
         # --- Inner: fixpoint ---
         while True:
@@ -2782,11 +2308,7 @@ def _cmd_fix(args) -> int:
                 print(f"\nWARN: fixpoint não convergiu em {MAX_ITERATIONS} iterações. Abortando loop.")
                 break
 
-            result = runner.run(
-                args.path,
-                include_gates=_use_runner_gates,
-                gate_cache=gate_cache,
-            )
+            result = runner.run(args.path)
 
             _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
 
@@ -2799,10 +2321,6 @@ def _cmd_fix(args) -> int:
             iter_regressions = 0
             iter_vb_regressions = 0
             iter_cascade_regressions = 0
-            # Phase 10: track XAML files mutated por iter atual pra refresh
-            # targeted do gate_cache (runtime-loadtest re-run só nesses paths).
-            iter_modified_files: set[Path] = set()
-
             for f in result.findings:
                 if f.suppressed:
                     continue
@@ -2903,12 +2421,6 @@ def _cmd_fix(args) -> int:
                         iter_would_fix += 1
                     else:
                         iter_applied += 1
-                        # Phase 10: registra path modificado pra refresh do
-                        # gate_cache pós-iter.
-                        try:
-                            iter_modified_files.add(Path(f.file).resolve())
-                        except (OSError, ValueError):
-                            pass
                     _fix_log.log(
                         label, f.rule_id, f.file,
                         f"  [{label}] [{f.rule_id}] {f.file}",
@@ -2932,20 +2444,6 @@ def _cmd_fix(args) -> int:
                 break
             if iter_applied == 0:
                 break
-            # Phase 10: refresh gate_cache TARGETED nos files modificados deste
-            # iter. Próximo runner.run() consume cache.merged_findings() em vez
-            # de re-rodar runtime_loadtest em todo projeto.
-            if gate_cache is not None and iter_modified_files:
-                try:
-                    gate_cache.refresh_after_iter(iter_modified_files)
-                except Exception as e:  # pragma: no cover — defensive
-                    print(
-                        f"  [WARN] gate_cache refresh raised "
-                        f"{type(e).__name__}: {e}. Falling back a re-run full.",
-                        file=sys.stderr,
-                    )
-                    # Reset cache pra forçar baseline run no próximo iter.
-                    gate_cache = FixLoopGateCache(project_root)
             print(f"  [iter {iteration}] applied={iter_applied}, re-detecting...")
 
         # --- Analyzer-gate (apply mode + baseline disponível) ---
@@ -2982,13 +2480,9 @@ def _cmd_fix(args) -> int:
             f" (retry {analyzer_retry}/{ANALYZER_GATE_MAX_RETRIES})"
             if analyzer_retry > 0 else ""
         )
-        runner_label = (
-            "official uip rpa analyze"
-            if _official_uip_enabled() else
-            (analyzer_cli_path.name if analyzer_cli_path is not None else "analyzer")
-        )
+        runner_label = "official uip rpa analyze"
         print(f"\n# analyzer-gate: post-fix re-run via {runner_label}{retry_tag}...")
-        analyzer_post = run_analyzer(project_root, analyzer_cli_path)
+        analyzer_post = run_analyzer(project_root)
         if analyzer_post is None:
             print("# analyzer-gate: post run failed/timeout. Diff incomplete.")
             break
@@ -3298,11 +2792,6 @@ def _cmd_fix(args) -> int:
 
         frozen_files.update(p.resolve() for p in rolled_back_paths)
         analyzer_retry += 1
-        # Phase 10: rollback mudou XAML bytes — invalidar gate_cache pra
-        # forçar baseline re-run no próximo outer iter.
-        if gate_cache is not None:
-            gate_cache = FixLoopGateCache(project_root)
-
         if analyzer_retry > ANALYZER_GATE_MAX_RETRIES:
             print(
                 f"\n[ANALYZER GATE] retries exauridos "
@@ -3493,8 +2982,8 @@ def _run_review_quiet(project: Path, rules_file: str) -> tuple[int, "ValidationR
     )
     if not external_gates_disabled and not publish_preconditions_blocked:
         _inject_analyzer_findings(result, str(project), timeout=180, verbose=False)
-        _run_nuget_restore_gate(result, str(project), timeout=300, verbose=False)
-        _run_uipcli_pack_gate(result, str(project), timeout=600, verbose=False)
+        _run_official_build_gate(result, str(project), timeout=180, verbose=False)
+        _run_pack_gate(result, str(project), timeout=600, verbose=False)
 
     if result.internal_errors:
         return EXIT_INTERNAL, result
@@ -3586,9 +3075,9 @@ def _phase3_contextual_apply(project: Path, rules_file: str) -> dict:
 # analyzer reportou problema real mas engine não auto-fixa erros do Studio
 # analyzer; user deve revisar manualmente via Studio UI.
 _GATE_INTEGRITY_BLOCKING_RULES = frozenset({
-    "UIPATH:PREFLIGHT",       # uipcli não encontrado / project.json missing
-    "UIPATH:ANALYZE_HALT",    # uipcli analyze hung/timeout
-    "UIPATH:PACK_HALT",       # uipcli publish hung/timeout
+    "UIPATH:PREFLIGHT",       # official uip not found / project.json missing
+    "UIPATH:ANALYZE_HALT",    # uip rpa analyze failed/timeout
+    "UIPATH:PACK_HALT",       # uip rpa pack failed/timeout
     "UIPATH:CLI_REQUIRED_PACKAGE_MISSING",  # dependência obrigatória ausente
 })
 

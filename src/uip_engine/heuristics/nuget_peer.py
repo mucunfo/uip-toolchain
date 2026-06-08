@@ -1,7 +1,7 @@
 ﻿"""D-2 heuristic — NuGet peer dependency conflict (NU1605 prevention).
 
 Background:
-  Studio analyzer (uipcli analyze) NÃO valida peer dependencies declaradas
+  Official analyzer NÃO valida peer dependencies declaradas
   no `.nuspec` dos pacotes primários. Quando peer requirement de uma primary
   dep conflita com pin de outro pacote no `project.json`, Studio Publish
   gera `NU1605: package downgrade`.

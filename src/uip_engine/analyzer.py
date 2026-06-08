@@ -1,21 +1,11 @@
-﻿"""Studio Analyzer integration — diff-based gate.
+"""Official UiPath Analyzer integration - diff-based gate.
 
-Engine layer #2 (ground truth): prefers official `uip rpa analyze` and falls
-back to `UiPath.Studio.CommandLine.exe analyze` to validate fixes against the
-Roslyn VB compiler and assembly metadata schema.
+Engine layer #2 uses official `uip rpa analyze` to validate fixes against
+the UiPath compiler/analyzer contract.
 
-Diff-based: erros pré-existentes (analyzer baseline) são ignorados; só
-reportamos erros INTRODUZIDOS pelos fixes.
-
-Studio version vs target framework:
-    uipcli respeita `project.json.targetFramework` ao analisar — se project é
-    Windows 5.x mas Studio local é 26.x, Analyzer carrega rules compatíveis
-    com targetFramework. Diff-based gate adicional protege contra rules-novas
-    que Studio local tem mas Studio do CI alvo não — só conta erros novos
-    relativos ao baseline.
-
-Graceful degradation: se official `uip` e uipcli legado não forem encontrados,
-`run_analyzer` retorna None e o gate é skipado.
+Diff-based: pre-existing analyzer issues are ignored; only issues introduced
+by fixes are reported. If official `uip` is unavailable, `run_analyzer`
+returns None and the caller decides how to report it.
 """
 from __future__ import annotations
 
@@ -23,7 +13,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,24 +31,6 @@ class AnalyzerIssue:
     severity: str      # "Error" | "Warning" | "Info"
     description: str   # normalized message
 
-
-_UIPCLI_CANDIDATE_GLOBS = (
-    r"%LocalAppData%\Programs\UiPathPlatform\Studio\*\UiPath.Studio.CommandLine.exe",
-    r"%LocalAppData%\Programs\UiPath\Studio\*\UiPath.Studio.CommandLine.exe",
-    r"%ProgramFiles%\UiPath\Studio\*\UiPath.Studio.CommandLine.exe",
-    r"%ProgramFiles(x86)%\UiPath\Studio\*\UiPath.Studio.CommandLine.exe",
-)
-
-_ENV_VAR = "UIPATH_STUDIO_CLI"
-
-# uipcli emite o JSON delimitado por `#json{` ... `}#json` (ambos lados marcam).
-# Algumas versões antigas só prefixam — handle both.
-_JSON_BLOCK_RE = re.compile(r"#json\s*(\{.*?\})\s*(?:#json\b|$)",
-                              re.DOTALL | re.MULTILINE)
-_GUID_KEY_RE = re.compile(
-    r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-"
-    r"(FilePath|ErrorCode|Item|ErrorSeverity|Description|Recommendation)$"
-)
 
 # Normalize patterns: strip absolute paths + line numbers + GUIDs em msgs
 # para diff stable entre runs.
@@ -99,7 +70,7 @@ _XAML_HINT_RE = re.compile(
 def _infer_xaml_basename_from_description(desc: str) -> str:
     """Best-effort fallback for Studio load errors with empty FilePath.
 
-    Some uipcli analyzer payloads report FilePath="" while the Description says
+    Some official analyzer payloads report FilePath="" while the Description says
     e.g. "Nao foi possivel carregar o arquivo ...\\Cases\\TC_X.xaml". Without
     a file hint, the fix-loop can only FULL-SNAPSHOT rollback every changed XAML.
     Returning the basename lets the rollback stay granular.
@@ -155,64 +126,8 @@ def _infer_xaml_basename_from_validation_log(text: str, needle: str) -> str:
     return os.path.basename(candidates[-1])
 
 
-def discover_uipcli() -> Path | None:
-    """Localize UiPath.Studio.CommandLine.exe. Order: env var, PATH,
-    well-known install paths. Most-recent version wins (lexicographic on
-    parent dir name → version string)."""
-    explicit = os.environ.get(_ENV_VAR)
-    if explicit:
-        p = Path(explicit)
-        if p.is_file():
-            return p
-    via_path = shutil.which("UiPath.Studio.CommandLine.exe")
-    if via_path:
-        return Path(via_path)
-    candidates: list[Path] = []
-    import glob
-    for pat in _UIPCLI_CANDIDATE_GLOBS:
-        expanded = os.path.expandvars(pat)
-        for hit in glob.glob(expanded):
-            candidates.append(Path(hit))
-    if not candidates:
-        return None
-    # Sort by parent dir name (version string) — most recent last.
-    candidates.sort(key=lambda p: p.parent.name)
-    return candidates[-1]
-
-
-def _official_uip_enabled() -> bool:
-    return os.environ.get("UIP_TOOLCHAIN_USE_OFFICIAL_UIP", "1").strip().lower() not in (
-        "0", "false", "no", "legacy",
-    )
-
-
-def _write_official_nuget_config(base_dir: Path) -> Path | None:
-    ccs_nupkgs = os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
-        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
-    )
-    if not Path(ccs_nupkgs).is_dir():
-        return None
-    cfg = base_dir / "NuGet.config"
-    cfg.write_text(
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<configuration>\n'
-        '  <packageSources>\n'
-        '    <clear />\n'
-        f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
-        '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
-        '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
-        '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
-        '  </packageSources>\n'
-        '</configuration>\n',
-        encoding="utf-8",
-    )
-    return cfg
-
-
 def _run_official_analyzer(project_root: Path, timeout: int) -> set[AnalyzerIssue] | None:
     """Run official `uip rpa analyze`, returning normalized AnalyzerIssue rows."""
-    if not _official_uip_enabled():
-        return None
     from .official_uip import (
         compatibility_diagnostic,
         diagnose_official_uip_failure,
@@ -221,6 +136,7 @@ def _run_official_analyzer(project_root: Path, timeout: int) -> set[AnalyzerIssu
         iter_analyzer_records,
         official_failure_text,
         run_official_uip,
+        write_official_nuget_config,
     )
     import shutil as _shutil
     import tempfile
@@ -243,7 +159,7 @@ def _run_official_analyzer(project_root: Path, timeout: int) -> set[AnalyzerIssu
     base_tmp.mkdir(parents=True, exist_ok=True)
     tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="analyzer_"))
     try:
-        nuget_config = _write_official_nuget_config(tmpdir)
+        nuget_config = write_official_nuget_config(tmpdir)
         detailed_log = tmpdir / "analyze.log"
         args = [
             "rpa", "analyze", str(project_root),
@@ -323,63 +239,6 @@ def _run_official_analyzer(project_root: Path, timeout: int) -> set[AnalyzerIssu
         _shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _parse_json_block(stdout: str) -> list[dict]:
-    """Extract the `#json{...}` block, group GUID-prefixed keys into dicts.
-    Returns list of normalized issue dicts. Empty list if no #json block."""
-    m = _JSON_BLOCK_RE.search(stdout)
-    if not m:
-        return []
-    try:
-        data = json.loads(m.group(1))
-    except json.JSONDecodeError:
-        return []
-    grouped: dict[str, dict] = {}
-    for key, val in data.items():
-        km = _GUID_KEY_RE.match(key)
-        if not km:
-            continue
-        guid, field_name = km.group(1), km.group(2)
-        grouped.setdefault(guid, {})[field_name] = val
-    return list(grouped.values())
-
-
-def parse_analyzer_output(stdout: str, stderr: str = "") -> set[AnalyzerIssue]:
-    """Parse uipcli stdout (+ optional stderr) → set of AnalyzerIssue.
-
-    Captures:
-      - Issues do bloco #json{...} (analyzer findings).
-      - Erros prefixados `NU\\d+:` (pacote NuGet — pré-existente típico).
-      - Erros de carregamento "Não foi possível carregar o arquivo X. Motivo:".
-    """
-    issues: set[AnalyzerIssue] = set()
-    for raw in _parse_json_block(stdout):
-        fp = raw.get("FilePath") or ""
-        raw_desc = raw.get("Description") or ""
-        basename = os.path.basename(fp) if fp else ""
-        if (
-            not basename.lower().endswith(".xaml")
-            or basename == "System.Activities.Xaml"
-        ):
-            inferred = _infer_xaml_basename_from_description(raw_desc)
-            if inferred:
-                basename = inferred
-        code = raw.get("ErrorCode") or ""
-        sev = raw.get("ErrorSeverity") or ""
-        desc = _normalize_description(raw_desc)
-        issues.add(AnalyzerIssue(basename, code, sev, desc))
-
-    # NU\d+ package errors (1 per line)
-    for line in stdout.splitlines():
-        nu = re.match(r"^(NU\d+):\s*(.*)$", line.strip())
-        if nu:
-            issues.add(AnalyzerIssue(
-                "", nu.group(1), "Error",
-                _normalize_description(nu.group(2)),
-            ))
-
-    return issues
-
-
 def run_analyzer(
     project_root: Path,
     uipcli_path: Path | None = None,
@@ -387,64 +246,25 @@ def run_analyzer(
     halt_window_sec: int | None = None,
     skip_preflight: bool = False,
 ) -> set[AnalyzerIssue] | None:
-    """Run Studio Analyzer on project. Returns set of issues or None if uipcli
-    unavailable / invocation failed catastrophically.
+    """Run official `uip rpa analyze` on project.
 
     Empty set = clean project (no findings).
-    None = gate skipped (graceful).
+    None = official `uip` unavailable or project.json absent.
 
-    Pre-flight + halt-detect (2026-05): antes de invocar `uipcli analyze`,
-    verifica install responsivo + cloud reachable. Durante execução, watchdog
-    CPU-delta mata uipcli se estagnar (60s sem progresso) — evita timeouts
-    180s mudos com causa raiz "cloud heartbeat travado".
-
-    Args:
-        halt_window_sec: janela CPU-delta. None usa default módulo (60s).
-        skip_preflight: True só pra testes (não invoca preflight). Production
-            sempre False.
+    Legacy `UiPath.Studio.CommandLine.exe analyze` fallback was removed from
+    the modern validation path; migration-specific legacy tooling stays isolated
+    in `migrate-windows`.
     """
-    # uipcli exige path absoluto pra resolver project.json — relative path
-    # retorna stdout vazio com return code 1 (silent fail).
+    _ = (uipcli_path, halt_window_sec, skip_preflight)
     project_root = project_root.resolve()
     project_json = project_root / "project.json"
     if not project_json.is_file():
         return None
-
-    official_issues = _run_official_analyzer(project_root, timeout)
-    if official_issues is not None:
-        return official_issues
-
-    from .uipcli_runner import (
-        preflight, run_uipcli_guarded, DEFAULT_HALT_WINDOW_SEC,
-    )
-
-    cli = uipcli_path or discover_uipcli()
-    if cli is None or not cli.is_file():
-        return None
-
-    pre = None
-    if not skip_preflight:
-        pre = preflight(cli)
-        if not pre.ok:
-            print(f"[analyzer-gate] {pre.as_message()}", file=sys.stderr)
-            return None
-
-    res = run_uipcli_guarded(
-        [str(cli), "analyze", "-p", str(project_json)],
-        timeout_sec=timeout,
-        halt_window_sec=halt_window_sec or DEFAULT_HALT_WINDOW_SEC,
-        preflight_result=pre,
-    )
-    if not res.completed:
-        print(f"[analyzer-gate] {res.as_diagnostic()}", file=sys.stderr)
-        return None
-    return parse_analyzer_output(res.stdout, res.stderr)
+    return _run_official_analyzer(project_root, timeout)
 
 
 def _official_uip_cache_salt() -> str:
     """Best-effort official CLI identity for external-gate cache keys."""
-    if not _official_uip_enabled():
-        return "official-uip=disabled"
     try:
         from .official_uip import discover_official_uip, get_official_uip_version
 
@@ -548,7 +368,7 @@ def save_cached_baseline(
 
 
 # Pack-gate cache (Fix #5 2026-05) — analyzer baseline já existia (F27);
-# este complementa cacheando findings injetados pelo gate `uipcli publish`.
+# este complementa cacheando findings injetados pelo gate `uip rpa pack`.
 # Key idêntica (_project_signature) → invalida por conteúdo do projeto,
 # descriptor oficial, regras e contrato da engine.
 

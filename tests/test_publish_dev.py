@@ -97,6 +97,8 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
 
     assert plan.current_version == "1.0.0"
     assert plan.next_version == "1.0.1"
+    assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
+    assert project / "project.json" in plan.changed_files
     assert plan.downloaded_nupkg.read_bytes() == b"downloaded"
     assert calls[0] == [
         "login", "status", "--output", "json",
@@ -122,6 +124,36 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     assert calls[4][calls[4].index("--destination") + 1] == str(
         tmp_path / "downloads" / "InvoiceProcessing.1.0.1.nupkg"
     )
+
+
+def test_execute_rolls_back_project_version_when_pack_fails(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    original = {"name": "InvoiceProcessing", "projectVersion": "1.0.0"}
+    (project / "project.json").write_text(json.dumps(original), encoding="utf-8")
+
+    def fake_run(command):
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:2] == ["rpa", "pack"]:
+            assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
+            return _result({"Message": "pack failed"}, returncode=1, result="Failure")
+        raise AssertionError(f"unexpected command: {command}")
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError):
+        publish_dev.execute(args, run_uip=fake_run)
+
+    assert (project / "project.json").read_text(encoding="utf-8") == json.dumps(original)
 
 
 def test_execute_runs_interactive_login_when_status_fails(tmp_path):

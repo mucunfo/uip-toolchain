@@ -1,7 +1,7 @@
 ﻿"""S-19 heuristic — Production XAML invoca workflow listado em ignoredFiles.
 
 Background:
-  Studio analyzer (uipcli analyze) só valida XAMLs production e não detecta
+  Official analyzer só valida XAMLs production e não detecta
   `<ui:InvokeWorkflowFile WorkflowFileName="...">` referenciando arquivo
   que está em `project.json::designOptions.processOptions.ignoredFiles`.
   Resultado: review "passa", mas Studio Publish quebra:

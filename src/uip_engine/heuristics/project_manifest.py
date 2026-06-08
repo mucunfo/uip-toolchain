@@ -1,8 +1,8 @@
 ﻿"""Heuristics for project.json manifest hygiene (J-8 stale fileInfoCollection).
 
 Studio publish FALHA quando `project.json::designOptions.fileInfoCollection`
-lista test cases (`fileName`) que não existem mais no disco. Studio analyze
-(uipcli analyze) NÃO detecta — só publish quebra.
+lista test cases (`fileName`) que não existem mais no disco. Official analyze
+NÃO detecta — só publish quebra.
 
 Causa típica: TC deletado em refactor mas manifest project.json não atualizado.
 Engine atua como guardrail antes do publish.

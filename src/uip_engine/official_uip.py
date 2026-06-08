@@ -1,9 +1,9 @@
 """Adapter for the official UiPath CLI (`uip`).
 
 The CCS public command is `ccs-uip`; `uip` is reserved for UiPath's official
-CLI. This module discovers and invokes official `uip` for migrated gates such
-as `uip rpa analyze` and `uip rpa pack`, with JSON-envelope parsing and
-explicit logging. Legacy Studio CLI remains a fallback where still supported.
+CLI. This module discovers and invokes official `uip` for modern gates such
+as `uip rpa restore`, `uip rpa analyze`, `uip rpa build`, and `uip rpa pack`,
+with JSON-envelope parsing and explicit logging.
 """
 from __future__ import annotations
 
@@ -92,6 +92,32 @@ def discover_official_uip() -> Path | None:
     if via_path:
         return _prefer_cmd_wrapper(Path(via_path))
     return None
+
+
+def write_official_nuget_config(base_dir: Path) -> Path | None:
+    """Create a NuGet sources config for official `uip rpa` commands."""
+    ccs_nupkgs = os.environ.get("UIPATH_CCS_NUPKGS_DIR") or (
+        r"C:\Users\lisan\OneDrive - Sicoob\Projects\.nupkgs"
+    )
+    if not Path(ccs_nupkgs).is_dir():
+        return None
+
+    base_dir.mkdir(parents=True, exist_ok=True)
+    cfg = base_dir / "NuGet.config"
+    nuget_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<configuration>\n'
+        '  <packageSources>\n'
+        '    <clear />\n'
+        f'    <add key="Sicoob_Local" value="{ccs_nupkgs}" />\n'
+        '    <add key="UiPath_Official" value="https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" />\n'
+        '    <add key="UiPath_Marketplace" value="https://gallery.uipath.com/api/v3/index.json" />\n'
+        '    <add key="NuGet_Org" value="https://api.nuget.org/v3/index.json" />\n'
+        '  </packageSources>\n'
+        '</configuration>\n'
+    )
+    cfg.write_text(nuget_xml, encoding="utf-8")
+    return cfg
 
 
 def parse_semver(text: str) -> OfficialUipVersion | None:

@@ -212,7 +212,6 @@ def test_review_analyzer_prefers_official_uip_without_legacy_uipcli(
     fake_uip.write_text("", encoding="utf-8")
     calls = []
 
-    monkeypatch.setattr(analyzer, "discover_uipcli", lambda: None)
     monkeypatch.setattr(official_uip, "discover_official_uip", lambda: fake_uip)
     monkeypatch.setattr(
         official_uip,
@@ -348,7 +347,6 @@ def test_run_analyzer_uses_official_uip_without_legacy_uipcli(monkeypatch, tmp_p
         ],
     }
 
-    monkeypatch.setattr(analyzer, "discover_uipcli", lambda: None)
     monkeypatch.setattr(official_uip, "discover_official_uip", lambda: fake_uip)
     monkeypatch.setattr(
         official_uip,
@@ -390,7 +388,6 @@ def test_run_analyzer_infers_file_from_official_detailed_log(monkeypatch, tmp_pa
         )
         return _official_result(payload, 1)
 
-    monkeypatch.setattr(analyzer, "discover_uipcli", lambda: None)
     monkeypatch.setattr(official_uip, "discover_official_uip", lambda: fake_uip)
     monkeypatch.setattr(
         official_uip,

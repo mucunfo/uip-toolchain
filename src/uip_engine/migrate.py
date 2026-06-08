@@ -1,4 +1,4 @@
-﻿"""Legacy/Windows-Legacy → Windows migration orchestrator.
+"""Legacy/Windows-Legacy → Windows migration orchestrator.
 
 Wraps UiPath Activity Migrator CLI (closed-source binário oficial GA em Studio
 v25.10) com pre-scan + post-fix do engine de regras Sicoob.
@@ -107,8 +107,8 @@ def _pre_migrate_fix_blockers(source_root: Path, rules_file: str | None) -> int:
     pre_args.apply = True
     pre_args.rules = ",".join(_PRE_MIGRATE_BLOCKER_RULES)
     pre_args.include_class = "deterministic"
-    # Analyzer gate caro (uipcli analyze ~10-30s). Pre-migrate é cirúrgico —
-    # whitelist regras estáveis, sem risco que justifique gate.
+    # Analyzer gate caro. Pre-migrate e cirurgico: whitelist regras estaveis,
+    # sem risco que justifique gate.
     pre_args.no_analyzer_gate = True
     try:
         rc = _fix_inner(pre_args)

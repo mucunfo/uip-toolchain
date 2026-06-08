@@ -168,17 +168,28 @@ tenant/pacotes via a CLI oficial `uip`.
 
 ```powershell
 ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done"
+
+# opcional: depois de cada publish OK, commita todas as alterações do repo do projeto
+ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done" `
+  --commit-branch "release/nc-179" `
+  --commit-message "chore: publish DEV packages"
 ```
 
 Fluxo:
 1. varre a pasta informada e permite selecionar os projetos;
 2. exige bump explícito `major`, `minor` ou `patch`;
 3. lê a versão atual de `project.json::projectVersion`;
-4. prepara o projeto para o pack oficial (`project.uiproj` derivado de `project.json`);
-5. avisa quando não encontrar .NET SDK local, pois o `uip rpa pack` pode precisar dele;
-6. remove referências legadas conhecidamente incompatíveis com pack headless e roda `uip rpa pack --skip-analyze`;
-7. faz upload do pacote em `RPA_Desenvolvimento`;
-8. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`.
+4. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual de todos os repositórios selecionados antes de qualquer pack/upload;
+5. grava a próxima versão no `project.json` antes do pack;
+6. prepara o projeto para o pack oficial (`project.uiproj` derivado de `project.json`);
+7. exige .NET SDK 8+, pois o `uip rpa pack` restaura um projeto temporário `net8.0`;
+8. remove referências legadas conhecidamente incompatíveis com pack headless e roda `uip rpa pack --skip-analyze`;
+9. faz upload do pacote em `RPA_Desenvolvimento`;
+10. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
+11. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto.
+
+Se pack/upload/download falhar em um projeto, a alteração de `projectVersion`
+desse projeto é revertida para evitar versão local sem pacote publicado.
 
 O gate local (`ccs-uip review`/`ccs-uip`) usa as mesmas regras de readiness:
 `J-9` bloqueia `project.uiproj` ausente/desatualizado, `W-40` bloqueia

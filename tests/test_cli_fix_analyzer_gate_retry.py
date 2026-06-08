@@ -1,15 +1,13 @@
-﻿"""F35 tests — analyzer-gate per-file rollback + retomar fix loop.
+"""Analyzer-gate per-file rollback and fix-loop retry tests.
 
-Comportamento esperado pós-F35:
-  - Quando analyzer-gate detecta new Error pós-fix: rollback per-file
-    (file específico revertido pra pre-loop bytes), file frozen pra retries.
-  - Retry roda fix loop novamente skipando frozen files.
-  - Retry roda analyzer novamente. Se limpo → break, EXIT_OK.
-  - Se retries exauridos OU rollback inexequível → break sem abortar pipeline.
-  - Retorna EXIT_OK em qualquer caso (vs EXIT_INTERNAL pré-F35).
+Expected behavior:
+  - When analyzer-gate detects a new post-fix Error, rollback is per-file.
+  - The failed file is frozen for retries.
+  - Retry runs the fix loop and analyzer again; clean retry returns EXIT_OK.
+  - Exhausted retries or impossible rollback stop without aborting pipeline.
 
-Tests mockam `discover_uipcli`/`run_analyzer` via monkeypatch — não dependem
-de uipcli real instalado.
+Tests mock `discover_official_uip` and `run_analyzer`; no real UiPath CLI is
+required.
 """
 from __future__ import annotations
 
@@ -20,6 +18,7 @@ import pytest
 
 from uip_engine import analyzer as _analyzer
 from uip_engine import cli as _cli
+from uip_engine import official_uip as _official_uip
 
 
 # Fixture XAML que dispara fix S-1 (`<x:Members />` → `<x:Members></x:Members>`).
@@ -86,7 +85,7 @@ def test_gate_clean_no_retry(
 ):
     """Analyzer-gate retorna 0 new errors → outer loop sai imediato."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     calls = {"count": 0}
@@ -112,14 +111,14 @@ def test_gate_regression_rolls_back_and_retries(
 ):
     """Analyzer reporta new Error em Bad.xaml → rollback file + retomar loop."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
     project_json_baseline = (fake_project / "project.json").read_bytes()
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         n = len(call_log)
         if n == 1:
@@ -163,13 +162,13 @@ def test_gate_persistent_regression_exits_after_retries(
     sem fallback, engine deixava 3 XAMLs com duplicate Property injection.
     """
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         n = len(call_log)
         if n == 1:
@@ -196,19 +195,19 @@ def test_gate_empty_filepath_triggers_full_snapshot_rollback(
     fake_project: Path, monkeypatch, capsys, disable_baseline_cache
 ):
     """REGRESSION (pilot contestacao-de-compras 2026-05-27): analyzer reporta
-    error PROJECT-LEVEL (FilePath vazio em uipcli JSON → AnalyzerIssue.file = "").
+    error PROJECT-LEVEL (FilePath vazio no envelope do analyzer → AnalyzerIssue.file = "").
     Pré-fix: err_files = {""}, granular filter nunca casa, rollback inexequível,
     engine deixa projeto com regressões aplicadas. Fix B2: FULL-SNAPSHOT
     fallback ativa quando granular não restaura nada AND existem new errors.
     """
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         n = len(call_log)
         if n == 1:
@@ -243,7 +242,7 @@ def test_full_snapshot_rollback_preserves_project_metadata_pins(
     gates instead of being reverted to stale pins.
     """
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
@@ -260,7 +259,7 @@ def test_full_snapshot_rollback_preserves_project_metadata_pins(
 """
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         if len(call_log) == 1:
             return set()
@@ -284,7 +283,7 @@ def test_granular_rollback_preserves_project_metadata_pins(
 ):
     """Analyzer FilePath=project.json must not revert deterministic pins."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     project_json = fake_project / "project.json"
@@ -300,7 +299,7 @@ def test_granular_rollback_preserves_project_metadata_pins(
 """
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         if len(call_log) == 1:
             return set()
@@ -323,13 +322,13 @@ def test_cli_assembly_missing_does_not_full_snapshot_rollback_xamls(
 ):
     """Official CLI dependency/restore infra errors must not undo XAML fixes."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     baseline_bytes = (fake_project / "Bad.xaml").read_bytes()
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         if len(call_log) == 1:
             return set()
@@ -365,7 +364,7 @@ def test_full_snapshot_rollback_preserves_reference_only_xaml_delta(
     deterministic blockers do not reappear in PHASE 2.
     """
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     refs = fake_project / "RefsOnly.xaml"
@@ -393,7 +392,7 @@ def test_full_snapshot_rollback_preserves_reference_only_xaml_delta(
     )
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         if len(call_log) == 1:
             return set()
@@ -418,7 +417,7 @@ def test_granular_rollback_preserves_current_refs_imports(
 ):
     """Per-file rollback should keep W-11/ENV blocks from current XAML."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     bad = fake_project / "Bad.xaml"
@@ -442,7 +441,7 @@ def test_granular_rollback_preserves_current_refs_imports(
     current_ref = "      <AssemblyReference>System.Security</AssemblyReference>\n"
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         if len(call_log) == 1:
             return set()
@@ -469,112 +468,6 @@ def test_granular_rollback_preserves_current_refs_imports(
     assert current_ref.strip() in after
     assert "<x:Members />" in after
     assert after != baseline_text
-
-
-def test_parse_analyzer_output_infers_file_from_empty_filepath_description():
-    guid = "11111111-1111-1111-1111-111111111111"
-    payload = {
-        f"{guid}-FilePath": "",
-        f"{guid}-ErrorCode": "",
-        f"{guid}-ErrorSeverity": "Error",
-        f"{guid}-Description": (
-            r"Não foi possível carregar o arquivo C:\Work\Proj\Cases\TC_ObterRelatorio.xaml. "
-            r"Motivo: Falha ao criar um 'InArgument' do texto '\"\"'."
-        ),
-    }
-    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
-
-    issues = _analyzer.parse_analyzer_output(stdout)
-
-    assert issues == {
-        _analyzer.AnalyzerIssue(
-            file="TC_ObterRelatorio.xaml",
-            error_code="",
-            severity="Error",
-            description=(
-                "Não foi possível carregar o arquivo <PATH> "
-                "Motivo: Falha ao criar um 'InArgument' do texto '\\\"\\\"'."
-            ),
-        )
-    }
-
-
-def test_parse_analyzer_output_infers_file_when_filepath_is_exception_type():
-    guid = "22222222-2222-2222-2222-222222222222"
-    payload = {
-        f"{guid}-FilePath": "System.Activities.Xaml",
-        f"{guid}-ErrorCode": "",
-        f"{guid}-ErrorSeverity": "Error",
-        f"{guid}-Description": (
-            r"Não foi possível analisar o arquivo C:\Work\Proj\Sipag_Direct\FinalizaChamado.xaml. "
-            r"Motivo: falha de parse."
-        ),
-    }
-    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
-
-    issues = _analyzer.parse_analyzer_output(stdout)
-
-    assert {i.file for i in issues} == {"FinalizaChamado.xaml"}
-
-
-def test_parse_analyzer_output_infers_file_from_path_with_spaces():
-    guid = "33333333-3333-3333-3333-333333333333"
-    payload = {
-        f"{guid}-FilePath": "System.Activities.Xaml",
-        f"{guid}-ErrorCode": "",
-        f"{guid}-ErrorSeverity": "Error",
-        f"{guid}-Description": (
-            r"Não foi possível analisar o arquivo "
-            r"C:\Users\lisan\Desktop\NC-179\2. doing\repo\Cases\FinalizaChamado.xaml. "
-            r"Motivo: falha de parse."
-        ),
-    }
-    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
-
-    issues = _analyzer.parse_analyzer_output(stdout)
-
-    assert {i.file for i in issues} == {"FinalizaChamado.xaml"}
-    assert all("2. doing" not in i.description for i in issues)
-
-
-def test_parse_analyzer_output_does_not_mistake_system_xaml_for_file():
-    guid = "44444444-4444-4444-4444-444444444444"
-    payload = {
-        f"{guid}-FilePath": "System.Activities.Xaml",
-        f"{guid}-ErrorCode": "",
-        f"{guid}-ErrorSeverity": "Error",
-        f"{guid}-Description": (
-            r"Não foi possível analisar o arquivo "
-            r"C:\Users\lisan\Desktop\NC-179\2. doing\repo\Framework\SetTransactionStatus.xaml. "
-            r"Motivo: System.Xaml.XamlDuplicateMemberException: "
-            r"A propriedade 'Arguments' já foi definida em 'InvokeWorkflowFile'."
-        ),
-    }
-    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
-
-    issues = _analyzer.parse_analyzer_output(stdout)
-
-    assert {i.file for i in issues} == {"SetTransactionStatus.xaml"}
-
-
-def test_parse_analyzer_output_infers_bare_xaml_basename_from_prose():
-    guid1 = "11111111-1111-1111-1111-111111111111"
-    guid2 = "22222222-2222-2222-2222-222222222222"
-    payload = {
-        f"{guid1}-FilePath": "",
-        f"{guid1}-ErrorCode": "",
-        f"{guid1}-ErrorSeverity": "Error",
-        f"{guid1}-Description": "Nao foi possivel carregar o arquivo Bad.xaml",
-        f"{guid2}-FilePath": "",
-        f"{guid2}-ErrorCode": "",
-        f"{guid2}-ErrorSeverity": "Error",
-        f"{guid2}-Description": "Falha em Main.xaml",
-    }
-    stdout = "#json" + __import__("json").dumps(payload, ensure_ascii=False) + "#json"
-
-    issues = _analyzer.parse_analyzer_output(stdout)
-
-    assert {i.file for i in issues} == {"Bad.xaml", "Main.xaml"}
 
 
 def test_diff_new_issues_suppresses_existing_project_level_analyze_halt():
@@ -606,7 +499,7 @@ def test_gate_empty_filepath_with_xaml_description_rolls_back_granular(
     back only the failing file, not every changed XAML in the project.
     """
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
 
     other = fake_project / "Other.xaml"
@@ -615,7 +508,7 @@ def test_gate_empty_filepath_with_xaml_description_rolls_back_granular(
     other_baseline = other.read_bytes()
     call_log: list = []
 
-    def fake_run(project_root, cli_path, **kwargs):
+    def fake_run(project_root, *args, **kwargs):
         call_log.append("run")
         if len(call_log) == 1:
             return set()
@@ -648,7 +541,7 @@ def test_gate_disabled_no_retry_logic(
     """`--no-analyzer-gate` desabilita gate completamente → loop normal sem
     outer retry, sem chamadas analyzer."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: Path("fake/uipcli.exe")
+        _official_uip, "discover_official_uip", lambda: Path("fake/uip.cmd")
     )
     calls = {"count": 0}
 
@@ -672,9 +565,9 @@ def test_gate_disabled_no_retry_logic(
 def test_no_analyzer_cli_found_skips_gate(
     fake_project: Path, monkeypatch, capsys
 ):
-    """Sem official uip nem legacy uipcli instalado → gate skipped graceful."""
+    """Sem official uip instalado, o baseline do fix é pulado."""
     monkeypatch.setattr(
-        _analyzer, "discover_uipcli", lambda: None
+        _official_uip, "discover_official_uip", lambda: None
     )
     monkeypatch.setattr(
         "uip_engine.official_uip.discover_official_uip", lambda: None
@@ -684,5 +577,6 @@ def test_no_analyzer_cli_found_skips_gate(
     out = capsys.readouterr().out
 
     assert rc == _cli.EXIT_OK
-    assert "official uip/Studio uipcli não encontrado" in out
+    assert "official uip" in out
+    assert "Skipping baseline" in out
     assert "ANALYZER REGRESSION" not in out

@@ -46,6 +46,8 @@ class BatchItemResult:
     ok: bool
     plan: PublishPlan | None = None
     error: str | None = None
+    commit_status: str | None = None
+    commit_error: str | None = None
 
 
 def discover_projects(root: Path) -> list[ProjectCandidate]:
@@ -171,6 +173,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip final confirmation after the multi-select prompt.",
     )
+    parser.add_argument(
+        "--commit-message",
+        default=None,
+        help="After a successful publish, commit all current changes in the "
+             "project Git repository using this message. Requires --commit-branch.",
+    )
+    parser.add_argument(
+        "--commit-branch",
+        default=None,
+        help="Expected current Git branch for --commit-message. The command validates "
+             "the branch and does not switch branches.",
+    )
     return parser
 
 
@@ -235,6 +249,96 @@ def _has_required_pack_sdk(sdk_lines: list[str]) -> bool:
     )
 
 
+def _run_git(git_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(git_root), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+
+def _git_output_or_error(proc: subprocess.CompletedProcess[str]) -> str:
+    return "\n".join(part.strip() for part in (proc.stdout, proc.stderr) if part.strip())
+
+
+def _git_root(project_root: Path) -> Path:
+    proc = subprocess.run(
+        ["git", "-C", str(project_root), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"project is not inside a Git repository: {project_root}. "
+            f"{_git_output_or_error(proc)}"
+        )
+    return Path(proc.stdout.strip()).resolve()
+
+
+def _current_branch(git_root: Path) -> str:
+    proc = _run_git(git_root, ["branch", "--show-current"])
+    if proc.returncode != 0:
+        raise RuntimeError(f"could not read current Git branch: {_git_output_or_error(proc)}")
+    branch = proc.stdout.strip()
+    if not branch:
+        raise RuntimeError(f"Git repository is detached: {git_root}")
+    return branch
+
+
+def commit_publish_changes(
+    plan: PublishPlan,
+    *,
+    message: str,
+    expected_branch: str,
+) -> str:
+    git_root = _git_root(plan.project_root)
+    branch = _current_branch(git_root)
+    if branch != expected_branch:
+        raise RuntimeError(
+            f"current branch is '{branch}', expected '{expected_branch}' in {git_root}"
+        )
+
+    proc = _run_git(git_root, ["add", "-A"])
+    if proc.returncode != 0:
+        raise RuntimeError(f"git add failed: {_git_output_or_error(proc)}")
+
+    proc = _run_git(git_root, ["diff", "--cached", "--quiet"])
+    if proc.returncode == 0:
+        return f"SKIP no staged changes on {branch}"
+    if proc.returncode not in {0, 1}:
+        raise RuntimeError(f"git diff --cached failed: {_git_output_or_error(proc)}")
+
+    proc = _run_git(git_root, ["commit", "-m", message])
+    if proc.returncode != 0:
+        raise RuntimeError(f"git commit failed: {_git_output_or_error(proc)}")
+
+    commit_hash = _run_git(git_root, ["rev-parse", "--short", "HEAD"])
+    if commit_hash.returncode != 0:
+        raise RuntimeError(f"could not read commit hash: {_git_output_or_error(commit_hash)}")
+    return f"COMMIT {commit_hash.stdout.strip()} on {branch}"
+
+
+def preflight_commit_branch(
+    selected: list[ProjectCandidate],
+    *,
+    expected_branch: str,
+) -> None:
+    for candidate in selected:
+        git_root = _git_root(candidate.root)
+        branch = _current_branch(git_root)
+        if branch != expected_branch:
+            raise RuntimeError(
+                f"{candidate.folder_name}: current branch is '{branch}', "
+                f"expected '{expected_branch}' in {git_root}"
+            )
+
+
 def ensure_dotnet_sdk_for_official_pack() -> None:
     env = _official_uip_subprocess_env()
     dotnet = shutil.which("dotnet", path=env.get("PATH", ""))
@@ -270,6 +374,11 @@ def execute(
     input_func: Callable[[str], str] = input,
     check_environment: bool = True,
 ) -> list[BatchItemResult]:
+    if args.commit_branch and not args.commit_message:
+        raise ValueError("--commit-branch requires --commit-message")
+    if args.commit_message and not args.commit_branch:
+        raise ValueError("--commit-message requires --commit-branch")
+
     root = _resolve_root(args)
     candidates = discover_projects(root)
     selected = candidates if args.all else choose_projects(candidates, input_func=input_func)
@@ -288,6 +397,9 @@ def execute(
 
     if check_environment:
         ensure_dotnet_sdk_for_official_pack()
+
+    if args.commit_message:
+        preflight_commit_branch(selected, expected_branch=args.commit_branch)
 
     if not args.yes:
         confirm = input_func("\nConfirmar upload/download desses repos? [y/N]: ")
@@ -327,11 +439,20 @@ def execute(
                 )
                 print(f"  OK {plan.current_version} -> {plan.next_version}")
                 print(f"  nupkg: {plan.downloaded_nupkg}")
+                commit_status = None
+                if args.commit_message:
+                    commit_status = commit_publish_changes(
+                        plan,
+                        message=args.commit_message,
+                        expected_branch=args.commit_branch,
+                    )
+                    print(f"  {commit_status}")
                 results.append(
                     BatchItemResult(
                         candidate=candidate,
                         ok=True,
                         plan=plan,
+                        commit_status=commit_status,
                     )
                 )
             except Exception as exc:

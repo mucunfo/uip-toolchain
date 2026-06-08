@@ -1,24 +1,23 @@
-﻿"""Guarded uipcli runner — pre-flight + halt detection.
+"""Guarded legacy Activity Migrator runner - pre-flight + halt detection.
 
-Engine layer #2 dispara `UiPath.Studio.CommandLine.exe analyze` e `... publish`
-como gates pré-publicação. `subprocess.run(..., timeout=N)` simples sofre 2
-falhas observadas em produção:
+`migrate-windows` still invokes the Studio CommandLine Activity Migrator for
+old Windows-Legacy/Legacy projects. Plain subprocess timeout is not enough
+for two production failure modes:
 
-1. uipcli trava em I/O (license server / cloud heartbeat / NuGet feed) sem
-   consumir CPU → timeout 180s/600s só dispara após o relógio inteiro queimar,
-   sem diagnóstico. Engine emite "Gate skipped" mudo.
+1. uipcli can stall on license, cloud heartbeat, NuGet feed, or file-lock I/O
+   without consuming CPU. A hard timeout then burns the full budget with poor
+   diagnostics.
 
-2. Sem pré-check de ambiente (Studio install, cloud reachability) a falha
-   acontece DENTRO de uipcli, gerando ruído crítico sem ação clara.
+2. Without environment preflight, Studio install or cloud reachability errors
+   happen inside the heavy migrator process and produce noisy failures.
 
-Este módulo resolve ambos:
+This module keeps that legacy bridge isolated from modern review/fix gates:
 
-- `preflight()` — checks rápidos (<10s total) antes de qualquer invocação
-  pesada. Falha early com diagnose explícita.
-- `run_uipcli_guarded()` — Popen + CPU-delta watchdog. Detecta halt (zero CPU
-  por janela configurável) e kill-tree, retornando `halt_reason` estruturado.
+- `preflight()` performs fast checks before a heavy invocation.
+- `run_uipcli_guarded()` uses Popen plus CPU-delta watchdog and kill-tree,
+  returning structured `halt_reason` data.
 
-API stable; analyzer.py e cli.py consomem via `UipcliResult`.
+API stable; migrate.py consumes `UipcliResult`.
 """
 from __future__ import annotations
 
@@ -36,12 +35,12 @@ except ImportError:  # pragma: no cover
     _PSUTIL_AVAILABLE = False
 
 
-# Halt-detect defaults. Escolha empírica:
-#   - Pack/analyze normal: CPU ativa quase contínua (NuGet restore, Roslyn,
-#     XAML parse). Idle > 60s é assinatura confiável de stall (license, cloud
-#     heartbeat block, file lock).
-#   - cpu_floor=0.5s — se incremento total < 0.5s na janela, consideramos
-#     parado (margem pra timer skew / measurement noise).
+# Halt-detect defaults. Empirical choice:
+#   - Migrator normal: CPU is active for long blocks during rewrite and restore.
+#     Idle > 60s is a reliable stall signature for license, cloud heartbeat,
+#     or file-lock waits.
+#   - cpu_floor=0.5s: if total increment is < 0.5s in the window, treat it
+#     as stalled with margin for timer skew and measurement noise.
 DEFAULT_HALT_WINDOW_SEC = 60
 DEFAULT_HALT_CPU_FLOOR_SEC = 0.5
 DEFAULT_POLL_INTERVAL_SEC = 5
@@ -51,10 +50,7 @@ DEFAULT_POLL_INTERVAL_SEC = 5
 PREFLIGHT_VERSION_TIMEOUT_SEC = 90
 PREFLIGHT_SOCKET_TIMEOUT_SEC = 3
 
-# Cache module-level: preflight só precisa cold-start uma vez por processo.
-# Phase 1 analyzer-gate + Phase 2 pack-gate + Phase 2 publish-gate todos
-# chamam preflight; sem cache cada um paga cold-start de 30-90s.
-_PREFLIGHT_CACHE: dict[str, "PreflightResult"] = {}
+# Cache module-level: preflight only needs one cold start per process.
 
 
 def _console_spawn_attrs() -> tuple[int, "subprocess.STARTUPINFO | None"]:
@@ -142,19 +138,16 @@ def preflight(
     cloud_host: str = "cloud.uipath.com",
     cloud_port: int = 443,
 ) -> PreflightResult:
-    """Health checks rápidos antes de invocar uipcli analyze/publish.
+    """Health checks before invoking the Activity Migrator.
 
-    Chamada típica é <8s no caminho feliz, <10s no caminho de falha.
+    Typical call is <8s on the happy path and <10s on failure.
 
     Checks:
-      1. `uipcli --version` retorna em < 5s (sem trava cold-start patológica)
-      2. Socket TCP em cloud.uipath.com:443 conecta em < 3s
-         (essencial pra licensing/telemetry heartbeat que uipcli faz síncrono)
+      1. `uipcli --version` returns quickly.
+      2. TCP socket to cloud.uipath.com:443 connects quickly.
 
-    Caching: resultado OK é memoizado por (uipcli_path, cloud_host:port). Phases
-    subsequentes do god command (analyzer-gate, pack-gate, publish-gate) reusam
-    o mesmo preflight em vez de pagar cold-start 3x. Failures NÃO cacheiam —
-    cada gate re-tenta para dar chance de Studio service responder.
+    Caching: OK result is memoized by (uipcli_path, cloud_host:port).
+    Failures are not cached so the next migration attempt can retry.
     """
     cache_key = f"{uipcli_path}|{cloud_host}:{cloud_port}"
     cached = _PREFLIGHT_CACHE.get(cache_key)
@@ -369,11 +362,9 @@ def run_uipcli_guarded(
         result.duration_sec = time.monotonic() - started
         return result
 
-    # CRITICAL: drain pipes em background threads. uipcli analyze/publish
-    # cospe 10KB+ JSON output. Pipe buffer Windows ~4-64KB; sem reader, child
-    # bloqueia em write quando enche → poll loop nunca vê exit → timeout
-    # 180s false-positive mesmo em workload de 14s. PowerShell `& $cli`
-    # natively drains via console handle; subprocess.Popen NÃO.
+    # CRITICAL: drain pipes in background threads. Activity Migrator can emit
+    # 10KB+ output. Windows pipe buffer is around 4-64KB; without a reader the
+    # child can block when the buffer fills and the poll loop never sees exit.
     import threading
     _stdout_chunks: list[str] = []
     _stderr_chunks: list[str] = []

@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -218,6 +219,128 @@ def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
     assert not any(command[:2] == ["rpa-legacy", "pack"] for command in calls)
     assert (tmp_path / "RepoA" / "project.uiproj").is_file()
     assert (tmp_path / "out" / "ProjectA.1.0.1.nupkg").is_file()
+
+
+def test_batch_commit_requires_branch_when_message_is_set(tmp_path):
+    _project(tmp_path, "RepoA", "ProjectA")
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(tmp_path),
+        "--all",
+        "--dry-run",
+        "--commit-message",
+        "chore: publish version",
+    ])
+
+    with pytest.raises(ValueError, match="--commit-message requires --commit-branch"):
+        publish_done.execute(args, check_environment=False)
+
+
+def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    project = _project(repo, "RepoA", "ProjectA")
+    manual_note = repo / "manual-note.txt"
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "branch", "-M", "release/nc-179"], check=True)
+    manual_note.write_text("manual change before publish\n", encoding="utf-8")
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:2] == ["rpa", "pack"]:
+            pack_dir = Path(command[3])
+            pack_dir.mkdir(parents=True, exist_ok=True)
+            (pack_dir / "ProjectA.1.0.1.nupkg").write_bytes(b"packed")
+            return _result({"Status": "Packed"})
+        if command[:3] == ["or", "packages", "upload"]:
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = Path(command[command.index("--destination") + 1])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"downloaded")
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(repo),
+        "--all",
+        "--yes",
+        "--out-dir",
+        str(tmp_path / "out"),
+        "--commit-message",
+        "chore: publish DEV packages",
+        "--commit-branch",
+        "release/nc-179",
+    ])
+
+    results = publish_done.execute(args, run_uip=fake_run, check_environment=False)
+
+    assert len(results) == 1
+    assert results[0].ok
+    assert results[0].commit_status is not None
+    assert "COMMIT" in results[0].commit_status
+    assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
+    subject = subprocess.run(
+        ["git", "-C", str(repo), "log", "-1", "--pretty=%s"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert subject == "chore: publish DEV packages"
+    changed = subprocess.run(
+        ["git", "-C", str(repo), "show", "--name-only", "--pretty=", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    changed_names = {line.replace("\\", "/") for line in changed}
+    assert "RepoA/project.json" in changed_names
+    assert "manual-note.txt" in changed_names
+
+
+def test_batch_commit_branch_preflight_runs_before_uip_calls(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _project(repo, "RepoA", "ProjectA")
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "branch", "-M", "main"], check=True)
+    called = False
+
+    def fake_run(command):
+        nonlocal called
+        called = True
+        raise AssertionError(command)
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(repo),
+        "--all",
+        "--yes",
+        "--commit-message",
+        "chore: publish DEV packages",
+        "--commit-branch",
+        "release/nc-179",
+    ])
+
+    with pytest.raises(RuntimeError, match="current branch is 'main'"):
+        publish_done.execute(args, run_uip=fake_run, check_environment=False)
+
+    assert not called
 
 
 def test_ensure_dotnet_sdk_for_official_pack_accepts_existing_sdk_8(monkeypatch, tmp_path):

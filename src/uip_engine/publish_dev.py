@@ -7,6 +7,7 @@ operations through the official UiPath CLI.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -20,14 +21,11 @@ from .official_uip import (
     run_official_uip,
 )
 from .publish_readiness import (
-    PACK_INCOMPATIBLE_STALE_ASSEMBLY_REFERENCES,
     _load_project_json,
     _project_name,
     _project_version,
-    is_packable_project,
     prepare_project_for_official_pack,
     scrub_pack_incompatible_assembly_references,
-    sync_project_uiproj,
 )
 
 
@@ -48,6 +46,7 @@ class PublishPlan:
     work_dir: Path
     pack_dir: Path
     downloaded_nupkg: Path
+    changed_files: tuple[Path, ...] = ()
 
 
 RunUip = Callable[[list[str]], OfficialUipResult]
@@ -171,6 +170,17 @@ def _default_work_dir(project_root: Path, package_key: str, version: str) -> Pat
     return project_root / ".tmp" / "publish-dev" / f"{safe_pkg}.{version}"
 
 
+def _write_project_version(project_root: Path, version: str) -> Path:
+    project_json = project_root / "project.json"
+    data = _load_project_json(project_root)
+    data["projectVersion"] = version
+    project_json.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return project_json
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ccs-uip-publish-project",
@@ -209,38 +219,6 @@ def _run_checked(run_uip: RunUip, args: list[str]) -> Any:
     return _envelope_data(result)
 
 
-def _pack_project(
-    run_uip: RunUip,
-    *,
-    project_root: Path,
-    pack_dir: Path,
-    next_version: str,
-) -> None:
-    preparation = prepare_project_for_official_pack(project_root)
-    if preparation.descriptor_changed:
-        print(f"[PACK] synced project descriptor: {preparation.descriptor}", file=sys.stderr)
-
-    if preparation.scrubbed_xamls:
-        print(
-            "[PACK] removed stale headless-pack AssemblyReference lines: "
-            f"{len(preparation.scrubbed_xamls)} file(s)",
-            file=sys.stderr,
-        )
-
-    modern_result = run_uip(
-        [
-            "rpa", "pack", str(project_root), str(pack_dir),
-            "--package-version", next_version,
-            "--skip-analyze",
-            "--output", "json",
-        ],
-    )
-    if _uip_success(modern_result):
-        return
-
-    _envelope_data(modern_result)
-
-
 def execute(
     args: argparse.Namespace,
     *,
@@ -260,6 +238,8 @@ def execute(
         ensure_login(runner, dev_tenant=args.dev_tenant)
 
     next_version = bump_version(current_version, args.bump)
+    project_json = project_root / "project.json"
+    original_project_json = project_json.read_bytes()
 
     work_dir = (
         Path(args.out_dir).resolve()
@@ -273,39 +253,66 @@ def execute(
     pack_dir.mkdir(parents=True, exist_ok=True)
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    _pack_project(
-        runner,
-        project_root=project_root,
-        pack_dir=pack_dir,
-        next_version=next_version,
-    )
-    packed_nupkg = _find_nupkg(pack_dir, package_key, next_version)
+    changed_files: list[Path] = []
+    try:
+        _write_project_version(project_root, next_version)
+        if project_json.read_bytes() != original_project_json:
+            changed_files.append(project_json)
 
-    _run_checked(
-        runner,
-        [
-            "or", "packages", "upload", str(packed_nupkg),
-            "--tenant", args.dev_tenant,
-            "--output", "json",
-        ],
-    )
+        preparation = prepare_project_for_official_pack(project_root)
+        if preparation.descriptor_changed:
+            print(f"[PACK] synced project descriptor: {preparation.descriptor}", file=sys.stderr)
+            changed_files.append(preparation.descriptor)
 
-    downloaded_nupkg = download_dir / packed_nupkg.name
-    if downloaded_nupkg.exists():
-        raise RuntimeError(f"download target already exists: {downloaded_nupkg}")
-    _run_checked(
-        runner,
-        [
-            "or", "packages", "download", f"{package_key}:{next_version}",
-            "--destination", str(downloaded_nupkg),
-            "--tenant", args.dev_tenant,
-            "--output", "json",
-        ],
-    )
-    if not downloaded_nupkg.is_file():
-        raise RuntimeError(
-            f"download command completed but file was not found: {downloaded_nupkg}"
+        if preparation.scrubbed_xamls:
+            print(
+                "[PACK] removed stale headless-pack AssemblyReference lines: "
+                f"{len(preparation.scrubbed_xamls)} file(s)",
+                file=sys.stderr,
+            )
+            changed_files.extend(preparation.scrubbed_xamls)
+
+        modern_result = runner(
+            [
+                "rpa", "pack", str(project_root), str(pack_dir),
+                "--package-version", next_version,
+                "--skip-analyze",
+                "--output", "json",
+            ],
         )
+        if not _uip_success(modern_result):
+            _envelope_data(modern_result)
+
+        packed_nupkg = _find_nupkg(pack_dir, package_key, next_version)
+
+        _run_checked(
+            runner,
+            [
+                "or", "packages", "upload", str(packed_nupkg),
+                "--tenant", args.dev_tenant,
+                "--output", "json",
+            ],
+        )
+
+        downloaded_nupkg = download_dir / packed_nupkg.name
+        if downloaded_nupkg.exists():
+            raise RuntimeError(f"download target already exists: {downloaded_nupkg}")
+        _run_checked(
+            runner,
+            [
+                "or", "packages", "download", f"{package_key}:{next_version}",
+                "--destination", str(downloaded_nupkg),
+                "--tenant", args.dev_tenant,
+                "--output", "json",
+            ],
+        )
+        if not downloaded_nupkg.is_file():
+            raise RuntimeError(
+                f"download command completed but file was not found: {downloaded_nupkg}"
+            )
+    except Exception:
+        project_json.write_bytes(original_project_json)
+        raise
 
     return PublishPlan(
         project_root=project_root,
@@ -316,6 +323,7 @@ def execute(
         work_dir=work_dir,
         pack_dir=pack_dir,
         downloaded_nupkg=downloaded_nupkg,
+        changed_files=tuple(dict.fromkeys(path.resolve() for path in changed_files)),
     )
 
 

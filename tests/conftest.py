@@ -1,7 +1,7 @@
 ﻿"""Pytest harness setup.
 
-Default behavior: opt OUT dos external gates (analyzer/nuget/pack) durante
-testes — esses gates invocam subprocess `uipcli`/`nuget` que:
+Default behavior: opt OUT dos external gates oficiais
+(restore/analyze/build/pack) durante testes. Esses gates invocam `uip`, que:
   - Lentos (>60s cada quando rodam de verdade).
   - Não-determinísticos entre máquinas (binary presence, versions).
   - Em projetos sintéticos minimos, naturalmente falham (não é o que estamos

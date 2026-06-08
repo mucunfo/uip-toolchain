@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, TYPE_CHECKING
+from typing import Callable
 
 import pathspec
 
@@ -12,10 +12,6 @@ from ._types import Finding, Rule, Severity, ValidationResult, Target
 from .context import FileContext, ProjectContext
 from .project_view import iter_project_xamls
 from .suppressions import parse_suppressions, is_suppressed_at
-
-if TYPE_CHECKING:
-    from ._gate_cache import FixLoopGateCache
-
 
 # Detector signature: (rule, file_ctx, project_ctx) -> list[Finding]
 DetectorFn = Callable[[Rule, FileContext, ProjectContext], list[Finding]]
@@ -58,22 +54,17 @@ class Runner:
         project_path: Path | str,
         *,
         include_gates: bool = False,
-        gate_cache: "FixLoopGateCache | None" = None,
+        gate_cache: object | None = None,
         gate_filter: set[str] | None = None,
     ) -> ValidationResult:
         """Run engine. YAML detectors sempre executam.
 
         Args:
             project_path: raiz do projeto UiPath (contém project.json).
-            include_gates: se True, invoca subprocess gates inline (Phase 10).
-                Default False mantém back-compat com callers existentes (tests
-                + cli.review continuam usando cli.py wrappers).
-            gate_cache: opcional. Se fornecido, gates usam cache (set baseline
-                no primeiro run, retornam merged_findings em runs subsequentes).
-                Pensado p/ fix loop fixpoint.
-            gate_filter: set de nomes de gate p/ ativar. Default = só
-                `{"runtime-loadtest"}` (Phase 10 MVP). Demais gates ficam em
-                cli.py helpers (Phase 10.1 backlog).
+            include_gates/gate_cache/gate_filter: parâmetros mantidos apenas
+                por compatibilidade. Gates externos vivem no CLI público
+                (`review`), onde rodam com contexto completo do projeto via
+                UiPath CLI oficial.
         """
         project_path = Path(project_path)
         result = ValidationResult()
@@ -120,69 +111,7 @@ class Runner:
             for file_path in files:
                 self._run_file(file_path, active_rules, pc, result)
 
-        # Phase 10: subprocess gates opt-in via include_gates=True.
-        if include_gates:
-            gate_findings = self._run_gates(pc.root, gate_cache, gate_filter)
-            for gf in gate_findings:
-                result.add(gf)
-
         return result
-
-    def _run_gates(
-        self,
-        project_root: Path,
-        cache: "FixLoopGateCache | None",
-        gate_filter: set[str] | None,
-    ) -> list[Finding]:
-        """Invoca subprocess gates inline. Phase 10 MVP: só runtime-loadtest.
-
-        Cache behavior (fix loop):
-          - Se cache fornecido e tem baseline → retorna cache.merged_findings()
-            sem invocar subprocess (avoid 30-60s re-run per iter).
-          - Caso contrário → invoca runtime_loadtest full, popula cache se
-            fornecido.
-
-        Args:
-            project_root: raiz do projeto (path resolvido).
-            cache: FixLoopGateCache opcional.
-            gate_filter: set de nomes ativos. None = {"runtime-loadtest"}.
-
-        Returns:
-            Lista de Finding produzidos pelos gates ativos.
-        """
-        active = gate_filter or {"runtime-loadtest"}
-
-        # Fast path: cache hit (fix loop iter ≥ 1 pós-refresh).
-        if cache is not None and cache.has_baseline:
-            return cache.merged_findings()
-
-        # Slow path: baseline run.
-        findings: list[Finding] = []
-        if "runtime-loadtest" in active:
-            try:
-                from .runtime_loadtest import run_loadtest
-                _code, rt_findings = run_loadtest(project_root, timeout=180)
-                findings.extend(rt_findings)
-            except Exception as e:  # pragma: no cover — defensive
-                findings.append(Finding(
-                    rule_id="RT-LOAD-INFRA",
-                    severity=Severity.WARN,
-                    category="metadata",
-                    file=str(project_root / "project.json"),
-                    line=0,
-                    message=(
-                        f"runner._run_gates: runtime_loadtest invocation "
-                        f"raised {type(e).__name__}: {e}"
-                    ),
-                ))
-
-        # Future gates (Phase 10.1): activity-compile, pack-gate, nuget-gate,
-        # analyze-gate. Manter helpers em cli.py por enquanto pra não duplicar.
-
-        if cache is not None:
-            cache.set_baseline(findings)
-
-        return findings
 
     def _target_matches(self, rule: Rule, pc: ProjectContext) -> bool:
         if rule.target == Target.ALL:

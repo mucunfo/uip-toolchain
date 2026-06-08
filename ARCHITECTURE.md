@@ -200,7 +200,7 @@ annotations legítimas no mesmo file).
 ```
 PHASE 0  migration probe   (Activity Migrator se targetFramework != Windows)
 PHASE 1  deterministic fix (auto-apply, fixpoint loop, cascade rollback)
-PHASE 2  gates             (engine + official uip / legacy fallbacks)
+PHASE 2  gates             (engine + official uip)
 PHASE 3  contextual        (dry-run default; --apply-contextual aplica)
 PHASE 4  decisão           PASS / PASS-WITH-NOTES / FAIL
 ```
@@ -259,7 +259,7 @@ publish-safe garantido.
 
 `J-9`, `W-40` e `A-19d` são blockers de formato/contrato antes de qualquer
 gate externo caro. Se qualquer uma dessas regras emitir `ERROR`/`HALT`, o
-review retorna erro e não invoca restore/analyzer/pack/activity-compile nessa
+review retorna erro e não invoca restore/analyzer/build/pack nessa
 execução. Isso evita cascata de diagnósticos do `uip` sobre uma árvore que a
 própria engine já sabe que não é publicável.
 
@@ -269,10 +269,10 @@ própria engine já sabe que não é publicável.
 |---|------|--------|---------------|
 | 1 | Rules Sicoob | Regras locais YAML (A-*, S-*, N-*, W-*, D-*, etc.) sobre a ProjectView produtiva. | `runner.run` + `project_view.py` |
 | 2 | Lib-contract override | Downgrade findings que conflitam com contrato CCS_* exposto. | `_apply_sicoob_lib_overrides` |
-| 3 | UiPath restore | official `uip rpa restore <project> <tmp-out>` preferred — peer dep/feed/package graph resolution before analyzer/pack. On failure emits `UIPATH:RESTORE_*` and blocks later official analyzer/pack for that run. | `_run_official_restore_gate` |
-| 4 | UiPath Analyzer | official `uip rpa analyze` preferred; legacy uipcli `analyze` fallback — ST-* oficiais, contrato lib NuGet, Roslyn compile, SecureString flow. Findings `UIPATH:<code>`. | `_inject_analyzer_findings` |
-| 5 | NuGet restore fallback | Legacy `nuget restore project.json` only when official restore did not handle dependencies. Emite `NUGET:NU<NNNN>` por code. NU1101/1102/1107/1605/3026/5048 promoted ERROR. | `_run_nuget_restore_gate` |
-| 6 | UiPath pack (publish dry-run) | official `uip rpa pack <prepared-project> <out> --skip-analyze` preferred; legacy `uipcli publish -o Process -f <tmpdir>` fallback — equivalent a pack dry-run sem upload. Captura BC* compile errors + validation que só aparecem no flow de publish. Emite `UIPATH:PACK`. | `_run_uipcli_pack_gate` + `publish_readiness.py` |
+| 3 | UiPath restore | `uip rpa restore <project> <tmp-out>` resolve peer deps/feed/package graph before analyzer/build/pack. On failure emits `UIPATH:RESTORE_*` and blocks later official gates for that run. | `_run_official_restore_gate` |
+| 4 | UiPath Analyzer | `uip rpa analyze` captures official ST-* findings, library contracts, Roslyn compile, SecureString flow. Findings `UIPATH:<code>`. | `_inject_analyzer_findings` |
+| 5 | UiPath build | `uip rpa build --skip-analyze` is the project-level compile gate. It replaces the removed direct compiler wrapper. | `_run_official_build_gate` |
+| 6 | UiPath pack (publish dry-run) | `uip rpa pack <prepared-project> <out> --skip-analyze` proves package generation without upload. Captura BC* compile errors + validation que só aparecem no flow de package. Emite `UIPATH:PACK`. | `_run_pack_gate` + `publish_readiness.py` |
 
 ### Cobertura por gate
 
@@ -291,18 +291,20 @@ Sem opt-out via CLI. `--no-analyzer-gate` flag mantida apenas como deprecation
 warning — emite `[WARNING] --no-analyzer-gate is deprecated and ignored; review controls analyzer/pack gates.` e ignora.
 
 **Env override (test harness apenas)**: `UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1`
-pula gates externos analyzer/nuget/pack (não invoca `uip`/uipcli/nuget). Usado pelo pytest harness (em
+pula gates externos restore/analyzer/build/pack (não invoca `uip`). Usado pelo pytest harness (em
 `tests/conftest.py`) para evitar dependência de binaries externos durante
 unit tests. NÃO usar em produção.
 
 ### Graceful degradation
 
-Cada gate falha graceful se binary não disponível:
-- Official restore (uip ausente): falls through to legacy NuGet/analyzer/pack gates.
-- Official restore failure: emits `UIPATH:RESTORE_*`; analyzer/pack are skipped for that review run.
-- Analyzer fallback (official `uip` e uipcli ausentes): warn stderr `[analyzer-gate] official uip unavailable and uipcli not found — gate skipped`. Set `UIPATH_UIP_CLI` ou `UIPATH_STUDIO_CLI`.
-- NuGet fallback (nuget.exe ausente): warn `[NUGET-GATE] nuget binary not found; skipping`. Set `UIPATH_NUGET_CLI` ou install nuget.exe / dotnet SDK. Se só dotnet disponível, skipa silente (dotnet restore não suporta UiPath project.json).
-- Pack fallback (official `uip` e uipcli ausentes): warn `[PACK-GATE] official uip unavailable and uipcli not found — gate skipped`.
+Gates modernos não têm fallback para `uipcli`, `nuget.exe` direto ou
+compiler direto. Se o `uip` oficial não estiver disponível ou falhar,
+o gate emite finding `UIPATH:*` e bloqueia o resultado em vez de aceitar uma
+validação incompleta.
+
+- Restore failure: emits `UIPATH:RESTORE_*`; analyzer/build/pack are skipped for that review run.
+- Missing official `uip`: emits `UIPATH:CLI_NOT_FOUND`.
+- Build/pack failures are parsed from the official CLI envelope/stdout/stderr.
 
 ### Tempo total
 
@@ -327,19 +329,22 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 - **Activity property required**: args missing, type incompatibilities.
 - **NuGet package resolution**: missing dependencies.
 
-**Implementação**: `analyzer.py`. Prefere `uip rpa analyze <project> --output json` e faz fallback para `UiPath.Studio.CommandLine.exe analyze -p <project.json>`. O parser da CLI oficial lê o envelope JSON; o parser legado captura `#json{...}#json` block + `NU\d+:` package errors.
+**Implementação**: `analyzer.py`. Usa `uip rpa analyze <project> --output json`.
+O parser lê o envelope JSON oficial e detailed logs da CLI atual. O fallback
+`UiPath.Studio.CommandLine.exe analyze` foi removido do fluxo moderno.
 
 **Diff-based gate**: erros NOVOS (post − baseline) bloqueiam (exit non-zero). Pré-existentes ignorados.
 
-**Studio version mismatch**: uipcli respeita `project.json.targetFramework`. Local Studio v26.x analisando project Windows-5.x carrega rules compat. Diff gate elimina falsos positivos vindos de rules-novas em Studio local.
+**Studio/version mismatch**: a CLI oficial continua sendo a fonte de verdade.
+Diff gate elimina falsos positivos vindos de problemas pré-existentes, mas não
+troca para binário legado quando a CLI oficial falha.
 
 **Cache** (F27/F41): baseline cacheado em `.uip-toolchain/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA256 truncado gerado por `project_view.py`: conteúdo de `project.json`, `project.uiproj`, `webAppManifest.json`, `NuGet.config`, XAMLs produtivos, lista canônica de diretórios ignorados, `rules.yaml`, módulos de gate/readiness e identidade da CLI oficial `uip` quando disponível. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados) sem aceitar cache obsoleto por mtime, regra, helper ou CLI.
 
-**Discovery**: ordem de busca:
-1. Official CLI: env var `UIPATH_UIP_CLI`, depois PATH lookup de `uip`.
-2. Legacy fallback: env var `UIPATH_STUDIO_CLI`, PATH lookup e well-known paths `%LocalAppData%\Programs\UiPathPlatform\Studio\*\UiPath.Studio.CommandLine.exe`, etc.
+**Discovery**: env var `UIPATH_UIP_CLI`, depois PATH lookup de `uip`.
 
-**Graceful degradation**: skip silencioso se official `uip` e legacy uipcli não forem encontrados.
+**Graceful degradation**: sem skip silencioso. Ausência da CLI oficial vira
+finding bloqueante, porque `review` sem os gates oficiais não é publish-safe.
 
 **Default**: ON. Flag `--no-analyzer-gate` é mantida só para back-compat,
 emite warning e é ignorada; `review` sempre tenta o gate externo quando o
@@ -361,9 +366,8 @@ ambiente permite.
 
 `tests/test_smoke.py` roda engine em projetos reais Sicoob (REF, dispatcher,
 performer) verificando que não crasha (`exit < 10`). Findings podem existir
-— teste só confirma estabilidade. `analyzer-gate`/`pack-gate` via CLI oficial
-`uip` (com fallback uipcli quando aplicável) são fontes de verdade pra correção
-semântica. Golden project manifest com
+— teste só confirma estabilidade. `analyzer-gate`/`build-gate`/`pack-gate` via
+CLI oficial `uip` são fontes de verdade pra correção semântica. Golden project manifest com
 `known_exceptions` foi removido — manutenção alta, cobertura redundante vs
 gates externos + unit tests por heurística.
 
@@ -520,8 +524,7 @@ serializa em XAML mesmo não exibindo no painel design-time).
    (`_KNOWN_UIPATH_XMLNS`). Libraries proprietárias (clr-namespace) precisam
    cross-validação com `project.json::dependencies` — fase 6.
 2. **Type checking semântico** (M-5): não implementado. Requer parser de
-   expressão VB/C# ou integração com `UiPath.ActivityCompiler.CommandLine.exe`
-   headless.
+   expressão VB/C#; parte da cobertura semântica fica delegada ao `uip rpa build`.
 3. **xmlns canônico whitelist** (`_KNOWN_UIPATH_XMLNS`) é hardcoded. Se UiPath
    adicionar novo URI canônico, precisa update manual. Auto-derivar do
    schema (campo `xmlns` aggregated) é trivial — mas só vale fazer quando
