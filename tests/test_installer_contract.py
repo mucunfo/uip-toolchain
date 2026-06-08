@@ -25,6 +25,16 @@ def test_interactive_installer_is_user_level_and_no_admin():
     assert "Start-Process" not in script
 
 
+def test_interactive_installer_captures_native_stderr_without_powershell_redirection():
+    script = (ROOT / "tools" / "install-ccs-uip.ps1").read_text(encoding="utf-8")
+
+    assert "System.Diagnostics.ProcessStartInfo" in script
+    assert "RedirectStandardOutput = $true" in script
+    assert "RedirectStandardError = $true" in script
+    assert "Invoke-Native" in script
+    assert "2>&1" not in script
+
+
 def test_readme_documents_easy_install_flow():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 

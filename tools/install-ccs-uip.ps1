@@ -64,33 +64,171 @@ function Get-ArgsTail([string[]]$Command) {
     return @($Command[1..($Command.Count - 1)])
 }
 
+function Quote-ProcessArgument {
+    param([AllowNull()][string]$Value)
+
+    if ($null -eq $Value -or $Value.Length -eq 0) {
+        return '""'
+    }
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes++
+            continue
+        }
+        if ($character -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append(('\' * ($backslashes * 2)))
+                $backslashes = 0
+            }
+            [void]$builder.Append('\"')
+            continue
+        }
+        if ($backslashes -gt 0) {
+            [void]$builder.Append(('\' * $backslashes))
+            $backslashes = 0
+        }
+        [void]$builder.Append($character)
+    }
+    if ($backslashes -gt 0) {
+        [void]$builder.Append(('\' * ($backslashes * 2)))
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Set-ProcessArguments {
+    param(
+        [Parameter(Mandatory = $true)][System.Diagnostics.ProcessStartInfo]$StartInfo,
+        [string[]]$Arguments
+    )
+
+    $argumentListProperty = [System.Diagnostics.ProcessStartInfo].GetProperty("ArgumentList")
+    if ($argumentListProperty) {
+        foreach ($argument in $Arguments) {
+            [void]$StartInfo.ArgumentList.Add($argument)
+        }
+    } else {
+        $StartInfo.Arguments = (($Arguments | ForEach-Object { Quote-ProcessArgument $_ }) -join " ")
+    }
+}
+
+function Resolve-NativeExecutable {
+    param([Parameter(Mandatory = $true)][string]$Executable)
+
+    if (Test-Path -LiteralPath $Executable) {
+        return (Resolve-Path -LiteralPath $Executable).Path
+    }
+
+    $commandInfo = Get-Command $Executable -ErrorAction SilentlyContinue
+    if (-not $commandInfo) {
+        return $Executable
+    }
+
+    $source = $commandInfo.Source
+    if ([string]::IsNullOrWhiteSpace($source)) {
+        $source = $commandInfo.Path
+    }
+    if ([string]::IsNullOrWhiteSpace($source)) {
+        return $Executable
+    }
+
+    if ([System.IO.Path]::GetExtension($source).ToLowerInvariant() -eq ".ps1") {
+        $basePath = Join-Path (Split-Path $source) ([System.IO.Path]::GetFileNameWithoutExtension($source))
+        foreach ($extension in @(".cmd", ".bat", ".exe")) {
+            $candidate = "$basePath$extension"
+            if (Test-Path -LiteralPath $candidate) {
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+
+    return $source
+}
+
+function Invoke-Native {
+    param([Parameter(Mandatory = $true)][string[]]$Command)
+
+    if ($Command.Count -eq 0) {
+        throw "Command cannot be empty."
+    }
+
+    $executable = Resolve-NativeExecutable -Executable $Command[0]
+    $argumentValues = Get-ArgsTail $Command
+    $extension = [System.IO.Path]::GetExtension($executable).ToLowerInvariant()
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    if ($extension -eq ".cmd" -or $extension -eq ".bat") {
+        $psi.FileName = if ([string]::IsNullOrWhiteSpace($env:ComSpec)) { "cmd.exe" } else { $env:ComSpec }
+        Set-ProcessArguments -StartInfo $psi -Arguments (@("/d", "/c", "call", $executable) + $argumentValues)
+    } elseif ($extension -eq ".ps1") {
+        $psi.FileName = "powershell.exe"
+        Set-ProcessArguments -StartInfo $psi -Arguments (@("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $executable) + $argumentValues)
+    } else {
+        $psi.FileName = $executable
+        Set-ProcessArguments -StartInfo $psi -Arguments $argumentValues
+    }
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    try {
+        [void]$process.Start()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $stdout = $stdoutTask.Result
+        $stderr = $stderrTask.Result
+        $exitCode = $process.ExitCode
+    } finally {
+        $process.Dispose()
+    }
+
+    return [pscustomobject]@{
+        Code = $exitCode
+        StdOut = $stdout
+        StdErr = $stderr
+        Output = (@($stdout, $stderr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n"
+    }
+}
+
 function Invoke-External {
     param(
         [Parameter(Mandatory = $true)][string[]]$Command,
         [switch]$AllowFail
     )
 
-    $exe = $Command[0]
-    $args = Get-ArgsTail $Command
     Write-Host ("> " + ($Command -join " ")) -ForegroundColor DarkGray
-    & $exe @args
-    $code = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
-    if ($code -ne 0 -and -not $AllowFail) {
-        throw "Command failed with exit ${code}: $($Command -join ' ')"
+    $result = Invoke-Native -Command $Command
+    if (-not [string]::IsNullOrWhiteSpace($result.StdOut)) {
+        Write-Host $result.StdOut.TrimEnd()
     }
-    return $code
+    if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
+        if ($result.Code -eq 0) {
+            Write-Warn $result.StdErr.TrimEnd()
+        } else {
+            Write-Host $result.StdErr.TrimEnd() -ForegroundColor Red
+        }
+    }
+    if ($result.Code -ne 0 -and -not $AllowFail) {
+        throw "Command failed with exit $($result.Code): $($Command -join ' ')"
+    }
+    return $result.Code
 }
 
 function Invoke-Capture {
     param([Parameter(Mandatory = $true)][string[]]$Command)
-    $exe = $Command[0]
-    $args = Get-ArgsTail $Command
-    $output = & $exe @args 2>&1
-    $code = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
-    return [pscustomobject]@{
-        Code = $code
-        Output = (($output | ForEach-Object { "$_" }) -join "`n")
-    }
+    return Invoke-Native -Command $Command
 }
 
 $script:PythonCommand = $null
