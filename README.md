@@ -169,7 +169,7 @@ tenant/pacotes via a CLI oficial `uip`.
 ```powershell
 ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done"
 
-# opcional: depois de cada publish OK, commita todas as alterações do repo do projeto
+# opcional: depois de cada publish OK, commita e faz push de todas as alterações do repo do projeto
 ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done" `
   --commit-branch "release/nc-179" `
   --commit-message "chore: publish DEV packages"
@@ -186,7 +186,7 @@ Fluxo:
 8. remove referências legadas conhecidamente incompatíveis com pack headless e roda `uip rpa pack --skip-analyze`;
 9. faz upload do pacote em `RPA_Desenvolvimento`;
 10. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
-11. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto.
+11. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
 
 Se pack/upload/download falhar em um projeto, a alteração de `projectVersion`
 desse projeto é revertida para evitar versão local sem pacote publicado.

@@ -239,15 +239,19 @@ def test_batch_commit_requires_branch_when_message_is_set(tmp_path):
 
 def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
     repo = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
     repo.mkdir()
     project = _project(repo, "RepoA", "ProjectA")
     manual_note = repo / "manual-note.txt"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test User"], check=True)
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "branch", "-M", "release/nc-179"], check=True)
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", str(remote)], check=True)
+    subprocess.run(["git", "-C", str(repo), "push", "-u", "origin", "release/nc-179"], check=True, capture_output=True)
     manual_note.write_text("manual change before publish\n", encoding="utf-8")
     calls = []
 
@@ -290,6 +294,7 @@ def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
     assert results[0].ok
     assert results[0].commit_status is not None
     assert "COMMIT" in results[0].commit_status
+    assert "PUSH origin/release/nc-179" in results[0].commit_status
     assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
     subject = subprocess.run(
         ["git", "-C", str(repo), "log", "-1", "--pretty=%s"],
@@ -307,6 +312,13 @@ def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
     changed_names = {line.replace("\\", "/") for line in changed}
     assert "RepoA/project.json" in changed_names
     assert "manual-note.txt" in changed_names
+    remote_subject = subprocess.run(
+        ["git", "--git-dir", str(remote), "log", "-1", "--pretty=%s", "release/nc-179"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert remote_subject == "chore: publish DEV packages"
 
 
 def test_batch_commit_branch_preflight_runs_before_uip_calls(tmp_path):

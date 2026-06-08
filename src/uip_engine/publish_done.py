@@ -176,8 +176,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--commit-message",
         default=None,
-        help="After a successful publish, commit all current changes in the "
-             "project Git repository using this message. Requires --commit-branch.",
+        help="After a successful publish, commit and push all current changes "
+             "in the project Git repository using this message. Requires --commit-branch.",
     )
     parser.add_argument(
         "--commit-branch",
@@ -321,7 +321,12 @@ def commit_publish_changes(
     commit_hash = _run_git(git_root, ["rev-parse", "--short", "HEAD"])
     if commit_hash.returncode != 0:
         raise RuntimeError(f"could not read commit hash: {_git_output_or_error(commit_hash)}")
-    return f"COMMIT {commit_hash.stdout.strip()} on {branch}"
+
+    proc = _run_git(git_root, ["push", "-u", "origin", f"HEAD:{branch}"])
+    if proc.returncode != 0:
+        raise RuntimeError(f"git push failed after commit {commit_hash.stdout.strip()}: {_git_output_or_error(proc)}")
+
+    return f"COMMIT {commit_hash.stdout.strip()} and PUSH origin/{branch}"
 
 
 def preflight_commit_branch(
