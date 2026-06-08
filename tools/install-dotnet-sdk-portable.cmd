@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 
-set "DOTNET_CHANNEL=6.0"
+set "DOTNET_CHANNEL=8.0"
 set "DOTNET_DIR=%USERPROFILE%\.dotnet"
 set "DOTNET_INSTALL=%TEMP%\uip-toolchain-dotnet-install.ps1"
 

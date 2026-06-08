@@ -1368,7 +1368,7 @@ def _cmd_doctor_uipath_cli(args) -> int:
         dotnet = _shutil.which("dotnet")
     if dotnet:
         try:
-            proc = subprocess.run(
+            version_proc = subprocess.run(
                 [dotnet, "--version"],
                 capture_output=True,
                 text=True,
@@ -1377,17 +1377,40 @@ def _cmd_doctor_uipath_cli(args) -> int:
                 timeout=15,
                 check=False,
             )
-            dotnet_version = (proc.stdout or proc.stderr).strip()
+            sdk_proc = subprocess.run(
+                [dotnet, "--list-sdks"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            dotnet_version = (version_proc.stdout or version_proc.stderr).strip()
+            sdk_lines = [line.strip() for line in sdk_proc.stdout.splitlines() if line.strip()]
             print(f"dotnet: {dotnet_version} ({dotnet})")
-            major = int(dotnet_version.split(".", 1)[0])
-            if major < 8:
-                warnings.append(
-                    f".NET SDK {dotnet_version} found; rpa-tool may require .NET 8 for current commands."
+            if sdk_lines:
+                print("dotnet SDKs: " + "; ".join(sdk_lines))
+            has_sdk8 = any(
+                (match is not None and int(match.group(1)) >= 8)
+                for match in (re.match(r"^\s*(\d+)\.", line) for line in sdk_lines)
+            )
+            if sdk_proc.returncode != 0 or not sdk_lines:
+                errors.append(
+                    ".NET SDK not listed by `dotnet --list-sdks`; official `uip rpa pack` "
+                    "requires .NET SDK 8+."
+                )
+            elif not has_sdk8:
+                errors.append(
+                    ".NET SDK 8+ not found; official `uip rpa pack` restores a net8.0 "
+                    "temporary project even when the UiPath Studio project targets Windows/.NET 6."
                 )
         except Exception as exc:
             warnings.append(f"could not read dotnet version: {type(exc).__name__}: {exc}")
     else:
-        warnings.append(".NET SDK not found on PATH or ~/.dotnet; rpa-tool may fail.")
+        errors.append(
+            ".NET SDK 8+ not found on PATH or ~/.dotnet; official `uip rpa pack` cannot run."
+        )
         print("dotnet: NOT FOUND")
 
     migrator = find_migrator(None)

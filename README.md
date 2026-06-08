@@ -23,7 +23,7 @@ O instalador roda em modo usuario, sem permissao de administrador. Ele:
 - valida os comandos `ccs-uip` e `ccs-uip-publish`;
 - verifica a CLI oficial UiPath `uip`;
 - se Node/npm existir, oferece instalar `@uipath/cli@1` no escopo do usuario;
-- verifica .NET SDK e oferece o instalador portable de `tools/install-dotnet-sdk-portable.cmd` quando necessario;
+- verifica .NET SDK 8+ e oferece o instalador portable de `tools/install-dotnet-sdk-portable.cmd` quando necessario;
 - grava log em `.tmp/install-ccs-uip-*.log`.
 
 O instalador nao faz login no Orchestrator e nao publica pacote. Login e publish

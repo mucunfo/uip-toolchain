@@ -218,23 +218,48 @@ def _list_dotnet_sdks(dotnet: str, env: dict[str, str]) -> tuple[int, list[str],
     return proc.returncode, sdk_lines, output
 
 
-def warn_dotnet_sdk() -> None:
+def _sdk_major_from_line(line: str) -> int | None:
+    version = line.strip().split(maxsplit=1)[0] if line.strip() else ""
+    if not version:
+        return None
+    try:
+        return int(version.split(".", 1)[0])
+    except ValueError:
+        return None
+
+
+def _has_required_pack_sdk(sdk_lines: list[str]) -> bool:
+    return any(
+        major is not None and major >= 8
+        for major in (_sdk_major_from_line(line) for line in sdk_lines)
+    )
+
+
+def ensure_dotnet_sdk_for_official_pack() -> None:
     env = _official_uip_subprocess_env()
     dotnet = shutil.which("dotnet", path=env.get("PATH", ""))
     if dotnet is None:
-        print(
-            "[WARN] .NET SDK not found. Official `uip rpa pack` may fail; "
-            "install the SDK compatible with your UiPath Studio before publishing.",
-            file=sys.stderr,
+        raise RuntimeError(
+            ".NET SDK 8+ not found. Official `uip rpa pack` restores a net8.0 "
+            "temporary project before generating the .nupkg. Install .NET SDK 8 "
+            "or run tools\\install-dotnet-sdk-portable.cmd before publishing."
         )
-        return
+
     returncode, sdk_lines, output = _list_dotnet_sdks(dotnet, env)
     if returncode != 0 or not sdk_lines:
-        print(
-            "[WARN] `dotnet --list-sdks` did not return an installed SDK. "
-            "Official `uip rpa pack` may fail; install the SDK compatible "
-            f"with your UiPath Studio before publishing. Output: {output or '(empty)'}",
-            file=sys.stderr,
+        raise RuntimeError(
+            "`dotnet --list-sdks` did not return an installed SDK. Official "
+            "`uip rpa pack` requires .NET SDK 8+ for its net8.0 temporary "
+            f"restore project. Output: {output or '(empty)'}"
+        )
+
+    if not _has_required_pack_sdk(sdk_lines):
+        found = "; ".join(sdk_lines)
+        raise RuntimeError(
+            "Official `uip rpa pack` requires .NET SDK 8+ because the current "
+            f"RPA tool restores a net8.0 temporary project. Found SDK(s): {found}. "
+            "Install .NET SDK 8 or run tools\\install-dotnet-sdk-portable.cmd "
+            "before publishing."
         )
 
 
@@ -262,7 +287,7 @@ def execute(
         ]
 
     if check_environment:
-        warn_dotnet_sdk()
+        ensure_dotnet_sdk_for_official_pack()
 
     if not args.yes:
         confirm = input_func("\nConfirmar upload/download desses repos? [y/N]: ")

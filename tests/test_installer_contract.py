@@ -16,10 +16,15 @@ def test_windows_installer_launcher_calls_interactive_powershell():
 
 def test_interactive_installer_is_user_level_and_no_admin():
     script = (ROOT / "tools" / "install-ccs-uip.ps1").read_text(encoding="utf-8")
+    dotnet_installer = (ROOT / "tools" / "install-dotnet-sdk-portable.cmd").read_text(
+        encoding="utf-8"
+    )
 
     assert 'pip", "install", "--user", "-e"' in script
     assert "@uipath/cli@1" in script
     assert "install-dotnet-sdk-portable.cmd" in script
+    assert 'set "DOTNET_CHANNEL=8.0"' in dotnet_installer
+    assert 'set "DOTNET_CHANNEL=6.0"' not in dotnet_installer
     assert "SetEnvironmentVariable(\"PATH\"" in script
     assert "-Verb RunAs" not in script
     assert "Start-Process" not in script

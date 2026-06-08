@@ -367,37 +367,96 @@ function Ensure-UipCli {
     }
 }
 
+function Test-DotNetSdk8 {
+    param([string]$SdkOutput)
+
+    foreach ($line in ($SdkOutput -split "`r?`n")) {
+        if ($line -match "^\s*(\d+)\.") {
+            if ([int]$Matches[1] -ge 8) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
+function New-DotNetCandidate {
+    param(
+        [string]$Path,
+        [string]$Label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        Path = (Resolve-Path -LiteralPath $Path).Path
+        Label = $Label
+    }
+}
+
 function Ensure-DotNet {
     Write-Title ".NET SDK"
-    $dotnet = Get-Command "dotnet" -ErrorAction SilentlyContinue
+
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:UIP_TOOLCHAIN_DOTNET_ROOT)) {
+        $candidates += New-DotNetCandidate -Path (Join-Path $env:UIP_TOOLCHAIN_DOTNET_ROOT "dotnet.exe") -Label "UIP_TOOLCHAIN_DOTNET_ROOT"
+    }
     $homeDotnet = Join-Path $HOME ".dotnet\dotnet.exe"
-    if (-not $dotnet -and (Test-Path $homeDotnet)) {
-        [Environment]::SetEnvironmentVariable("DOTNET_ROOT", (Split-Path $homeDotnet), "User")
-        [Environment]::SetEnvironmentVariable("UIP_TOOLCHAIN_DOTNET_ROOT", (Split-Path $homeDotnet), "User")
-        Add-UserPath (Split-Path $homeDotnet)
-        $dotnet = Get-Command "dotnet" -ErrorAction SilentlyContinue
+    $candidates += New-DotNetCandidate -Path $homeDotnet -Label "%USERPROFILE%\.dotnet"
+    $pathDotnet = Get-Command "dotnet" -ErrorAction SilentlyContinue
+    if ($pathDotnet) {
+        $candidates += New-DotNetCandidate -Path $pathDotnet.Source -Label "PATH"
     }
 
-    if ($dotnet) {
-        $sdks = Invoke-Capture -Command @("dotnet", "--list-sdks")
-        if ($sdks.Code -eq 0 -and -not [string]::IsNullOrWhiteSpace($sdks.Output)) {
-            Write-Ok ".NET SDK encontrado:"
-            Write-Host $sdks.Output
-            return
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        if ($null -eq $candidate) {
+            continue
         }
-        Write-Warn "dotnet existe, mas nao listou SDK instalado."
-    } else {
-        Write-Warn ".NET SDK nao encontrado."
+        $key = $candidate.Path.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) {
+            continue
+        }
+        $seen[$key] = $true
+
+        $sdks = Invoke-Capture -Command @($candidate.Path, "--list-sdks")
+        if ($sdks.Code -eq 0 -and -not [string]::IsNullOrWhiteSpace($sdks.Output)) {
+            if (Test-DotNetSdk8 $sdks.Output) {
+                $dotnetRoot = Split-Path $candidate.Path
+                $env:DOTNET_ROOT = $dotnetRoot
+                $env:UIP_TOOLCHAIN_DOTNET_ROOT = $dotnetRoot
+                [Environment]::SetEnvironmentVariable("DOTNET_ROOT", $dotnetRoot, "User")
+                [Environment]::SetEnvironmentVariable("UIP_TOOLCHAIN_DOTNET_ROOT", $dotnetRoot, "User")
+                Add-UserPath $dotnetRoot
+                Write-Ok ".NET SDK 8+ encontrado ($($candidate.Label)):"
+                Write-Host $sdks.Output
+                return
+            }
+
+            Write-Warn ".NET encontrado em $($candidate.Label), mas sem SDK 8+:"
+            Write-Host $sdks.Output
+        } elseif ($sdks.Code -ne 0) {
+            Write-Warn "dotnet em $($candidate.Label) nao respondeu a --list-sdks."
+        }
     }
 
-    Write-Host "O publish pode falhar no uip rpa pack sem SDK compativel."
-    if (Ask-YesNo "Instalar .NET SDK portable em %USERPROFILE%\.dotnet agora?" $false) {
+    Write-Warn ".NET SDK 8+ nao encontrado."
+    Write-Host "O publish falha no uip rpa pack sem SDK 8+, pois o packager oficial restaura um projeto temporario net8.0."
+    if (Ask-YesNo "Instalar .NET SDK 8 portable em %USERPROFILE%\.dotnet agora?" $false) {
         $installer = Join-Path $RepoRoot "tools\install-dotnet-sdk-portable.cmd"
         if (-not (Test-Path $installer)) {
             throw "Instalador portable nao encontrado: $installer"
         }
         Invoke-External -Command @("cmd.exe", "/c", $installer) | Out-Null
         Add-UserPath (Join-Path $HOME ".dotnet")
+        $postDotnet = Join-Path $HOME ".dotnet\dotnet.exe"
+        $postSdks = Invoke-Capture -Command @($postDotnet, "--list-sdks")
+        if ($postSdks.Code -ne 0 -or -not (Test-DotNetSdk8 $postSdks.Output)) {
+            throw ".NET SDK 8 portable nao foi validado apos a instalacao."
+        }
+        Write-Ok ".NET SDK 8 portable validado."
     }
 }
 

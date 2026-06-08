@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from uip_engine import publish_done
 from uip_engine.official_uip import OfficialUipEnvelope, OfficialUipResult
 
@@ -218,7 +220,7 @@ def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
     assert (tmp_path / "out" / "ProjectA.1.0.1.nupkg").is_file()
 
 
-def test_warn_dotnet_sdk_accepts_existing_sdk_6(monkeypatch, tmp_path, capsys):
+def test_ensure_dotnet_sdk_for_official_pack_accepts_existing_sdk_8(monkeypatch, tmp_path):
     dotnet = tmp_path / "dotnet.cmd"
     dotnet.write_text("", encoding="utf-8")
 
@@ -226,22 +228,36 @@ def test_warn_dotnet_sdk_accepts_existing_sdk_6(monkeypatch, tmp_path, capsys):
 
     class Proc:
         returncode = 0
-        stdout = "6.0.428 [C:\\Program Files\\dotnet\\sdk]\n"
+        stdout = "8.0.421 [C:\\Users\\lisan\\.dotnet\\sdk]\n"
         stderr = ""
 
     monkeypatch.setattr(publish_done.subprocess, "run", lambda *a, **k: Proc())
 
-    publish_done.warn_dotnet_sdk()
-
-    assert capsys.readouterr().err == ""
+    publish_done.ensure_dotnet_sdk_for_official_pack()
 
 
-def test_warn_dotnet_sdk_warns_when_sdk_is_missing(monkeypatch, capsys):
+def test_ensure_dotnet_sdk_for_official_pack_rejects_sdk_6(monkeypatch, tmp_path):
+    dotnet = tmp_path / "dotnet.cmd"
+    dotnet.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: str(dotnet))
+
+    class Proc:
+        returncode = 0
+        stdout = "6.0.428 [C:\\Users\\lisandro.souza\\.dotnet\\sdk]\n"
+        stderr = ""
+
+    monkeypatch.setattr(publish_done.subprocess, "run", lambda *a, **k: Proc())
+
+    with pytest.raises(RuntimeError, match="requires .NET SDK 8\\+"):
+        publish_done.ensure_dotnet_sdk_for_official_pack()
+
+
+def test_ensure_dotnet_sdk_for_official_pack_errors_when_sdk_is_missing(monkeypatch):
     monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: None)
 
-    publish_done.warn_dotnet_sdk()
-
-    assert ".NET SDK not found" in capsys.readouterr().err
+    with pytest.raises(RuntimeError, match=".NET SDK 8\\+ not found"):
+        publish_done.ensure_dotnet_sdk_for_official_pack()
 
 
 def test_root_option_remains_supported(tmp_path):

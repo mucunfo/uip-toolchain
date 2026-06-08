@@ -424,9 +424,10 @@ def diagnose_official_uip_failure(text: str, command: str) -> list[OfficialUipDi
         add(
             "CLI_DOTNET_SDK",
             (
-                f"official uip {command} requires a compatible .NET SDK/runtime for "
-                "the RPA tool. Install .NET 8 SDK or set UIP_TOOLCHAIN_DOTNET_ROOT "
-                "to a validated SDK path."
+                f"official uip {command} requires .NET SDK 8+ for the RPA tool. "
+                "The packager restores a net8.0 temporary project even when the "
+                "UiPath Studio project itself targets Windows/.NET 6. Install "
+                ".NET 8 SDK or set UIP_TOOLCHAIN_DOTNET_ROOT to a validated SDK path."
             ),
         )
 
