@@ -71,6 +71,20 @@ def test_discover_projects_accepts_direct_project_folder(tmp_path):
     ]
 
 
+def test_discover_projects_skips_engine_and_handoff_dirs(tmp_path):
+    _project(tmp_path, "RepoA", "ProjectA")
+    (tmp_path / ".tmp").mkdir()
+    _project(tmp_path / ".tmp", "CachedRepo", "CachedProject")
+    (tmp_path / ".publish-dev-handoff").mkdir()
+    _project(tmp_path / ".publish-dev-handoff", "Downloaded", "DownloadedProject")
+
+    candidates = publish_done.discover_projects(tmp_path)
+
+    assert [(c.folder_name, c.project_name) for c in candidates] == [
+        ("RepoA", "ProjectA"),
+    ]
+
+
 def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     _project(tmp_path, "RepoA", "ProjectA")
     _project(tmp_path, "RepoB", "ProjectB")
@@ -130,6 +144,7 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     assert str(tmp_path / "out" / ".work") not in calls[2][3]
     assert calls[2][4:] == [
         "--package-version", "1.0.1",
+        "--skip-analyze",
         "--output", "json",
     ]
 
@@ -157,30 +172,50 @@ def test_batch_dry_run_does_not_call_uip(tmp_path):
     assert results[0].ok
 
 
-def test_batch_preflight_rejects_unmigrated_project_before_login(tmp_path):
+def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
     _project(tmp_path, "RepoA", "ProjectA", packable=False)
     calls = []
 
     def fake_run(command):
         calls.append(command)
-        raise AssertionError(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([
+                {"TenantName": "RPA_Desenvolvimento"},
+            ])
+        if command[:2] == ["rpa", "pack"]:
+            assert (tmp_path / "RepoA" / "project.uiproj").is_file()
+            pack_dir = Path(command[3])
+            pack_dir.mkdir(parents=True, exist_ok=True)
+            (pack_dir / "ProjectA.1.0.1.nupkg").write_bytes(b"packed")
+            return _result({"Status": "Packed"})
+        if command[:3] == ["or", "packages", "upload"]:
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = Path(command[command.index("--destination") + 1])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"downloaded")
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
 
     args = publish_done.build_parser().parse_args([
         "patch",
         str(tmp_path),
         "--all",
         "--yes",
+        "--out-dir",
+        str(tmp_path / "out"),
     ])
 
-    try:
-        publish_done.execute(args, run_uip=fake_run, check_environment=False)
-    except RuntimeError as exc:
-        assert "project.uiproj/webAppManifest.json is missing" in str(exc)
-        assert "RepoA" in str(exc)
-    else:
-        raise AssertionError("expected RuntimeError")
+    results = publish_done.execute(args, run_uip=fake_run, check_environment=False)
 
-    assert calls == []
+    assert len(results) == 1
+    assert results[0].ok
+    assert any(command[:2] == ["rpa", "pack"] for command in calls)
+    assert not any(command[:2] == ["rpa-legacy", "pack"] for command in calls)
+    assert (tmp_path / "RepoA" / "project.uiproj").is_file()
+    assert (tmp_path / "out" / "ProjectA.1.0.1.nupkg").is_file()
 
 
 def test_warn_dotnet_sdk_accepts_existing_sdk_6(monkeypatch, tmp_path, capsys):

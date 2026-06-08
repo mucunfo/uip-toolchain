@@ -189,14 +189,67 @@ def test_official_analyzer_gate_injects_records(monkeypatch, tmp_path):
     assert result.findings[0].severity == Severity.INFO
 
 
-def test_official_pack_gate_falls_back_to_pack_finding(monkeypatch, tmp_path):
+def test_review_analyzer_prefers_official_uip_without_legacy_uipcli(
+    monkeypatch,
+    tmp_path,
+):
     project = tmp_path / "Proj"
     project.mkdir()
     (project / "project.json").write_text("{}", encoding="utf-8")
+    payload = {
+        "Result": "Error",
+        "Data": [
+            {
+                "ErrorCode": "ST-MRD-002",
+                "ErrorSeverity": "Error",
+                "Description": "DisplayName default",
+                "FilePath": str(project / "Main.xaml"),
+            }
+        ],
+    }
+    result = ValidationResult()
+    fake_uip = tmp_path / "uip.cmd"
+    fake_uip.write_text("", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(analyzer, "discover_uipcli", lambda: None)
+    monkeypatch.setattr(official_uip, "discover_official_uip", lambda: fake_uip)
+    monkeypatch.setattr(
+        official_uip,
+        "get_official_uip_version",
+        lambda _: official_uip.OfficialUipVersion("1.1.0", 1, 1, 0),
+    )
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return _official_result(payload, 1)
+
+    monkeypatch.setattr(official_uip, "run_official_uip", fake_run)
+
+    cli._inject_analyzer_findings(result, str(project), 10, False)
+
+    assert calls
+    assert calls[0][:2] == ["rpa", "analyze"]
+    assert {finding.rule_id for finding in result.findings} == {"UIPATH:ST-MRD-002"}
+
+
+def test_official_pack_gate_falls_back_to_pack_finding(monkeypatch, tmp_path):
+    project = tmp_path / "Proj"
+    project.mkdir()
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "Proj",
+            "projectVersion": "1.0.0",
+            "targetFramework": "Windows",
+            "designOptions": {"outputType": "Process"},
+        }),
+        encoding="utf-8",
+    )
     payload = {"Result": "Error", "Message": "Project has validation errors"}
     result = ValidationResult()
     fake_uip = tmp_path / "uip.cmd"
     fake_uip.write_text("", encoding="utf-8")
+    calls = []
 
     monkeypatch.setattr(official_uip, "discover_official_uip", lambda: fake_uip)
     monkeypatch.setattr(
@@ -204,11 +257,18 @@ def test_official_pack_gate_falls_back_to_pack_finding(monkeypatch, tmp_path):
         "get_official_uip_version",
         lambda _: official_uip.OfficialUipVersion("1.1.0", 1, 1, 0),
     )
-    monkeypatch.setattr(official_uip, "run_official_uip", lambda *a, **k: _official_result(payload, 1))
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return _official_result(payload, 1)
+
+    monkeypatch.setattr(official_uip, "run_official_uip", fake_run)
 
     assert cli._run_official_pack_gate(result, project, 10, False)
 
     assert any(f.rule_id == "UIPATH:PACK" for f in result.findings)
+    assert calls
+    assert "--skip-analyze" in calls[0]
+    assert Path(calls[0][2]) != project
 
 
 def test_official_restore_gate_success(monkeypatch, tmp_path):

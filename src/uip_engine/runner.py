@@ -10,6 +10,7 @@ import pathspec
 
 from ._types import Finding, Rule, Severity, ValidationResult, Target
 from .context import FileContext, ProjectContext
+from .project_view import iter_project_xamls
 from .suppressions import parse_suppressions, is_suppressed_at
 
 if TYPE_CHECKING:
@@ -93,8 +94,8 @@ class Runner:
         # Filter rules by target
         active_rules = [r for r in self.rules if self._target_matches(r, pc)]
 
-        # Iterate XAMLs + project.json
-        files = list(pc.root.rglob("*.xaml"))
+        # Iterate productive XAMLs + project.json.
+        files = list(iter_project_xamls(pc.root))
         if (pc.root / "project.json").exists():
             files.append(pc.root / "project.json")
 

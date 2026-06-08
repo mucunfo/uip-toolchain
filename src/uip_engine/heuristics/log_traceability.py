@@ -1,33 +1,20 @@
-﻿"""N-16: semantic traceability of LogMessage content (100% determinístico).
+"""N-16: semantic traceability of LogMessage content.
 
-Detects LogMessages whose Message string lacks debugging value in
-production: generic literals, missing variable refs, indistinguishable
-from other logs.
+Detects LogMessages whose Message string lacks debugging value in production:
+generic literals, missing variable refs, or messages indistinguishable from
+other logs.
 
-OFFLINE: delega para `llm_validator.validate_messages`, que desde 2026-05-30 é
-uma HEURÍSTICA PURA em Python — NÃO chama `claude -p` nem qualquer LLM/rede/
-subprocess. `ccs-uip` é 100% script offline. Opt-out via env `UIP_TOOLCHAIN_NO_LLM=1`.
+OFFLINE: delegates to `traceability_validator.validate_messages`, a pure Python
+heuristic. No model call, no network, no subprocess.
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
 from .._types import Finding
-from ..llm_validator import validate_messages
+from ..traceability_validator import validate_messages
 
-
-def _llm_disabled() -> bool:
-    """N-16 opt-out: skip LLM validator se ambiente sem claude CLI ou usuario
-    optou por bypass. Default OFF (fica ON quando claude CLI presente).
-
-    Triggers:
-      - env `UIP_TOOLCHAIN_NO_LLM=1` (explicit opt-out)
-    """
-    if os.environ.get("UIP_TOOLCHAIN_NO_LLM", "").strip() in ("1", "true", "yes"):
-        return True
-    return False
 
 _RE_LOGMSG_MESSAGE = re.compile(
     r'<ui:LogMessage\b[^>]*\bMessage="([^"]*)"',
@@ -42,12 +29,9 @@ def _line_for(content: str, pos: int) -> int:
 def detect_n16_log_semantic_traceability(rule, fc, pc):
     """N-16: LogMessage Message must provide semantic traceability.
 
-    Batches all messages in file → single LLM call per file (cached).
-    Findings emitted only for messages judged 'fail' by LLM.
+    Batches all messages in a file and uses a cached deterministic heuristic.
+    Findings are emitted only for messages judged `fail`.
     """
-    if _llm_disabled():
-        return []
-
     content = fc.active_content
     if "<ui:LogMessage" not in content:
         return []
@@ -56,7 +40,7 @@ def detect_n16_log_semantic_traceability(rule, fc, pc):
     if not matches:
         return []
 
-    # Decode XML entities for readable LLM eval
+    # Decode XML entities for readable evaluation.
     def _unescape(s: str) -> str:
         return (s.replace("&quot;", '"')
                  .replace("&amp;", "&")
@@ -79,8 +63,8 @@ def detect_n16_log_semantic_traceability(rule, fc, pc):
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
-            message=f"{rule.title}: '{raw_msg[:80]}' — {v.get('reason','')[:120]}",
-            fix_mechanical=None,  # No mechanical fix — manual rewrite required.
+            message=f"{rule.title}: '{raw_msg[:80]}' - {v.get('reason','')[:120]}",
+            fix_mechanical=None,  # No mechanical fix - manual rewrite required.
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings

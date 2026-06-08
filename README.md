@@ -2,6 +2,33 @@
 
 Setup de desenvolvimento UiPath pra Sicoob. Autoridade primária = **engine YAML-driven (`src/uip_engine`)**. Fonte única = **`rules.yaml`**.
 
+## Instalacao facil em computador novo
+
+Para uso operacional, sem precisar conhecer Python/pip:
+
+1. Baixe ou clone esta pasta da toolchain no computador.
+2. Dê duplo clique em `instalar-ccs-uip.cmd`.
+3. Escolha `1. Instalacao recomendada`.
+4. Ao final, abra um novo PowerShell.
+5. Valide:
+
+```powershell
+ccs-uip-publish --help
+```
+
+O instalador roda em modo usuario, sem permissao de administrador. Ele:
+
+- instala/atualiza esta toolchain com `pip install --user -e`;
+- adiciona o Scripts do Python ao PATH do usuario;
+- valida os comandos `ccs-uip` e `ccs-uip-publish`;
+- verifica a CLI oficial UiPath `uip`;
+- se Node/npm existir, oferece instalar `@uipath/cli@1` no escopo do usuario;
+- verifica .NET SDK e oferece o instalador portable de `tools/install-dotnet-sdk-portable.cmd` quando necessario;
+- grava log em `.tmp/install-ccs-uip-*.log`.
+
+O instalador nao faz login no Orchestrator e nao publica pacote. Login e publish
+continuam acontecendo somente quando `ccs-uip-publish` for executado.
+
 ## Quick start — gate local `ccs-uip`
 
 **Pipeline completo (god command)**:
@@ -40,7 +67,9 @@ Status final do `ccs-uip <path>`:
 
 `--apply-contextual` não é pré-requisito para deploy. Ele existe para aplicar
 correções que exigem interpretação semântica (mensagem, refactor, camada correta,
-decisão arquitetural) com IA/humano no loop.
+decisão arquitetural) com IA/humano no loop. O fluxo contextual assume modelos
+frontier (Claude Opus, Codex ou equivalente), nunca runtime local obrigatório;
+mesmo assim a LLM só propõe diff e a toolchain valida.
 
 Console scripts públicos:
 
@@ -145,11 +174,16 @@ Fluxo:
 1. varre a pasta informada e permite selecionar os projetos;
 2. exige bump explícito `major`, `minor` ou `patch`;
 3. lê a versão atual de `project.json::projectVersion`;
-4. valida que o projeto pode ser empacotado pelo SDK oficial;
+4. prepara o projeto para o pack oficial (`project.uiproj` derivado de `project.json`);
 5. avisa quando não encontrar .NET SDK local, pois o `uip rpa pack` pode precisar dele;
-6. roda `uip rpa pack`;
+6. remove referências legadas conhecidamente incompatíveis com pack headless e roda `uip rpa pack --skip-analyze`;
 7. faz upload do pacote em `RPA_Desenvolvimento`;
 8. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`.
+
+O gate local (`ccs-uip review`/`ccs-uip`) usa as mesmas regras de readiness:
+`J-9` bloqueia `project.uiproj` ausente/desatualizado, `W-40` bloqueia
+`AssemblyReference` obsoleta que quebra `uip rpa pack`, e `A-19d` bloqueia
+`InvokeWorkflowFile` produtivo que passa `x:Key` não declarado no callee.
 
 ## Apply-class taxonomy
 
@@ -167,6 +201,10 @@ Default derivation (sem `apply_class` declarado):
 - prose-only → `contextual`
 
 Heuristic-emitted mechanical (sem `fix.mechanical` em YAML mas detector retorna `fix_mechanical=`) precisa declarar `apply_class: deterministic` explícito.
+
+Qualidade enterprise de rules: toda regra efetiva precisa ter `fix.prose`.
+`python -m uip_engine.cli validate` falha se qualquer regra ficar sem instrução
+explícita ou se o texto acoplar a execução a runtime/agente específico.
 
 Pipeline de defesa (`fix --apply`):
 1. **Pre-fix snapshot** do primary file

@@ -1,7 +1,8 @@
 ﻿"""Tests p/ os 3 gates do review (analyzer + nuget restore + uipcli pack).
 
-review é canonical pre-publish gate: SEMPRE roda os 3. --no-analyzer-gate
-mantido como flag back-compat (warning + ignore).
+review é canonical pre-publish gate: roda os gates externos salvo quando uma
+precondição estrutural de publish-readiness já bloqueia o projeto.
+--no-analyzer-gate mantido como flag back-compat (warning + ignore).
 
 Tests mockam invocacoes subprocess (não rodam nuget/uipcli de verdade — CI
 não tem esses binarios garantidamente).
@@ -252,6 +253,41 @@ def test_pack_gate_graceful_skip_when_uipcli_absent(tmp_path, capsys):
     assert "skipped" in captured.err.lower() or "not found" in captured.err.lower()
 
 
+def test_pack_gate_prefers_official_uip_even_without_legacy_uipcli(tmp_path):
+    from uip_engine import official_uip
+
+    proj = _make_project(tmp_path)
+    result = ValidationResult()
+    fake_uip = tmp_path / "uip.cmd"
+    fake_uip.write_text("", encoding="utf-8")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        stdout = '{"Result":"Success","Code":"Pack"}'
+        return official_uip.OfficialUipResult(
+            argv=["uip", *args],
+            returncode=0,
+            stdout=stdout,
+            stderr="",
+            envelope=official_uip.parse_uip_envelope(stdout),
+        )
+
+    with patch("uip_engine.official_uip.discover_official_uip", return_value=fake_uip), \
+         patch(
+             "uip_engine.official_uip.get_official_uip_version",
+             return_value=official_uip.OfficialUipVersion("1.1.0", 1, 1, 0),
+         ), \
+         patch("uip_engine.official_uip.run_official_uip", side_effect=fake_run), \
+         patch("uip_engine.analyzer.discover_uipcli", return_value=None):
+        cli_mod._run_uipcli_pack_gate(result, str(proj), timeout=10)
+
+    assert result.findings == []
+    assert calls
+    assert calls[0][:2] == ["rpa", "pack"]
+    assert "--skip-analyze" in calls[0]
+
+
 def test_nuget_gate_skip_when_only_dotnet_available(tmp_path, capsys):
     """`dotnet restore` não suporta project.json UiPath — skipa silente."""
     proj = _make_project(tmp_path)
@@ -429,6 +465,62 @@ def test_review_restore_block_skips_analyzer_pack_and_nuget(tmp_path, monkeypatc
 
     assert rc == cli_mod.EXIT_ERROR
     assert invoked == {"analyzer": False, "nuget": False, "pack": False}
+
+
+def test_review_publish_readiness_precondition_skips_external_gates(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.delenv("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", raising=False)
+
+    proj = _make_project(tmp_path)
+    rf = tmp_path / "j9_rules.yaml"
+    rf.write_text(
+        """
+version: 1
+rules:
+  - id: J-9
+    severity: ERROR
+    category: breaking
+    target: all
+    title: project.uiproj synced
+    description: descriptor required
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.project_manifest
+        function: detect_j9_project_uiproj_synced
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: sync_project_uiproj
+      prose: sync
+""",
+        encoding="utf-8",
+    )
+    invoked = {"restore": False, "analyzer": False, "nuget": False, "pack": False}
+
+    def _mark(name):
+        def _inner(*a, **kw):
+            invoked[name] = True
+            if name == "restore":
+                return False, False
+            return None
+        return _inner
+
+    args = _ReviewArgs(str(proj), str(rf))
+
+    with patch.object(cli_mod, "_run_official_restore_gate", side_effect=_mark("restore")), \
+         patch.object(cli_mod, "_inject_analyzer_findings", side_effect=_mark("analyzer")), \
+         patch.object(cli_mod, "_run_nuget_restore_gate", side_effect=_mark("nuget")), \
+         patch.object(cli_mod, "_run_uipcli_pack_gate", side_effect=_mark("pack")), \
+         patch.object(cli_mod, "_run_activity_compile_gate"):
+        rc = cli_mod._cmd_review(args)
+
+    assert rc == cli_mod.EXIT_ERROR
+    assert invoked == {"restore": False, "analyzer": False, "nuget": False, "pack": False}
 
 
 def test_review_restore_success_skips_legacy_nuget(tmp_path, monkeypatch):

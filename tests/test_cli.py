@@ -78,6 +78,35 @@ def test_cli_validate_command_checks_schema(tmp_path):
     assert proc.returncode >= 10  # internal error range
 
 
+def test_cli_list_enforces_enterprise_rule_quality(tmp_path):
+    bad = tmp_path / "bad-quality.yaml"
+    bad.write_text(
+        """
+version: 1
+rules:
+  - id: X-99
+    severity: ERROR
+    category: breaking
+    target: all
+    title: Missing prose
+    description: "Valid schema, bad enterprise quality."
+    detect: {type: regex, pattern: "X"}
+""",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "uip_engine.cli", "list",
+         "--rules-file", str(bad)],
+        cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
+
+    assert proc.returncode == cli.EXIT_INTERNAL
+    assert "RULE-QUALITY" in proc.stderr
+    assert "missing fix.prose" in proc.stderr
+
+
 def test_ccs_uip_public_help_only_documents_two_modes(capsys):
     rc = cli.ccs_uip_main(["--help"])
 

@@ -1630,30 +1630,21 @@ def strip_null_arguments_variable_conflicts(content: str) -> tuple[str, int]:
 
 def sanitize_invoke_arguments_variable_conflicts(project_root: Path) -> tuple[int, int]:
     """Strip analyzer-breaking null ArgumentsVariable conflicts project-wide."""
-    import os as _os
+    from uip_engine.project_view import iter_project_xamls
 
-    skip_dirs = {
-        ".git", ".hg", ".svn", "bin", "obj", ".local", ".nuget",
-        ".uipath", ".tmp", "__pycache__", "node_modules",
-    }
     changed_files = 0
     removals = 0
-    for root, dirs, files in _os.walk(project_root):
-        dirs[:] = [d for d in dirs if d not in skip_dirs]
-        for name in files:
-            if not name.lower().endswith(".xaml"):
-                continue
-            path = Path(root) / name
-            try:
-                content = path.read_text(encoding="utf-8-sig")
-            except OSError:
-                continue
-            new_content, count = strip_null_arguments_variable_conflicts(content)
-            if count <= 0 or new_content == content:
-                continue
-            changed_files += 1
-            removals += count
-            _write_preserving_bom(path, new_content, _file_has_bom(path))
+    for path in iter_project_xamls(project_root):
+        try:
+            content = path.read_text(encoding="utf-8-sig")
+        except OSError:
+            continue
+        new_content, count = strip_null_arguments_variable_conflicts(content)
+        if count <= 0 or new_content == content:
+            continue
+        changed_files += 1
+        removals += count
+        _write_preserving_bom(path, new_content, _file_has_bom(path))
     return changed_files, removals
 
 
@@ -1661,32 +1652,23 @@ def sanitize_invoke_arguments_dictionary_placeholders(
     project_root: Path,
 ) -> tuple[int, int]:
     """Strip empty `Arguments` dictionary placeholders project-wide."""
-    import os as _os
+    from uip_engine.project_view import iter_project_xamls
 
-    skip_dirs = {
-        ".git", ".hg", ".svn", "bin", "obj", ".local", ".nuget",
-        ".uipath", ".tmp", "__pycache__", "node_modules",
-    }
     changed_files = 0
     removals = 0
-    for root, dirs, files in _os.walk(project_root):
-        dirs[:] = [d for d in dirs if d not in skip_dirs]
-        for name in files:
-            if not name.lower().endswith(".xaml"):
-                continue
-            path = Path(root) / name
-            try:
-                content = path.read_text(encoding="utf-8-sig")
-            except OSError:
-                continue
-            new_content, count = strip_empty_invoke_arguments_dictionary_placeholders(
-                content
-            )
-            if count <= 0 or new_content == content:
-                continue
-            changed_files += 1
-            removals += count
-            _write_preserving_bom(path, new_content, _file_has_bom(path))
+    for path in iter_project_xamls(project_root):
+        try:
+            content = path.read_text(encoding="utf-8-sig")
+        except OSError:
+            continue
+        new_content, count = strip_empty_invoke_arguments_dictionary_placeholders(
+            content
+        )
+        if count <= 0 or new_content == content:
+            continue
+        changed_files += 1
+        removals += count
+        _write_preserving_bom(path, new_content, _file_has_bom(path))
     return changed_files, removals
 
 
@@ -3047,6 +3029,30 @@ def apply_project_manifest_remove_stale_entries(
     if not dry_run:
         out = (b"\xef\xbb\xbf" if bom else b"") + new_text.encode("utf-8")
         file.write_bytes(out)
+    return True
+
+
+@register("sync_project_uiproj")
+def apply_sync_project_uiproj(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """Create/update project.uiproj from project.json for official rpa pack."""
+    if file.name != "project.json":
+        return False
+    root = Path(project_root) if project_root is not None else file.parent
+    from uip_engine.publish_readiness import project_uiproj_needs_sync, sync_project_uiproj
+
+    try:
+        needs_sync, _reason = project_uiproj_needs_sync(root)
+    except ValueError:
+        return False
+    if not needs_sync:
+        return False
+    if not dry_run:
+        sync_project_uiproj(root)
     return True
 
 

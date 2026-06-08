@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from .official_uip import OfficialUipResult, _official_uip_subprocess_env, run_official_uip
+from .project_view import PUBLISH_SKIP_DIRS, iter_project_json_files
 from .publish_dev import (
     DEV_TENANT,
     EXIT_ERROR,
@@ -24,7 +24,6 @@ from .publish_dev import (
     build_parser as build_single_parser,
     ensure_login,
     execute as execute_one,
-    is_packable_project,
 )
 
 
@@ -52,13 +51,9 @@ class BatchItemResult:
 def discover_projects(root: Path) -> list[ProjectCandidate]:
     if not root.is_dir():
         raise ValueError(f"folder not found: {root}")
-    skip_dirs = {".git", ".tmp", ".publish-dev-handoff", "bin", "obj", "node_modules"}
-    project_jsons: list[Path] = []
-    for current_text, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in skip_dirs]
-        if "project.json" in files:
-            current = Path(current_text)
-            project_jsons.append(current / "project.json")
+    project_jsons = list(
+        iter_project_json_files(root, extra_skip_dirs=PUBLISH_SKIP_DIRS)
+    )
 
     candidates: list[ProjectCandidate] = []
     for project_json in sorted(project_jsons, key=lambda p: str(p.parent.relative_to(root)).lower()):
@@ -207,26 +202,6 @@ def _single_args(
     return build_single_parser().parse_args(argv)
 
 
-def validate_selected_projects(candidates: list[ProjectCandidate]) -> None:
-    invalid = [
-        candidate for candidate in candidates
-        if not is_packable_project(candidate.root)
-    ]
-    if not invalid:
-        return
-
-    lines = [
-        "selected project(s) cannot be packed by official `uip rpa pack` "
-        "because project.uiproj/webAppManifest.json is missing:"
-    ]
-    lines.extend(f"  - {candidate.folder_name}" for candidate in invalid)
-    lines.append(
-        "Migrate or fix these project roots before running publish, or remove "
-        "them from the selection."
-    )
-    raise RuntimeError("\n".join(lines))
-
-
 def _list_dotnet_sdks(dotnet: str, env: dict[str, str]) -> tuple[int, list[str], str]:
     proc = subprocess.run(
         [dotnet, "--list-sdks"],
@@ -286,7 +261,6 @@ def execute(
             for candidate in selected
         ]
 
-    validate_selected_projects(selected)
     if check_environment:
         warn_dotnet_sdk()
 

@@ -16,6 +16,10 @@ import json
 from pathlib import Path
 
 from uip_engine._types import Finding
+from uip_engine.publish_readiness import (
+    project_uiproj_needs_sync,
+    stale_pack_incompatible_assembly_references_for_text,
+)
 
 
 def _load(fc):
@@ -179,4 +183,54 @@ def detect_j8_stale_fileinfo_entries(rule, fc, pc):
             f"(key={key_path})"
         )
         findings.append(_finding(rule, fc, msg))
+    return findings
+
+
+def detect_j9_project_uiproj_synced(rule, fc, pc):
+    """Emit when official `uip rpa pack` descriptor is missing or stale."""
+    data = _load(fc)
+    if data is None:
+        return []
+    root = pc.root if pc is not None else fc.path.parent
+    try:
+        needs_sync, reason = project_uiproj_needs_sync(Path(root))
+    except ValueError as exc:
+        return [_finding(rule, fc, f"{rule.title}: {exc}")]
+    if not needs_sync:
+        return []
+    return [_finding(
+        rule,
+        fc,
+        f"{rule.title}: {reason}",
+        mech={"type": "sync_project_uiproj"},
+    )]
+
+
+def detect_w40_pack_incompatible_stale_assembly_refs(rule, fc, pc):
+    """Emit stale AssemblyReference refs that official headless pack rejects."""
+    if pc is None:
+        return []
+    if not str(fc.path).endswith(".xaml"):
+        return []
+    stale = stale_pack_incompatible_assembly_references_for_text(
+        Path(pc.root),
+        fc.active_content,
+    )
+    findings: list[Finding] = []
+    for assembly in stale:
+        line = 1
+        needle = f"<AssemblyReference>{assembly}</AssemblyReference>"
+        idx = fc.content.find(needle)
+        if idx >= 0:
+            line = fc.content[:idx].count("\n") + 1
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=line,
+            message=f"{rule.title}: {assembly}",
+            fix_mechanical={"type": "strip_assembly_reference", "name": assembly},
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
     return findings

@@ -66,6 +66,12 @@ DEFAULT_RULES_FILE = Path(__file__).resolve().parents[2] / "rules.yaml"
 # (idempotência preserva config committed).
 _TEMP_NUGET_CONFIG_SENTINEL = "engine-temp-nuget-config (.uip-toolchain)"
 
+_PUBLISH_READINESS_PRECONDITION_RULES = frozenset({
+    "J-9",
+    "W-40",
+    "A-19d",
+})
+
 
 # Exit codes
 EXIT_OK = 0
@@ -85,11 +91,8 @@ def _iter_analyzer_snapshot_paths(project_root: Path):
     must restore the whole analyzer-relevant surface, not just workflows.
     """
     import os as _os
+    from .project_view import filter_walk_dirs
 
-    skip_dirs = {
-        ".git", ".hg", ".svn", "bin", "obj", ".local", ".nuget",
-        ".uipath", ".tmp", "__pycache__", "node_modules",
-    }
     snapshot_names = {
         ".gitignore",
         "NuGet.config",
@@ -104,7 +107,7 @@ def _iter_analyzer_snapshot_paths(project_root: Path):
     }
 
     for root, dirs, files in _os.walk(project_root):
-        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        filter_walk_dirs(dirs)
         root_path = Path(root)
         for name in files:
             path = root_path / name
@@ -539,10 +542,10 @@ def build_parser() -> argparse.ArgumentParser:
     rev.add_argument("--telemetry", action="store_true",
                      help="Append findings counts to .tmp/telemetry/<date>.jsonl")
     # NOTE: --no-analyzer-gate flag mantido só p/ back-compat. Review é o
-    # canonical pre-publish gate: analyzer-gate SEMPRE roda. Flag emite
+    # canonical pre-publish gate: a engine decide os gates externos. Flag emite
     # warning e é ignorada (não desliga gate).
     rev.add_argument("--no-analyzer-gate", action="store_true",
-                     help="DEPRECATED. review SEMPRE roda analyzer gate "
+                     help="DEPRECATED. review controla analyzer/pack gates "
                           "(pre-publish gate canonical, sem opt-out). Flag emite "
                           "warning e é ignorada — mantida só por backwards-compat.")
     rev.add_argument("--analyzer-gate-timeout", type=int, default=180,
@@ -764,11 +767,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _load_rules_or_die(path: str) -> list:
     try:
-        return load_rules(
+        rules = load_rules(
             Path(path),
             registered_detectors=set(DETECTOR_REGISTRY.keys()),
             registered_fixers=set(FIXER_REGISTRY.keys()),
         )
+        from .rule_quality import validate_rule_quality
+        quality_errors = validate_rule_quality(rules)
+        if quality_errors:
+            print("[RULE-QUALITY] enterprise rule quality failed:", file=sys.stderr)
+            for err in quality_errors:
+                print(f"  - {err}", file=sys.stderr)
+            sys.exit(EXIT_INTERNAL)
+        return rules
     except SchemaError as e:
         print(f"[INTERNAL] schema error: {e}", file=sys.stderr)
         sys.exit(EXIT_INTERNAL)
@@ -778,16 +789,17 @@ def _load_rules_or_die(path: str) -> list:
 
 
 def _cmd_review(args) -> int:
-    """review = canonical pre-publish gate. Sempre executa pipeline completo.
+    """review = canonical pre-publish gate.
 
     Ordem de gates:
       1. runner.run(args.path)              # rules Sicoob (engine local)
       2. _apply_sicoob_lib_overrides(...)   # downgrade lib-contract findings
-      3. _run_official_restore_gate(...)    # uip rpa restore (official)
-      4. _inject_analyzer_findings(...)     # uip rpa analyze / fallback
-      5. _run_nuget_restore_gate(...)       # legacy NuGet fallback
-      6. _run_uipcli_pack_gate(...)         # uip rpa pack / fallback
-      7. relatório final + exit code
+      3. publish-readiness preconditions    # J-9/W-40/A-19d
+      4. _run_official_restore_gate(...)    # uip rpa restore (official)
+      5. _inject_analyzer_findings(...)     # uip rpa analyze / fallback
+      6. _run_nuget_restore_gate(...)       # legacy NuGet fallback
+      7. _run_uipcli_pack_gate(...)         # uip rpa pack / fallback
+      8. relatório final + exit code
 
     Sem opt-out CLI. Se review passa, projeto é publish-safe.
 
@@ -803,18 +815,23 @@ def _cmd_review(args) -> int:
     # Sicoob lib-contract overrides: downgrade findings que casam (rule, ident).
     # Aplicado ANTES do analyzer gate p/ que count INFO consolidado fique correto.
     _apply_sicoob_lib_overrides(result, verbose=getattr(args, "verbose", False))
+    publish_preconditions_blocked = _has_publish_readiness_precondition_errors(result)
 
     # Back-compat: --no-analyzer-gate deprecado. Warning + ignore.
     if getattr(args, "no_analyzer_gate", False):
         print("[WARNING] --no-analyzer-gate is deprecated and ignored; "
-              "review always runs analyzer gate.", file=sys.stderr)
+              "review controls analyzer/pack gates.", file=sys.stderr)
 
     external_gates_disabled = (
         _os.environ.get("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", "").strip()
         in ("1", "true", "yes")
     )
 
-    if not external_gates_disabled:
+    if publish_preconditions_blocked and getattr(args, "verbose", False):
+        print("[review] publish-readiness precondition failed; "
+              "skipping external UiPath gates.", file=sys.stderr)
+
+    if not external_gates_disabled and not publish_preconditions_blocked:
         verbose = getattr(args, "verbose", False)
         project_root = Path(args.path).resolve()
         restore_handled, restore_blocked = _run_official_restore_gate(
@@ -912,7 +929,7 @@ def _cmd_review(args) -> int:
                         )
                         print(f"[{name}] FAILED: {type(e).__name__}: {e}",
                               file=sys.stderr)
-    elif getattr(args, "verbose", False):
+    elif external_gates_disabled and getattr(args, "verbose", False):
         print("[review] UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES set — "
               "skipping analyzer/nuget/pack gates.", file=sys.stderr)
 
@@ -938,6 +955,17 @@ def _cmd_review(args) -> int:
     if sev == Severity.ERROR:
         return EXIT_ERROR
     return EXIT_WARN
+
+
+def _has_publish_readiness_precondition_errors(result) -> bool:
+    for finding in getattr(result, "findings", []):
+        if getattr(finding, "suppressed", False):
+            continue
+        if finding.rule_id not in _PUBLISH_READINESS_PRECONDITION_RULES:
+            continue
+        if finding.severity in (Severity.ERROR, Severity.HALT):
+            return True
+    return False
 
 
 _ANALYZER_SEVERITY_MAP = {
@@ -1493,10 +1521,10 @@ def _inject_official_analyzer_findings(result, project_root: Path, timeout: int,
 
 def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
                               verbose: bool = False) -> None:
-    """Run UiPath Studio Analyzer (uipcli) and inject findings into result.
+    """Run UiPath Analyzer and inject findings into result.
 
     Graceful degradation:
-      - uipcli not found -> warn on stderr, return (no findings added)
+      - official uip and uipcli not found -> warn on stderr, return
       - timeout / OS error -> warn, return
       - project.json absent -> warn, return
 
@@ -1509,13 +1537,6 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
     import os
     import re
 
-    cli = discover_uipcli()
-    if cli is None or not cli.is_file():
-        print("[analyzer-gate] uipcli not found — gate skipped. "
-              "Set UIPATH_STUDIO_CLI or install UiPath Studio. "
-              "Engine local cobre apenas regras Sicoob.", file=sys.stderr)
-        return
-
     project_root = Path(project_path).resolve()
     project_json = project_root / "project.json"
     if not project_json.is_file():
@@ -1525,6 +1546,14 @@ def _inject_analyzer_findings(result, project_path: str, timeout: int = 180,
         return
 
     if _inject_official_analyzer_findings(result, project_root, timeout, verbose):
+        return
+
+    cli = discover_uipcli()
+    if cli is None or not cli.is_file():
+        print("[analyzer-gate] official uip unavailable and uipcli not found — "
+              "gate skipped. Set UIPATH_UIP_CLI, UIPATH_STUDIO_CLI, "
+              "or install UiPath Studio. "
+              "Engine local cobre apenas regras Sicoob.", file=sys.stderr)
         return
 
     # Pre-flight: uipcli responsive + cloud reachable. Severity = ERROR —
@@ -1767,6 +1796,8 @@ def _run_official_pack_gate(result, project_root: Path, timeout: int,
     import shutil as _shutil
     from ._types import Finding
     from .official_uip import discover_official_uip, iter_analyzer_records, run_official_uip
+    from .project_view import PUBLISH_SKIP_DIRS
+    from .publish_readiness import prepare_project_for_official_pack
 
     if not _official_uip_enabled():
         return False
@@ -1780,23 +1811,49 @@ def _run_official_pack_gate(result, project_root: Path, timeout: int,
     base_tmp = engine_root / ".tmp" / "official_uip_pack"
     base_tmp.mkdir(parents=True, exist_ok=True)
     tmpdir = Path(tempfile.mkdtemp(dir=str(base_tmp), prefix="pack_"))
+    work_project = tmpdir / "project"
     outdir = tmpdir / "out"
     outdir.mkdir(parents=True, exist_ok=True)
     project_json = project_root / "project.json"
     project_json_pre_bytes = project_json.read_bytes() if project_json.is_file() else None
     try:
+        try:
+            _shutil.copytree(
+                project_root,
+                work_project,
+                ignore=_shutil.ignore_patterns(*sorted(PUBLISH_SKIP_DIRS)),
+            )
+            preparation = prepare_project_for_official_pack(work_project)
+        except Exception as exc:
+            result.add(Finding(
+                rule_id="UIPATH:PACK_PREP",
+                severity=Severity.ERROR,
+                category="breaking",
+                file="project.json",
+                line=0,
+                message=(
+                    f"[PACK-GATE] official pack preparation failed: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            ))
+            return True
         nuget_config = _write_official_nuget_config(tmpdir)
         detailed_log = tmpdir / "pack.log"
         args = [
-            "rpa", "pack", str(project_root), str(outdir),
+            "rpa", "pack", str(work_project), str(outdir),
+            "--skip-analyze",
             "--output", "json",
             "--detailed-log-path", str(detailed_log),
         ]
         if nuget_config is not None:
             args.extend(["--nuget-sources-config-path", str(nuget_config)])
         if verbose:
-            print(f"[PACK-GATE] running official uip rpa pack via {official}",
-                  file=sys.stderr)
+            print(
+                f"[PACK-GATE] running official uip rpa pack via {official} "
+                f"(descriptor_changed={preparation.descriptor_changed}, "
+                f"scrubbed={len(preparation.scrubbed_xamls)})",
+                file=sys.stderr,
+            )
         try:
             res = run_official_uip(args, timeout=timeout, uip_path=official)
         except Exception as exc:
@@ -1879,13 +1936,17 @@ def _run_official_pack_gate(result, project_root: Path, timeout: int,
 
 def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                           verbose: bool = False) -> None:
-    """Run `uipcli publish` to a local tmpdir as a pack dry-run.
+    """Run the pack dry-run gate.
+
+    Official `uip rpa pack --skip-analyze` is preferred and attempted before
+    legacy Studio CLI discovery. Analyzer is a separate review gate.
 
     uipcli não tem subcmd `pack` direto. `publish -p ... -o Process -f <tmpdir>`
-    com feed local equivale a pack dry-run: faz restore + validation +
+    com feed local é o fallback: faz restore + validation +
     compile + .nupkg writing, sem upload. Erros (BC*, validation) capturados.
 
-    Graceful degradation: skip se uipcli não disponível.
+    Graceful degradation: skip se official uip e uipcli não estiverem
+    disponíveis.
     """
     import os as _os
     import shutil
@@ -1894,13 +1955,6 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
                            save_cached_pack_findings)
     from .uipcli_runner import preflight, run_uipcli_guarded
     from ._types import Finding
-
-    cli = discover_uipcli()
-    if cli is None or not cli.is_file():
-        print("[PACK-GATE] uipcli not found — gate skipped. "
-              "Set UIPATH_STUDIO_CLI or install UiPath Studio.",
-              file=sys.stderr)
-        return
 
     project_root = Path(project_path).resolve()
     project_json = project_root / "project.json"
@@ -1911,6 +1965,14 @@ def _run_uipcli_pack_gate(result, project_path: str, timeout: int = 600,
         return
 
     if _run_official_pack_gate(result, project_root, timeout, verbose):
+        return
+
+    cli = discover_uipcli()
+    if cli is None or not cli.is_file():
+        print("[PACK-GATE] official uip unavailable and uipcli not found — "
+              "gate skipped. Set UIPATH_UIP_CLI, UIPATH_STUDIO_CLI, or "
+              "install UiPath Studio.",
+              file=sys.stderr)
         return
 
     # Fix #5 (2026-05): cache pack-gate. Re-runs consecutivos sem mudança em
@@ -2539,6 +2601,25 @@ def _cmd_fix(args) -> int:
     regressions = cascade_regressions = vb_regressions = 0
     dry_run = not args.apply
     label = "would-fix" if dry_run else "fix"
+
+    if not dry_run and (not filter_rules or "J-9" in filter_rules):
+        try:
+            from .publish_readiness import project_uiproj_needs_sync, sync_project_uiproj
+            needs_sync, reason = project_uiproj_needs_sync(project_root)
+            if needs_sync:
+                descriptor, changed = sync_project_uiproj(project_root)
+                if changed:
+                    print(
+                        "# pre-fix official-pack descriptor synced: "
+                        f"{descriptor} ({reason})"
+                    )
+        except Exception as e:
+            if getattr(args, "verbose", False):
+                print(
+                    "# pre-fix official-pack descriptor sync skipped: "
+                    f"{type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
 
     # Apply-class filter: default = só `deterministic`. Flag --include-class=X
     # estende. --include-class=all opt-in todas (use com cuidado).
@@ -3380,13 +3461,14 @@ def _run_review_quiet(project: Path, rules_file: str) -> tuple[int, "ValidationR
     runner = _Runner(rules=rules, detectors=DETECTOR_REGISTRY, fixers=FIXER_REGISTRY)
     result = runner.run(str(project))
     _apply_sicoob_lib_overrides(result, verbose=False)
+    publish_preconditions_blocked = _has_publish_readiness_precondition_errors(result)
 
     import os as _os
     external_gates_disabled = (
         _os.environ.get("UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES", "").strip()
         in ("1", "true", "yes")
     )
-    if not external_gates_disabled:
+    if not external_gates_disabled and not publish_preconditions_blocked:
         _inject_analyzer_findings(result, str(project), timeout=180, verbose=False)
         _run_nuget_restore_gate(result, str(project), timeout=300, verbose=False)
         _run_uipcli_pack_gate(result, str(project), timeout=600, verbose=False)

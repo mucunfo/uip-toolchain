@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from uip_engine.llm_validator import is_traceable, validate_messages
+from uip_engine.traceability_validator import is_traceable, validate_messages
 
 
 def test_validate_messages_flags_generic_literals(tmp_path: Path):

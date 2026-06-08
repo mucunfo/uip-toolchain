@@ -7,7 +7,6 @@ operations through the official UiPath CLI.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import shutil
 import sys
@@ -20,11 +19,20 @@ from .official_uip import (
     official_failure_text,
     run_official_uip,
 )
+from .publish_readiness import (
+    PACK_INCOMPATIBLE_STALE_ASSEMBLY_REFERENCES,
+    _load_project_json,
+    _project_name,
+    _project_version,
+    is_packable_project,
+    prepare_project_for_official_pack,
+    scrub_pack_incompatible_assembly_references,
+    sync_project_uiproj,
+)
 
 
 DEV_TENANT = "RPA_Desenvolvimento"
 VALID_BUMPS = ("major", "minor", "patch")
-
 EXIT_OK = 0
 EXIT_ERROR = 2
 EXIT_INTERNAL = 10
@@ -43,51 +51,6 @@ class PublishPlan:
 
 
 RunUip = Callable[[list[str]], OfficialUipResult]
-
-
-def _load_project_json(project_root: Path) -> dict[str, Any]:
-    project_json = project_root / "project.json"
-    if not project_json.is_file():
-        raise ValueError(f"project.json not found at {project_json}")
-    try:
-        data = json.loads(project_json.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid project.json: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError("project.json root must be an object")
-    return data
-
-
-def _project_name(project_root: Path) -> str:
-    data = _load_project_json(project_root)
-    name = data.get("name") or data.get("projectName")
-    if not isinstance(name, str) or not name.strip():
-        raise ValueError("project.json must define a non-empty 'name'")
-    return name.strip()
-
-
-def _project_version(project_root: Path) -> str:
-    data = _load_project_json(project_root)
-    version = data.get("projectVersion")
-    if not isinstance(version, str) or not version.strip():
-        raise ValueError("project.json must define a non-empty 'projectVersion'")
-    return version.strip()
-
-
-def is_packable_project(project_root: Path) -> bool:
-    return (
-        (project_root / "project.uiproj").is_file()
-        or (project_root / "webAppManifest.json").is_file()
-    )
-
-
-def validate_packable_project(project_root: Path) -> None:
-    if is_packable_project(project_root):
-        return
-    raise ValueError(
-        "official `uip rpa pack` requires project.uiproj or "
-        f"webAppManifest.json in project root: {project_root}"
-    )
 
 
 _SEMVER_RE = re.compile(r"^\s*(\d+)\.(\d+)\.(\d+)(?:\s*)$")
@@ -210,7 +173,7 @@ def _default_work_dir(project_root: Path, package_key: str, version: str) -> Pat
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ccs-uip-publish-dev",
+        prog="ccs-uip-publish-project",
         description=(
             "Read project.json projectVersion, bump major/minor/patch, pack "
             "the project, upload to RPA_Desenvolvimento, then download the "
@@ -246,6 +209,38 @@ def _run_checked(run_uip: RunUip, args: list[str]) -> Any:
     return _envelope_data(result)
 
 
+def _pack_project(
+    run_uip: RunUip,
+    *,
+    project_root: Path,
+    pack_dir: Path,
+    next_version: str,
+) -> None:
+    preparation = prepare_project_for_official_pack(project_root)
+    if preparation.descriptor_changed:
+        print(f"[PACK] synced project descriptor: {preparation.descriptor}", file=sys.stderr)
+
+    if preparation.scrubbed_xamls:
+        print(
+            "[PACK] removed stale headless-pack AssemblyReference lines: "
+            f"{len(preparation.scrubbed_xamls)} file(s)",
+            file=sys.stderr,
+        )
+
+    modern_result = run_uip(
+        [
+            "rpa", "pack", str(project_root), str(pack_dir),
+            "--package-version", next_version,
+            "--skip-analyze",
+            "--output", "json",
+        ],
+    )
+    if _uip_success(modern_result):
+        return
+
+    _envelope_data(modern_result)
+
+
 def execute(
     args: argparse.Namespace,
     *,
@@ -253,7 +248,6 @@ def execute(
     ensure_auth: bool = True,
 ) -> PublishPlan:
     project_root = Path(args.project).resolve()
-    validate_packable_project(project_root)
     package_key = args.package_key or _project_name(project_root)
     current_version = _project_version(project_root)
     timeout = int(args.timeout)
@@ -279,13 +273,11 @@ def execute(
     pack_dir.mkdir(parents=True, exist_ok=True)
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    _run_checked(
+    _pack_project(
         runner,
-        [
-            "rpa", "pack", str(project_root), str(pack_dir),
-            "--package-version", next_version,
-            "--output", "json",
-        ],
+        project_root=project_root,
+        pack_dir=pack_dir,
+        next_version=next_version,
     )
     packed_nupkg = _find_nupkg(pack_dir, package_key, next_version)
 

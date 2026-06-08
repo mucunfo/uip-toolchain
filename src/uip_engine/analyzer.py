@@ -1,7 +1,8 @@
 ﻿"""Studio Analyzer integration — diff-based gate.
 
-Engine layer #2 (ground truth): wraps `UiPath.Studio.CommandLine.exe analyze`
-para validar fixes contra Roslyn VB compiler + assembly metadata schema.
+Engine layer #2 (ground truth): prefers official `uip rpa analyze` and falls
+back to `UiPath.Studio.CommandLine.exe analyze` to validate fixes against the
+Roslyn VB compiler and assembly metadata schema.
 
 Diff-based: erros pré-existentes (analyzer baseline) são ignorados; só
 reportamos erros INTRODUZIDOS pelos fixes.
@@ -13,8 +14,8 @@ Studio version vs target framework:
     que Studio local tem mas Studio do CI alvo não — só conta erros novos
     relativos ao baseline.
 
-Graceful degradation: se uipcli não encontrado, `run_analyzer` retorna None
-e gate é skipado (warning only).
+Graceful degradation: se official `uip` e uipcli legado não forem encontrados,
+`run_analyzer` retorna None e o gate é skipado.
 """
 from __future__ import annotations
 
@@ -440,19 +441,35 @@ def run_analyzer(
     return parse_analyzer_output(res.stdout, res.stderr)
 
 
+def _official_uip_cache_salt() -> str:
+    """Best-effort official CLI identity for external-gate cache keys."""
+    if not _official_uip_enabled():
+        return "official-uip=disabled"
+    try:
+        from .official_uip import discover_official_uip, get_official_uip_version
+
+        official = discover_official_uip()
+        if official is None:
+            return "official-uip=not-found"
+        version = get_official_uip_version(str(official))
+        raw_version = version.raw if version is not None else "unknown"
+        return f"official-uip={official}|version={raw_version}"
+    except Exception as exc:
+        return f"official-uip=unreadable:{type(exc).__name__}"
+
+
 def _project_signature(project_root: Path) -> str:
-    """Hash de SHA1(project.json mtime + xaml count + max xaml mtime).
-    Usado como cache key — invalida quando projeto muda materialmente."""
-    h = hashlib.sha1()
-    pj = project_root / "project.json"
-    if pj.is_file():
-        h.update(str(int(pj.stat().st_mtime_ns)).encode())
-    xamls = list(project_root.rglob("*.xaml"))
-    h.update(str(len(xamls)).encode())
-    if xamls:
-        max_mtime = max(int(x.stat().st_mtime_ns) for x in xamls)
-        h.update(str(max_mtime).encode())
-    return h.hexdigest()[:16]
+    """Content/contract hash used by analyzer and pack-gate caches."""
+    from .project_view import (
+        default_engine_contract_files,
+        project_content_signature,
+    )
+
+    return project_content_signature(
+        project_root,
+        extra_files=default_engine_contract_files(),
+        salt=f"external-gate-cache-v2\n{_official_uip_cache_salt()}",
+    )
 
 
 def _engine_cache_dir(project_root: Path) -> Path:
@@ -532,7 +549,8 @@ def save_cached_baseline(
 
 # Pack-gate cache (Fix #5 2026-05) — analyzer baseline já existia (F27);
 # este complementa cacheando findings injetados pelo gate `uipcli publish`.
-# Key idêntica (_project_signature) → invalida quando project.json/xamls mudam.
+# Key idêntica (_project_signature) → invalida por conteúdo do projeto,
+# descriptor oficial, regras e contrato da engine.
 
 def load_cached_pack_findings(
     project_root: Path,

@@ -197,6 +197,9 @@ rules:
         pattern: '(xmlns:\w+="clr-namespace:[^;]+;assembly=)mscorlib"'
         replacement: '\1System.Private.CoreLib"'
 
+      prose: |
+        Aplicar a correcao mecanica "Namespace mscorlib em xmlns Windows target": Cabecalho XAML migrado deve usar `assembly=System.Private.CoreLib`. `assembly=mscorlib` em `xmlns:` indica migracao incompleta. mscorlib continua valido apenas em `TextExpression.ReferencesForImplementation`.
+        Nao alterar comportamento fora do padrao descrito pela regra.
   - id: W-10
     severity: ERROR
     category: breaking
@@ -228,6 +231,9 @@ rules:
 # W-11x/W-11y permanecem WARN: são baselines best-effort/per-xmlns (não verificam uso
 # real do tipo), philosophy distinta — fora do escopo desta padronização.
 
+      prose: |
+        Aplicar a correcao mecanica "NetworkCredential exige caminho System.Net. completo": Windows target exige `New System.Net.NetworkCredential(...)`. Sem o prefixo (ou com prefixo parcial `Net.`) o resolvedor de namespace VB falha mesmo com `System.Net` em NamespacesForImplementation.
+        Nao alterar comportamento fora do padrao descrito pela regra.
   - id: W-11a
     severity: ERROR
     category: breaking
@@ -1052,6 +1058,47 @@ rules:
         `<ui:InvokeWorkflowFile>` que já possui
         `<ui:InvokeWorkflowFile.Arguments>`.
 
+  - id: W-40
+    severity: ERROR
+    category: breaking
+    target: windows
+    title: "AssemblyReference obsoleta quebra uip rpa pack headless"
+    description: |
+      O pack oficial moderno (`uip rpa pack`) falha quando encontra
+      `<AssemblyReference>X</AssemblyReference>` para assemblies legados que
+      não existem mais como dependência NuGet do projeto e também não são
+      usados por nenhum `xmlns ... assembly=X`.
+
+      Isso acontece em projetos migrados de Legacy/Windows-Legacy: o
+      `TextExpression.ReferencesForImplementation` retém referências antigas
+      como `BalaReva.*`, `CCS_*`, `UiPath.Python*`, `UiPath.Word*`,
+      `Microsoft.Activities`, `NPOI` e outras, mesmo quando o workflow não
+      usa aqueles assemblies. Studio pode abrir o XAML, mas o pack headless
+      tenta carregar todas as refs e falha antes de gerar o `.nupkg`.
+
+      Detector só dispara para lista controlada de refs conhecidamente
+      incompatíveis, sem dependency declarada em `project.json`, e sem uso
+      real via `assembly=X` no XAML. Se o assembly está declarado como pacote
+      ou aparece em `xmlns`, a regra não remove.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.project_manifest
+        function: detect_w40_pack_incompatible_stale_assembly_refs
+    fix:
+      apply_class: deterministic
+      # Mechanical injetada per-finding (type=strip_assembly_reference, name=X).
+      prose: |
+        Remover a linha `<AssemblyReference>X</AssemblyReference>` quando ela
+        for apenas sobra de migração. Se houver uso real, declarar o pacote
+        correto em `project.json` ou manter o xmlns/assembly correspondente.
+
   - id: W-35
     severity: ERROR
     category: breaking
@@ -1346,7 +1393,10 @@ rules:
     detect:
       type: regex
       pattern: 'GenerateDataTableFromText|Generate Data Table From Text'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "GenerateDataTableFromText quebra com CSV em Windows": Combinacao `Generate Data Table From Text` + `Read Text File` retorna `Could not load type 'CsvHelper.ReadingContext'` em Windows target. Substituir por `Read CSV` (atividade dedicada com CsvHelper correto).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-15
     severity: WARN
     category: breaking
@@ -1362,7 +1412,10 @@ rules:
     detect:
       type: regex
       pattern: '<ui:(?:EncryptText|DecryptText)\b[^>]*>'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Encrypt/Decrypt Text com Key SecureString": `Encrypt Text`/`Decrypt Text` perderam suporte a `Key=SecureString` pos-migracao. So aceitam `Key=String`. Para extrair String de SecureString usar padrao de W-10 `[New System.Net.NetworkCredential("", vSStK....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-16
     severity: ERROR
     category: breaking
@@ -1521,7 +1574,10 @@ rules:
       antes de migrar processos in-flight.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "DataContract serializer + persistence diverge LegacyWindows": Comportamento do DataContract serializer diverge entre Legacy e Windows em campos sem `[DataMember]` explicito e em ordem de propriedades. Se projeto usa `Suspend/Resume`, `WaitForFormTaskAndResume`, `WaitFo....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-7
     severity: WARN
     category: breaking
@@ -1534,7 +1590,10 @@ rules:
       Agent: grep por `BusinessException.Message.Contains` ou `SystemException.Message.Contains`.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Mensagens de exception mudam entre Legacy e Windows": Mensagens mudam mesmo com tipo mantido. `Try/Catch` que decide caminho via `.Message.Contains("...")` em SystemException pode quebrar silenciosamente. Refatorar para checar `.GetType()` ou property especific....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-8
     severity: INFO
     category: breaking
@@ -1548,7 +1607,10 @@ rules:
       Sempre passar encoding explícito em File I/O — relevante para `InvokeCode`.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Encoding default mudou de ANSI para UTF-8": .NET Framework: `Encoding.Default` = ANSI/CP1252. .NET 6+: `Encoding.Default` = UTF-8. `File.ReadAllText(path)` ou `StreamReader(path)` sem encoding explicito le bytes diferente. Em PT-BR com acentos, isso q....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-9
     severity: INFO
     category: breaking
@@ -1561,7 +1623,10 @@ rules:
       COM dynamic dispatch específico. Validar conteúdo de cada `InvokeCode`.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "InvokeCode VB compilation runtime mudou (Roslyn)": .NET 6 usa Roslyn vs CodeDom .NET Framework. APIs `System.IO`, `System.Text.RegularExpressions`, `System.Collections.Generic` continuam. Quebram: `System.Web.HttpUtility`, `System.Configuration.Configuration....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-18
     severity: INFO
     category: breaking
@@ -1577,7 +1642,10 @@ rules:
       (c) `Get Asset` falha em produção — verificar Proxy da máquina robô.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Studio Modern quirks pos-migracao": Nao-deterministicos, nao detectaveis estaticamente: (a) `Invoke Workflow` retorna "Nao e possivel localizar o fluxo de trabalho" em runtime recriar a atividade Invoke Workflow apontando para o mesmo arquivo....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: W-MSCORLIB-REF
     severity: INFO
     category: architectural
@@ -1605,7 +1673,10 @@ rules:
 
   # J-1 (studioVersion pin) sintetizado em parse-time pelo loader a partir
   # de `assets/canonical_pins.yaml::studio.version`. Ver `canonical.py`.
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "<AssemblyReference>mscorlib</AssemblyReference> em XAML (legacy artifact)": Activity Migrator pos LegacyWindows converte `xmlns:` corretamente pra `System.Private.CoreLib` mas deixa `<AssemblyReference>mscorlib` no bloco `TextExpression.ReferencesForImplementation`. Bench reference....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: J-4
     severity: ERROR
     category: breaking
@@ -1621,7 +1692,10 @@ rules:
       params:
         path: targetFramework
         expected_in: ["Windows", "Legacy"]
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "targetFramework {Windows, Legacy}": `targetFramework` deve ser exatamente `"Windows"` ou `"Legacy"`. Outros valores quebram resolucao de namespace e referencias.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: J-5
     severity: WARN
     category: architectural
@@ -1663,7 +1737,10 @@ rules:
       params:
         path: studioVersion
         min: "23.10.0"
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "studioVersion abaixo do minimo (23.10)": `studioVersion` em project.json deve ser >= 23.10.0 (baseline LTS Sicoob). Detector compara apenas o campo `studioVersion` contra o minimo; NAO inspeciona versoes de pacotes. studioVersion < 23.10 indica pro....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: J-3
     severity: WARN
     category: breaking
@@ -1747,7 +1824,10 @@ rules:
         performer_markers: [performer, unattended]
         attended_markers: [attended]
         attended_negative_markers: [unattended]
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "requiresUserInteraction consistente com tipo": Performer unattended nao deve ter `requiresUserInteraction: true`. Attended automation nao deve ter `requiresUserInteraction: false`. Markers de performer/attended e paths em params.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: J-8
     severity: ERROR
     category: breaking
@@ -1787,6 +1867,37 @@ rules:
         Remover entry de `project.json::designOptions.fileInfoCollection`
         cujo `fileName` aponta arquivo inexistente. Ou restaurar arquivo
         se foi deletado por engano (git checkout do path original).
+
+  - id: J-9
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "project.uiproj sincronizado para pack oficial"
+    description: |
+      `uip rpa pack` usa `project.uiproj` ou `webAppManifest.json` como
+      descriptor do projeto. Projetos legados migrados podem ter somente
+      `project.json`; nesses casos o pack oficial falha com:
+
+        No project.uiproj or webAppManifest.json found in directory
+
+      A toolchain deriva `project.uiproj` de `project.json` (Name,
+      ProjectType, Description, MainFile). O review deve bloquear quando o
+      descriptor está ausente, inválido ou divergente, para o requisito do
+      pack oficial ficar explícito antes do publish.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.project_manifest
+        function: detect_j9_project_uiproj_synced
+    fix:
+      apply_class: deterministic
+      mechanical:
+        type: sync_project_uiproj
+      prose: |
+        Gerar ou atualizar `project.uiproj` a partir de `project.json`.
+        Se `webAppManifest.json` existir, nada precisa ser gerado.
 
   - id: ENV-1
     severity: ERROR
@@ -2140,7 +2251,10 @@ rules:
       Agent: revisar `OpenMode` em NApplicationCard de cada app.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "InitAllApplications scope apps abrem aqui, Process so faz attach": TODAS as apps abrem em `Framework/InitAllApplications.xaml` (`OpenMode="Always"`). Process.xaml SOMENTE faz attach (`OpenMode="Never"`). Inverter esta divisao fragmenta sessao e multiplica overhead de open/c....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-2
     severity: ERROR
     category: architectural
@@ -2155,7 +2269,10 @@ rules:
     detect:
       type: regex
       pattern: '<ui:(?:WaitForFormTaskAndResume|CreateFormTask)\b'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Persistence activities em Main.xaml": `WaitForFormTaskAndResume` e `CreateFormTask` DEVEM ficar em `Main.xaml`. Workflows com UI/DB/browser nao podem ser persistidos.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-3
     severity: ERROR
     category: architectural
@@ -2198,7 +2315,10 @@ rules:
       Agent: comparar contra REFramework template; sinalizar diff.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "NUNCA modificar Framework/SetTransactionStatus.xaml": `Framework/SetTransactionStatus.xaml` e REFramework padrao. Modificacoes quebram contrato com Process/Main e dificultam updates futuros do template. Ajustes especificos vao em workflows wrappers. Agent: comp....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-5
     severity: ERROR
     category: architectural
@@ -2212,7 +2332,10 @@ rules:
       InitAllApplications, GetTransactionData).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Decomposicao modular por conceito (1 workflow = 1 conceito)": Cada workflow trata exatamente UM conceito (uma validacao, uma integracao, uma transformacao). Workflow com multiplos conceitos misturados e violacao independente do tamanho. Excecao: workflows originais REF....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-6
     severity: ERROR
     category: architectural
@@ -2224,7 +2347,10 @@ rules:
       complica retry granular.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Navegacao separada da acao (browser e desktop)": Workflow de navegacao retorna `UiElement` do destino; workflow de acao recebe como `in_UI`. Misturar quebra reuso e complica retry granular.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-7
     severity: WARN
     category: architectural
@@ -2239,7 +2365,10 @@ rules:
     detect:
       type: regex
       pattern: '\[INICIO\]|\[FIM\]'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Logs sem bookends [INICIO]/[FIM]": Robot ja loga entrada/saida em cada `InvokeWorkflowFile` bookends `[INICIO]`/`[FIM]` sao ruido duplicado. Workflows na cadeia de Process recebem `in_StPrefixoLog` e prependam em mensagens reais.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-8
     severity: WARN
     category: architectural
@@ -2271,7 +2400,10 @@ rules:
       Agent: revisar NApplicationCard / Use Application.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Browser/Desktop config padrao": Browser: `IsIncognito="True"`, `InteractionMode="Simulate"`, `AttachMode="SingleWindow"`. Desktop: sem IsIncognito, `AttachMode="ByInstance"`. Sessao descartada ao fechar (sem logout). Agent: revisar NApplic....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-10
     severity: WARN
     category: architectural
@@ -2283,7 +2415,10 @@ rules:
       Agent: count per app target.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Uma unica NApplicationCard por web app": UiElement distinto por app. Multiplas NApplicationCard para o mesmo app fragmenta UI state e duplica retry de attach. Agent: count per app target.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-11
     severity: WARN
     category: architectural
@@ -2295,7 +2430,10 @@ rules:
       polling não deve ter RetryScope próprio (loop já é o retry).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "API/network em RetryScope (3 retries, 5s)": Wrap API/network em `RetryScope` (3 retries, 5s). Excecoes: `NetHttpRequest` tem retry builtin; HTTP dentro de `DoWhile` de polling nao deve ter RetryScope proprio (loop ja e o retry).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-12
     severity: WARN
     category: architectural
@@ -2306,7 +2444,10 @@ rules:
       (em `Process/` ou transformação dedicada).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Extracao separada de filtragem": Extracao retorna TODOS os dados; filtragem e separada (em `Process/` ou transformacao dedicada).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-13
     severity: ERROR
     category: architectural
@@ -2328,7 +2469,10 @@ rules:
       # XAML serializa aspas internas como &quot; (raw " quebraria o attr).
       # Match ambas as formas; exclui in_Config(...) (sem aspas iniciais).
       pattern: 'Exception="\[New\s+\w*Exception\((?:&quot;|")([^&"]{4,})(?:&quot;|")'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Mensagens de exception nunca hardcoded": Mensagens de exception de nivel de processo vivem em `Config.xlsx` (aba Constants ou sheet dedicada). Workflow le via `in_Config("ChaveDaMensagem").ToString`. Hardcodar mensagem em `Throw.Exception` e violac....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-13b
     severity: ERROR
     category: architectural
@@ -2344,7 +2488,10 @@ rules:
       type: config_xlsx_keys
       params:
         mode: missing
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Chaves usadas em XAML existem em Config.xlsx": Toda chave `in_Config("Chave")` referenciada em XAML deve existir em pelo menos uma sheet de `assets/configs/Config_<Role>.xlsx` (fallback `Data/Config_*.xlsx` deprecated path).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-14
     severity: WARN
     category: architectural
@@ -2359,7 +2506,10 @@ rules:
       include: ["Main.xaml"]
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Progress counter pattern "Nr - Desc" em Main.xaml": Variavel `Progress` (String) atualizada a cada etapa com formato numerado + descricao (`"01 - <etapa A>"`, `"02 - <etapa B>"`). Usado em resume apos crash e em `SetTransactionStatus.Reason`. Nunca pipe `Prog....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-15
     severity: INFO
     category: architectural
@@ -2371,7 +2521,10 @@ rules:
       atual; fonte da verdade é DB queue/Orchestrator queue.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Output do TransactionItem reinicializado por transacao": `io_TransactionItem.Output = New Dictionary(Of String, Object)` no primeiro workflow da cadeia Process. Output e working state do ciclo atual; fonte da verdade e DB queue/Orchestrator queue.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-16
     severity: WARN
     category: architectural
@@ -2384,7 +2537,10 @@ rules:
       Agent: revisar layout do projeto.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pastas por sistema externo na raiz (sem numeracao)": Pastas raiz do projeto: `DB2/`, `Orquestrador/`, `Utils/`, `[SistemaExterno]/`. Sem numeracao tipo `01-Folder/` nem prefixos como `R2D2/`. Nome em PT-BR descrevendo sistema ou finalidade. Agent: revisar layo....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-17
     severity: INFO
     category: architectural
@@ -2395,7 +2551,10 @@ rules:
       > 150 linhas E trata múltiplos conceitos, extrair sub-workflows.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Max ~150 linhas por workflow (indicador, nao hard limit)": A-5 (um conceito por workflow) prevalece sobre tamanho. Se workflow > 150 linhas E trata multiplos conceitos, extrair sub-workflows.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-18
     severity: ERROR
     category: architectural
@@ -2411,7 +2570,10 @@ rules:
       type: regex
       # Studio v25.10 (Windows target) serializa modern UIA sob `uix:`; cobrir ambos.
       pattern: '<(?:ui|uix):(?:NApplicationCard|NClick|NTypeInto|NGetText|NHover|NCheck|NSelectItem)\b'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Sem UI activities em workflows de dados": Pastas `DB2/`, `Orquestrador/`, `Process/` nao contem `NApplicationCard`, `NClick`, `NTypeInto`, `NGetText`. Dados entram/saem via argumentos tipados (DataTable, String, Boolean).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-19
     severity: ERROR
     category: architectural
@@ -2431,7 +2593,10 @@ rules:
       params:
         module: uip_engine.heuristics.transaction_item
         function: detect_a19_io_transaction_item
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Refatoracao preserva contrato io_TransactionItem": Sub-workflow que MODIFICA `io_TransactionItem.Output(...)`: (a) declara `<x:Property Name="io_TransactionItem" Type="InOutArgument(ui:QueueItem)"/>`; (b) TODO caller passa via `<InOutArgument x:Key="io_Trans....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-19b
     severity: WARN
     category: architectural
@@ -2455,6 +2620,9 @@ rules:
         type: cascade_caller_in_args
         params: {}
 
+      prose: |
+        Aplicar a correcao mecanica "Caller falta argumento In declarado pelo callee": `InvokeWorkflowFile` sem bind para argumento `In` (ou `InOut`) declarado pelo callee transmite `Nothing`. Argumentos `Out` faltando sao descarte legitimo (output ignorado). Heuristica: filtra por direction=I....
+        Nao alterar comportamento fora do padrao descrito pela regra.
   - id: N-17
     severity: WARN
     category: architectural
@@ -2496,7 +2664,7 @@ rules:
       em producao: acao especifica + contexto (IDs, valores runtime) +
       distinguivel de outras logs.
 
-      Falhas detectadas por LLM validator (Claude Code CLI):
+      Falhas detectadas por heurística determinística offline:
       - Termos genericos sem contexto: "OK", "Concluido", "Pronto", "Done"
       - Literais curtos sem variable references
       - Mensagens duplicadas em multiplas activities
@@ -2505,7 +2673,7 @@ rules:
       Validator cacheia veredito por hash da mensagem
       em `.uip-toolchain-cache/llm_logmsg.json` — re-runs sao baratas.
 
-      Fail-open: erro de LLM (CLI ausente, network, etc) NAO emite finding.
+      Fail-open: erro interno da heurística NAO emite finding.
     applies_to:
       include: ["**/*.xaml"]
       exclude: ["Tests/**", "**/Tests/**"]
@@ -2561,6 +2729,41 @@ rules:
         Auto-fix mecânico via `rename_invoke_arg_key`: renomeia x:Key no
         bloco InvokeWorkflowFile que aponta ao callee. Limitado a casos
         com candidato único de alta similaridade.
+
+  - id: A-19d
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "Caller produtivo passa x:Key não declarado no callee"
+    description: |
+      `InvokeWorkflowFile.Arguments` não pode passar `x:Key="X"` se o
+      workflow chamado não declara `<x:Property Name="X" .../>`. Isso é erro
+      de contrato caller/callee e pode quebrar load/pack oficial antes do
+      `.nupkg` ser gerado.
+
+      A-19c continua existindo como heurística de rename quando há candidato
+      provável. A-19d é a guarda objetiva: qualquer chave extra em workflow
+      produtivo é blocker. Test cases seguem cobertos por T-4 para evitar
+      findings duplicados.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "Tests/**"
+        - "**/Tests/**"
+        - "Test cases/**"
+        - "**/Test cases/**"
+        - "TestCases/**"
+        - "**/TestCases/**"
+    detect:
+      type: cross_file_args
+      params:
+        direction: caller_extra
+    fix:
+      apply_class: contextual
+      prose: |
+        Ajustar o contrato: renomear o `x:Key` para o argumento real do
+        callee, declarar o argumento faltante no callee quando ele for de
+        fato parte do contrato, ou remover o binding extra.
 
 # ---- S — Sintaxe (estilo) ----
 
@@ -2635,6 +2838,9 @@ rules:
         type: strip_annotation_text
         params: {}
 
+      prose: |
+        Aplicar a correcao mecanica "Sem annotations em XAML (DisplayName + nomes claros)": Codigo deve ser auto-explicativo via `DisplayName` descritivo + nomes de variaveis claros. `sap2010:Annotation.AnnotationText` so quando absolutamente imprescindivel. Excecao: workflows REFramework original....
+        Nao alterar comportamento fora do padrao descrito pela regra.
   - id: S-5b
     severity: ERROR
     category: breaking
@@ -2815,7 +3021,10 @@ rules:
           - FileInfo
           - DirectoryInfo
           - Process
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Identificadores em PT-BR (nao ingles)": Variaveis e arguments em PT-BR. Listas de palavras EN proibidas e excecoes declaradas em params (REFramework standard ignorado).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: S-10
     severity: ERROR
     category: breaking
@@ -3696,7 +3905,10 @@ rules:
         module: uip_engine.heuristics.naming_prefix
         function: detect_n4_arg_count
         threshold: 7
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Workflow com > 7 argumentos agrupar Dictionary/DataTable": Workflow com mais de 7 argumentos e sinal pra agrupar em `Dictionary(String, Object)` ou `DataTable`, ou criar workflow intermediario. Threshold default: 7.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: N-5
     severity: INFO
     category: architectural
@@ -3777,7 +3989,7 @@ rules:
       #   - DisplayName uniqueness (evita ST-MRD-002 / ST-NMG-004)
       # Insertion runs APENAS via `ccs-uip --apply-contextual`. F35 per-file
       # analyzer-gate rollback catches Message-quality regressions
-      # (N-16 LLM validator, ST-NMG-005).
+      # (N-16 traceability heuristic, ST-NMG-005).
       apply_class: contextual
       mechanical:
         type: insert_trace_log  # spec injected per-finding by detector
@@ -3789,7 +4001,7 @@ rules:
         Engine auto-aplica via `ccs-uip <project> --apply-contextual`. Fixer
         gera Message template `[in_StPrefixoLog + "Concluído: <DisplayName>"]`
         quando workflow declara `in_StPrefixoLog`, senão `["Concluído: <DisplayName>"]`.
-        Message mecânica pode disparar N-16 (LLM traceability validator) —
+        Message mecânica pode disparar N-16 (traceability heuristic) —
         F35 analyzer-gate rollback reverte per-file se regressão observada.
 
         Mensagem ideal CONTEXTUAL, não mecânica:
@@ -4305,7 +4517,10 @@ rules:
       Desvios funcionais exigem alinhamento com analista de negócio.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Seguir o PDD exatamente": PDD e contrato funcional. Implementar a abordagem especificada. Desvios funcionais exigem alinhamento com analista de negocio.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: P-2
     severity: ERROR
     category: agent_behavior
@@ -4316,7 +4531,10 @@ rules:
       (consome fila, processa) quando PDD descreve ambos.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "PDD descreve leitura E processamento implica Dispatcher + Performer": Recomendar split Dispatcher (le fonte, enfileira) + Performer (consome fila, processa) quando PDD descreve ambos.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: P-3
     severity: WARN
     category: agent_behavior
@@ -4329,7 +4547,10 @@ rules:
       type: agent_only
 
 # ---- I — Inspection (HALT/WARN para agentes inspecionando UI) ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Melhorias tecnicas OK; mudancas funcionais NAO": Refatoracao tecnica preserva contrato funcional. Mudanca em comportamento observavel exige aprovacao previa do PDD.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: I-1
     severity: HALT
     category: agent_behavior
@@ -4340,7 +4561,10 @@ rules:
       durante inspeção. Inspeção é descoberta de selectors, não execução.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Inspecao de browser e READ-ONLY": NUNCA digitar em campos, inserir credenciais ou clicar submit durante inspecao. Inspecao e descoberta de selectors, nao execucao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: I-2
     severity: HALT
     category: agent_behavior
@@ -4350,7 +4574,10 @@ rules:
       Pedir ao usuário para logar manualmente. Não preencher credenciais.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "PARAR em telas de login durante inspecao": Pedir ao usuario para logar manualmente. Nao preencher credenciais.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: I-3
     severity: HALT
     category: agent_behavior
@@ -4361,7 +4588,10 @@ rules:
       `inspect-ui-tree.ps1`). Inventar = bug em produção.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "NUNCA inventar selectors": Selectors devem vir de inspecao real (Studio UI Explorer ou `inspect-ui-tree.ps1`). Inventar = bug em producao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: I-4
     severity: WARN
     category: agent_behavior
@@ -4373,7 +4603,10 @@ rules:
       type: agent_only
 
 # ---- T — Testing ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Inspecionar apps-alvo ANTES de gerar XAML": Sem inspecao real, selectors sao chute. Sempre inspecionar primeiro.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-1
     severity: INFO
     category: testing
@@ -4384,7 +4617,10 @@ rules:
       convenção de projeto — definir no CLAUDE.md do projeto.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pasta Tests/ no projeto Performer contem test cases": Sub-estrutura (Unit/Integration/Helpers/Fixtures/Mocks) e convencao de projeto definir no CLAUDE.md do projeto.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-2
     severity: INFO
     category: testing
@@ -4395,7 +4631,10 @@ rules:
       Mock helper fica em `Tests/Helpers/`.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "TC isolado (unit) usa mocks e fixtures": Nao requer sistemas externos; rodavel offline. Mock helper fica em `Tests/Helpers/`.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-3
     severity: WARN
     category: testing
@@ -4408,7 +4647,10 @@ rules:
       em integração real.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "TC de integracao so para validar contratos com sistemas externos": Credenciais via `GetRobotAsset`/`GetRobotCredential` com assets de ambiente de teste, nunca producao. Workflows que escrevem em sistema produtivo (APIs, filas externas) sempre mockados, inclusive em integrac....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-4
     severity: ERROR
     category: testing
@@ -4425,7 +4667,10 @@ rules:
       type: cross_file_args
       params:
         direction: caller_extra
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "TC InvokeWorkflowFile com x:Key nao declarado no callee": Test case invocando workflow real nao deve passar argumentos que o callee nao declara. x:Key extra (nao declarado no callee) = bug de teste (load error). Omitir um argumento opcional e valido em UiPath (cai....
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-5
     severity: ERROR
     category: testing
@@ -4441,7 +4686,10 @@ rules:
       params:
         module: uip_engine.heuristics.testing
         function: detect_t5_missing_workflow
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "TC referencia arquivo inexistente": `WorkflowFileName="Path/To/X.xaml"` deve apontar para arquivo real no projeto. Path quebrado = TC nao roda.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-6
     severity: ERROR
     category: testing
@@ -4457,7 +4705,10 @@ rules:
     detect:
       type: regex
       pattern: '<ui:(?:AddQueueItem|BulkAddQueueItems|SetTransactionStatus)\b'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "TC sem mock invoca workflow que escreve em sistema externo": Heuristica: presenca de `AddQueueItem` ou `SetTransactionStatus` real (nao em mock helper) em test case = risco de escrita em sistema produtivo durante CI/CD.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: T-7
     severity: ERROR
     category: testing
@@ -4484,7 +4735,10 @@ rules:
 # a partir de `assets/canonical_pins.yaml` (source-of-truth única dos pins
 # Sicoob). Adicionar pin novo = editar canonical_pins.yaml. Loader pega
 # automaticamente. Ver `src/uip_engine/canonical.py`.
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Asset name hardcoded em TC": Asset name em TC deve vir de variavel de ambiente de teste (`vStAssetTeste`, `in_StConfigPath`, etc.), nao literal.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: CFG-BINDING-REDIRECT-IGNORED
     severity: WARN
     category: architectural
@@ -4703,7 +4957,10 @@ rules:
     detect:
       type: regex
       pattern: '<ui:ExcelApplicationScope\b'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Use Excel File (Modern) em vez de Excel Application Scope (Classic)": Em projetos Windows, usar `Use Excel File` (Modern) em vez de `Excel Application Scope` (Classic). Classic mantido so por compat. Modern integra com Excel Process Scope para reuso de sessao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: EXC-2
     severity: ERROR
     category: architectural
@@ -4714,7 +4971,10 @@ rules:
       Sem ele cada Use Excel File abre/mata instância e vaza handles COM.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Use Excel File dentro de Excel Process Scope": Process Scope controla seguranca de macros, conflitos e ciclo da sessao. Sem ele cada Use Excel File abre/mata instancia e vaza handles COM.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: EXC-3
     severity: ERROR
     category: architectural
@@ -4726,7 +4986,10 @@ rules:
       acidental em arquivos compartilhados.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Visible=False, ReadOnly=True quando atividade so le": `Config.xlsx`, listas de input do dispatcher: Visible=False evita janela Excel real (custa segundos); ReadOnly=True previne escrita acidental em arquivos compartilhados.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: EXC-4
     severity: ERROR
     category: architectural
@@ -4736,7 +4999,10 @@ rules:
       `Password`/`EditPassword` nunca literal nem em Config.xlsx.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Senhas de workbook so via Orchestrator Credential SecureString": `Password`/`EditPassword` nunca literal nem em Config.xlsx.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: EXC-5
     severity: WARN
     category: architectural
@@ -4747,7 +5013,10 @@ rules:
       Workbook activities — não exigem Excel instalado, ~10x mais rápido.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Workbook activities preferiveis a Use Excel File para .xlsx puros": Para leitura/escrita pura sem formulas/macros/formatacao preferir Workbook activities nao exigem Excel instalado, ~10x mais rapido.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: EXC-6
     severity: WARN
     category: architectural
@@ -4758,7 +5027,10 @@ rules:
       Aninhamento causa file-lock errors.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Nao aninhar Use Excel File para mesmo workbook": Reusar referencia IExcelWorkbook existente. Aninhamento causa file-lock errors.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: EXC-7
     severity: INFO
     category: architectural
@@ -4771,7 +5043,10 @@ rules:
       type: agent_only
 
 # ---- DB — Database ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "AutoSave=False + Save Excel File explicito em checkpoints": AutoSave em workbook de rede + falha mid-write produz arquivo parcial que REFramework retenta, duplicando linhas.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DB-1
     severity: ERROR
     category: architectural
@@ -4782,7 +5057,10 @@ rules:
       v2.0.0 dropou .NET 4.6.1 e Windows-Legacy.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "targetFramework=Windows alinhado ao stack": Cross-platform suportado v1.9.0+ mas nao usar em Sicoob por padrao. v2.0.0 dropou .NET 4.6.1 e Windows-Legacy.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DB-2
     severity: ERROR
     category: architectural
@@ -4793,7 +5071,10 @@ rules:
       ORA-12519/SQLSTATE 08001. Uma conexão por execução do Performer.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Connect/Disconnect em Init/Close nao por transacao": Abrir/fechar conexao DB2/SQL por queue item esgota pool e dispara ORA-12519/SQLSTATE 08001. Uma conexao por execucao do Performer.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DB-3
     severity: ERROR
     category: architectural
@@ -4804,7 +5085,10 @@ rules:
       para credenciais sensíveis (DB2 mainframe).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Credenciais DB via Secure connection string (SecureString)": Nunca ConnectionString plana. SecureString e o mecanismo documentado para credenciais sensiveis (DB2 mainframe).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DB-4
     severity: ERROR
     category: architectural
@@ -4819,7 +5103,10 @@ rules:
   # DB-5 removida 2026-05-19: redundante com D-1d (pin EXATO [1.10.1],
   # deterministic auto-fix). Versão min: 1.10.0 era mais fraca + double-flag
   # mesmo finding em projetos com drift.
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Parameters em Execute Query/Non Query nunca concatenar SQL": Concatenacao e SQL-injetavel. Identificadores de cliente (CPF, conta, agencia) precisam parametrizacao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DB-6
     severity: ERROR
     category: architectural
@@ -4830,7 +5117,10 @@ rules:
       produzem registros órfãos não detectáveis pelo Performer.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Multi-statement em Start Transaction com Commit/Rollback": Nao confiar em auto-commit. Escritas parciais sem commit explicito produzem registros orfaos nao detectaveis pelo Performer.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DB-7b
     severity: WARN
     category: breaking
@@ -4920,7 +5210,10 @@ rules:
       lançamento financeiro.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Retry so em verbos idempotentes": GET, HEAD, PUT com idempotency key. POST sem retry a menos que servidor documente header de idempotencia. Replay em transient pode duplicar lancamento financeiro.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: API-3
     severity: ERROR
     category: architectural
@@ -4932,7 +5225,10 @@ rules:
       Pinar valor em Config.xlsx (`API_Timeout_Ms`).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Override timeout default 10000 ms para chamadas batch": APIs REST mainframe-backed Sicoob excedem 10s. Default dispara SystemException que REFramework retenta indefinidamente. Pinar valor em Config.xlsx (`API_Timeout_Ms`).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: API-4
     severity: ERROR
     category: architectural
@@ -4946,7 +5242,10 @@ rules:
 
   # API-5 removida 2026-05-19: sem necessidade ativa no contexto Sicoob atual.
   # Re-introduzir caso compliance bancária flag config inseguro em auditoria.
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Credenciais API via Orchestrator Credential": Basic (SecureString password) ou Bearer token; nunca embedded em headers como string plana.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: API-6
     severity: WARN
     category: breaking
@@ -4960,7 +5259,10 @@ rules:
     detect:
       type: regex
       pattern: '<ui:SoapRequest\b'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "SOAP Request remanescente so Windows-Legacy": SOAP Request 1.x nao compativel com .NET 6+. Migrado vira HTTP Request + body manual application/soap+xml.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: API-7
     severity: WARN
     category: architectural
@@ -4973,7 +5275,10 @@ rules:
       type: agent_only
 
 # ---- UI — UIAutomation ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "JSON grande via body Stream + desserializacao incremental": Body Text default carrega resposta completa em String, estoura limite 2GB CLR em response multi-MB.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-1
     severity: ERROR
     category: architectural
@@ -4988,7 +5293,10 @@ rules:
     detect:
       type: regex
       pattern: '<ui:(?:Click|TypeInto|OpenBrowser|GetText|GetAttribute|HighlightElements|MouseClick|HoverActivity)\b'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Modern activities (NClick/NTypeInto/NApplicationCard) nunca Classic": Classic Click/TypeInto/Open Browser nao tem inline designers, verification, Check App State Wait active, Find Elements. Seletores precisam ser regerados com Modern UI Explorer.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-2
     severity: ERROR
     category: architectural
@@ -5000,7 +5308,10 @@ rules:
       ChromiumAPI só fallback.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Sisbr (Chrome incognito) InteractionMode=Simulate": Simulate e background-capable, tolerante a screen-lock em robos unattended. HardwareEvents falha em sessao bloqueada. ChromiumAPI so fallback.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-3
     severity: ERROR
     category: architectural
@@ -5012,7 +5323,10 @@ rules:
       mudanças de título mid-transaction.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "AttachMode=ByInstance em apps desktop/Sisbr": Nunca ByTitle/ByProcessId. ByTitle colide com 2 janelas Sisbr/DB2 abertas. ByInstance vincula ao UiElement retornado por Open e sobrevive a mudancas de titulo mid-transaction.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-4
     severity: WARN
     category: architectural
@@ -5022,7 +5336,10 @@ rules:
       Incognito isola cookies/cache; cada browser fecha deterministicamente.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Chrome NApplicationCard com --incognito + CloseSession ao fim": Incognito isola cookies/cache; cada browser fecha deterministicamente.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-5
     severity: WARN
     category: architectural
@@ -5034,7 +5351,10 @@ rules:
       com anchors.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Computer Vision desabilitado por default (data leak)": CV vem desabilitado desde 25.10.27 para evitar leak de dado sensivel. Telas bancarias nunca devem sair do host. Preferir Strict/Fuzzy/Image com anchors.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-6
     severity: WARN
     category: architectural
@@ -5045,7 +5365,10 @@ rules:
       "OCR engine not found" e ByInstance attach failure pós-migração.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pos LegacyWindows: regerar seletores + validar OCR/Vision": Schemas de seletor .NET 4.6.1 = .NET 6/8. Mismatch UiPath.Vision causa "OCR engine not found" e ByInstance attach failure pos-migracao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-7
     severity: INFO
     category: architectural
@@ -5091,7 +5414,10 @@ rules:
       params:
         path: targetFramework
         expected: Windows
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Projeto deve targetar Windows (.NET 6+)": System v25.2.1+ nao funciona em Windows-Legacy. 25.4.3 corrige WorkerProcess.exe .NET 6 detection.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SYS-2
     severity: HALT
     category: architectural
@@ -5103,7 +5429,10 @@ rules:
       Compliance Resolução BCB 4.893.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Credenciais via Get Credential/Get Asset (Orchestrator)": Sem senhas/tokens hardcoded em XAML/Config.xlsx (DB2, Sisbr). Activity retorna SecureString; ACLs de pasta Orchestrator aplicam. Compliance Resolucao BCB 4.893.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SYS-3
     severity: ERROR
     category: architectural
@@ -5114,7 +5443,10 @@ rules:
       Passar SecureString — nunca converter para String plana.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "REFramework: Get Credential dentro de Init State": (Ou per-transaction se CacheStrategy=Execution). Passar SecureString nunca converter para String plana.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SYS-4
     severity: ERROR
     category: architectural
@@ -5125,7 +5457,10 @@ rules:
       (DEV/HML/PRD) faz resolução ambient pegar asset errado.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "OrchestratorFolderPath explicito (Modern)": Quando assets vivem fora da ambient folder. Multi-tenant Sicoob (DEV/HML/PRD) faz resolucao ambient pegar asset errado.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SYS-5
     severity: WARN
     category: architectural
@@ -5136,7 +5471,10 @@ rules:
       e quebra retry/SystemException counter do REFramework.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Throw/Rethrow business vs system explicitos no Performer": Default ContinueOnError=False e correto. Sobrescrever esconde erros e quebra retry/SystemException counter do REFramework.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SYS-6
     severity: WARN
     category: architectural
@@ -5148,7 +5486,10 @@ rules:
       de persistence separado retoma.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Persistence so em processo separado, nao no Performer": UI elements, browsers, DB connections dentro do Performer nao podem ser persistidos e throw em suspend. Dispatcher cria task; workflow de persistence separado retoma.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SYS-7
     severity: INFO
     category: architectural
@@ -5161,7 +5502,10 @@ rules:
       type: agent_only
 
 # ---- TEST — Testing pack ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pinar UiPath.System.Activities 25.4.4": Evita regressao de filtro OData vista em 26.2.0. 25.12+ Filter Builder para reporting.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: TEST-1
     severity: ERROR
     category: testing
@@ -5204,7 +5548,10 @@ rules:
       Studio enforça layout; desviar quebra Test Manager.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Test Case segue Given-When-Then": Given = arrange (mock data, navegar). When = Invoke do SUT. Then = Verify Expression comparando output. Template TestCase do Studio enforca layout; desviar quebra Test Manager.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: TEST-3
     severity: ERROR
     category: testing
@@ -5214,7 +5561,10 @@ rules:
       Mock em volta do Invoke Workflow; nunca CI tocar produção bancária.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Mockar dependencias externas (DB2, API Sisbr, SMTP)": Mock em volta do Invoke Workflow; nunca CI tocar producao bancaria.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: TEST-4
     severity: WARN
     category: testing
@@ -5225,7 +5575,10 @@ rules:
       para QA identificar variação sem rerodar.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "TakeScreenshotIfFailed=True + AlternativeVerificationTitle": Especialmente em data variations. Titulos aparecem em Test Manager para QA identificar variacao sem rerodar.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: TEST-5
     severity: WARN
     category: testing
@@ -5236,7 +5589,10 @@ rules:
       para falha diagnosticável.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Given workflows project-level + tag tests": Setup compartilhado (login, abrir Sisbr). Uma assercao logica por TC para falha diagnosticavel.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: TEST-6
     severity: INFO
     category: testing
@@ -5248,7 +5604,10 @@ rules:
       type: agent_only
 
 # ---- CRY — Cryptography ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Variacoes de dados via Data Service ou Test Data Queues": Nao Config.xlsx. Test data bancario precisa versionamento e PII control.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: CRY-1
     severity: HALT
     category: architectural
@@ -5258,7 +5617,10 @@ rules:
       Carregar de Orchestrator Asset (Credential) ou Windows Credential Store.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Nunca hardcode keys/passwords em Encrypt/Hash": Carregar de Orchestrator Asset (Credential) ou Windows Credential Store.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: CRY-2
     severity: ERROR
     category: architectural
@@ -5272,7 +5634,10 @@ rules:
     detect:
       type: regex
       pattern: 'Algorithm="(?:DES|RC2|MD5|SHA1|RIPEMD160)"'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "AES-GCM/AES-256 para simetrico; SHA256/512 para hash": Evitar DES, RC2, MD5, SHA1, RIPEMD160. 1.4.x ainda expoe legados em dropdowns mas nao compliam BACEN/PCI-DSS.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: CRY-3
     severity: ERROR
     category: architectural
@@ -5283,7 +5648,10 @@ rules:
       memory dump e log verbose.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Preferir KeySecureString sobre Key (String)": 1.4.x adicionou overloads SecureString para manter keys fora de memory dump e log verbose.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: CRY-4
     severity: WARN
     category: architectural
@@ -5293,7 +5661,10 @@ rules:
       CryptographicException pode ecoar IV bytes ou tamanho da key.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Encrypt/Decrypt em Try/Catch sem logar inner verbatim": CryptographicException pode ecoar IV bytes ou tamanho da key.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: CRY-5
     severity: WARN
     category: breaking
@@ -5336,7 +5707,10 @@ rules:
       type: agent_only
 
 # ---- MAIL — Mail ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Nao confiar so em FIPS-only mode": Pacote nao e FIPS-validated. Usar politica Windows FIPS + .NET CNG providers se compliance exigir.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: MAIL-1
     severity: HALT
     category: breaking
@@ -5347,7 +5721,10 @@ rules:
       activities com OAuth (App ID + Certificate).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Nunca SMTP/IMAP/POP3 com basic auth + senha hardcoded": Microsoft desabilitou basic auth em Exchange Online. Usar Office 365 activities com OAuth (App ID + Certificate).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: MAIL-2
     severity: ERROR
     category: architectural
@@ -5357,7 +5734,10 @@ rules:
       Nunca Config.xlsx em plaintext. SoD bancária exige rotação independente.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Toda credencial mail vem de Orchestrator Asset": Nunca Config.xlsx em plaintext. SoD bancaria exige rotacao independente.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: MAIL-3
     severity: ERROR
     category: architectural
@@ -5368,7 +5748,10 @@ rules:
       são visíveis na UI Orchestrator — risco PII/PCI.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Nao passar body/anexos em Queue Item SpecificContent": Persistir em share seguro e armazenar so referencia. Payloads de queue sao visiveis na UI Orchestrator risco PII/PCI.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: MAIL-4
     severity: WARN
     category: architectural
@@ -5379,7 +5762,10 @@ rules:
       e contaminação cruzada de cliente.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Save Mail Message em pasta per-transaction; limpar em Finally": 1.24.x retem file handles. Performers concorrentes causam IOException e contaminacao cruzada de cliente.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: MAIL-5
     severity: WARN
     category: architectural
@@ -5390,7 +5776,10 @@ rules:
       o mesmo email após System Exception.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "MarkAsRead=True + OnlyUnreadMessages=True no Dispatcher": Garante idempotencia. Retries do REFramework podem re-enfileirar o mesmo email apos System Exception.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: MAIL-6
     severity: INFO
     category: breaking
@@ -5403,7 +5792,10 @@ rules:
       type: agent_only
 
 # ---- O365 — Office365 ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Outlook Desktop atencao ao New Outlook (Monarch)": Muitas activities nao suportadas. Forcar Classic Outlook ou migrar para O365.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: O365-1
     severity: HALT
     category: architectural
@@ -5413,7 +5805,10 @@ rules:
       Client secrets expiram/vazam. Cert auth alinha com PKI Sicoob.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "App ID + Certificate (nao Secret) em producao": Client secrets expiram/vazam. Cert auth alinha com PKI Sicoob.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: O365-2
     severity: ERROR
     category: architectural
@@ -5424,7 +5819,10 @@ rules:
       Azure App Registration antes de Microsoft Office 365 Scope.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Scopes Graph minimos por workflow": Mail.Read para leitura, nao Mail.ReadWrite.All. Configurar no Azure App Registration antes de Microsoft Office 365 Scope.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: O365-3
     severity: ERROR
     category: architectural
@@ -5434,7 +5832,10 @@ rules:
       Graph throttla por-tenant/por-app. Performer loop pode trip o limit.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Wrappar Graph em Retry Scope (HTTP 429/503 + Retry-After)": Graph throttla por-tenant/por-app. Performer loop pode trip o limit.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: O365-4
     severity: WARN
     category: architectural
@@ -5444,7 +5845,10 @@ rules:
       Token cache vive no scope. Aninhar amplifica throttling.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "1 O365 Scope por transacao Performer (nao aninhado per-activity)": Token cache vive no scope. Aninhar amplifica throttling.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: O365-5
     severity: WARN
     category: breaking
@@ -5455,7 +5859,10 @@ rules:
       CryptographicException/Could not load Microsoft.Identity.Client.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pos LegacyWindows recriar connection O365": 2.x targeta .NET 6, APIs cert-store diferentes da linha Legacy 1.x. CryptographicException/Could not load Microsoft.Identity.Client.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: O365-6
     severity: INFO
     category: architectural
@@ -5467,7 +5874,10 @@ rules:
       type: agent_only
 
 # ---- SP — SharePoint (community) ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "SharePoint/OneDrive: preferir O365 dedicadas sobre community": Pacote first-party e Graph-based, simplifica auditoria.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SP-1
     severity: HALT
     category: architectural
@@ -5483,7 +5893,10 @@ rules:
       params:
         package: UiPathTeam.SharePoint.Activities
         exact: "2.0.3"
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "UiPathTeam.SharePoint.Activities pinar exatamente 2.0.3": Pacote community Silver-cert, nao core-supported. Documentar como risco de projeto. Minor updates ja quebraram auth historicamente.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SP-2
     severity: ERROR
     category: architectural
@@ -5494,7 +5907,10 @@ rules:
       MFA/CA on-prem bloqueiam.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "AppOnly (Client ID + Secret em Asset) para Performers unattended": Nunca WebLogin fora de attended/dev. WebLogin exige sign-in interativo. MFA/CA on-prem bloqueiam.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SP-3
     severity: ERROR
     category: architectural
@@ -5504,7 +5920,10 @@ rules:
       Retry Scope com exponential backoff respeitando Retry-After.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Wrappar file/loop ops com tratamento HTTP 429": Retry Scope com exponential backoff respeitando Retry-After.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SP-4
     severity: WARN
     category: architectural
@@ -5515,7 +5934,10 @@ rules:
       2.0 mudou para REST API; uploads single-shot timeoutam.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "UploadLargeFile para arquivos > 250 MB": Chunk processing no Performer (1 arquivo = 1 transacao). 2.0 mudou para REST API; uploads single-shot timeoutam.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SP-5
     severity: WARN
     category: breaking
@@ -5526,7 +5948,10 @@ rules:
       Projetos Legacy 1.x XAML (CSOM-based) não auto-migram limpo.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Linha 2.x targeta .NET 5+ e dropou CSOM": Verificar compat Windows-target antes de upgrade de 1.x. Projetos Legacy 1.x XAML (CSOM-based) nao auto-migram limpo.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: SP-7
     severity: ERROR
     category: breaking
@@ -5596,7 +6021,10 @@ rules:
       type: agent_only
 
 # ---- XML — community pack ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Identidade do robo precisa permissoes SharePoint pretendidas": Pacote nao excede direitos. Maioria das falhas silenciosas e permissao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: XML-1
     severity: HALT
     category: architectural
@@ -5613,7 +6041,10 @@ rules:
       params:
         package: UiPathTeam.XML.Activities
         exact: "1.1.0"
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "UiPathTeam.XML.Activities pinar 1.1.0": Pacote community Silver-cert, ultimo update Jan/2023, cadencia baixa. Risco de auditoria/SBOM em ambiente bancario. Fallback: Deserialize XML + XDocument LINQ nativo.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: XML-2
     severity: ERROR
     category: breaking
@@ -5624,7 +6055,10 @@ rules:
       chamada sem o companion.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Co-dependencia: instalar UiPath.Web.Activities": Para Deserialize XML. Pacote compila mas throwa em runtime na primeira chamada sem o companion.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: XML-3
     severity: ERROR
     category: architectural
@@ -5634,7 +6068,10 @@ rules:
       XXE attacks via XML untrusted é vetor real de exfiltração.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Validacao XSD: desabilitar resolucao DTD/entity externa": XXE attacks via XML untrusted e vetor real de exfiltracao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: XML-4
     severity: WARN
     category: architectural
@@ -5645,7 +6082,10 @@ rules:
       XPath retorna vazio silenciosamente caso contrário.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Declarar/tratar XML namespaces explicitamente": Payloads SOAP/bancarios (SPB, SISBR) usam multiplos namespaces. XPath retorna vazio silenciosamente caso contrario.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: XML-5
     severity: WARN
     category: breaking
@@ -5656,7 +6096,10 @@ rules:
       Studio atual (24.x/25.x) Windows.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Verificar compat Studio/runtime (pacote stale)": Marketplace lista Studio 22.422.10 com .NET 5+. Revalidar em Studio atual (24.x/25.x) Windows.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: XML-6
     severity: INFO
     category: architectural
@@ -5669,7 +6112,10 @@ rules:
       type: agent_only
 
 # ---- IOCR — IntelligentOCR ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Nunca logar body XML completo com PII": LGPD + politica Sicoob. Logar nomes de elemento e contagens, ou hash de nodes sensiveis.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: IOCR-1
     severity: HALT
     category: breaking
@@ -5679,7 +6125,10 @@ rules:
       Activities downstream throwam quando DOM/TextResult ausente.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pipeline obrigatorio Taxonomy Digitize Classify Extract Validate Export": Activities downstream throwam quando DOM/TextResult ausente.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: IOCR-2
     severity: ERROR
     category: breaking
@@ -5690,7 +6139,10 @@ rules:
       consumption (v6.22.0+) dependem dele.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Document Understanding ML pack auto-instalado (nao remover)": Auto-instalado desde v6.19.0. Generative validators + Modern DU consumption (v6.22.0+) dependem dele.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: IOCR-3
     severity: ERROR
     category: architectural
@@ -5701,7 +6153,10 @@ rules:
       (v6.24.0). CPF/CNPJ/valor exigem audit trail antes de core banking.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Validation human-in-loop para low-confidence em campos criticos": Present Validation Station (sincrono) ou Action Center via apps (v6.24.0). CPF/CNPJ/valor exigem audit trail antes de core banking.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: IOCR-4
     severity: ERROR
     category: breaking
@@ -5768,7 +6223,10 @@ rules:
       Multi-tenant Sicoob (DEV/HML/PRD) exige resolução explícita.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Action Center: RuntimeTenantURL + RuntimeCredentialsAsset": Multi-tenant Sicoob (DEV/HML/PRD) exige resolucao explicita.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: IOCR-7
     severity: WARN
     category: architectural
@@ -5778,7 +6236,10 @@ rules:
       LGPD exige minimização. JSON raw vaza PII em logs.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Mascarar CPF/CNPJ/conta antes de Export Extraction Results": LGPD exige minimizacao. JSON raw vaza PII em logs.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: IOCR-8
     severity: INFO
     category: architectural
@@ -5791,7 +6252,10 @@ rules:
       type: agent_only
 
 # ---- OCR — OCR pack ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Layouts variaveis: Machine Learning Extractor ou generative": Multi-cooperativa Sicoob Form Extractor exige template por layout (inviavel). Generative cobre variabilidade.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: OCR-1
     severity: ERROR
     category: architectural
@@ -5803,7 +6267,10 @@ rules:
       acentos (ção/são, ã, õ) em contratos.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "PT-BR: usar UiPath Extended Languages OCR": Unica engine in-house que suporta Portugues explicitamente. Document OCR e otimizada mas nao lista PT-BR. Misuso corrompe acentos (cao/sao, a, o) em contratos.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: OCR-2
     severity: ERROR
     category: architectural
@@ -5813,7 +6280,10 @@ rules:
       Project files versionados em Git; keys vazadas disparam compliance.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "ApiKey via Orchestrator Asset; Private=True em prod": Project files versionados em Git; keys vazadas disparam compliance.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: OCR-3
     severity: ERROR
     category: architectural
@@ -5824,7 +6294,10 @@ rules:
       exigir on-prem.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Endpoint via Asset ou UseLocalServer=True; nunca misturar": Endpoints mistos fragmentam audit log. Sicoob data residency pode exigir on-prem.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: OCR-4
     severity: WARN
     category: architectural
@@ -5834,7 +6307,10 @@ rules:
       Default longo mascara latência. Pinar valor adequado ao SLA do step.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Override Timeout default 100000 ms": Default longo mascara latencia. Pinar valor adequado ao SLA do step.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: OCR-5
     severity: WARN
     category: architectural
@@ -5845,7 +6321,10 @@ rules:
       Ignorado quando UseLocalServer=True.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "UseSeparateOcrProcess=True em loop pesado": Cria processo separado por scheduler isolamento contra leak/crash. Ignorado quando UseLocalServer=True.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: OCR-6
     severity: INFO
     category: architectural
@@ -5858,7 +6337,10 @@ rules:
       type: agent_only
 
 # ---- PDF — PDF pack ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Uma engine OCR por projeto": Misturar OmniPage + Document OCR/Extended produz bounding boxes inconsistentes. Anchor selectors falham intermitentemente.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-1
     severity: HALT
     category: breaking
@@ -5869,7 +6351,10 @@ rules:
       Misturar major versions causa runtime errors silenciosos.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "PDF >= 3.0 exige IntelligentOCR >= 3.0 (e vice-versa)": Pinning Sicoob (PDF 3.22.1 + IOCR 6.24.0) esta alinhado. Misturar major versions causa runtime errors silenciosos.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-2
     severity: ERROR
     category: architectural
@@ -5880,7 +6365,10 @@ rules:
       Performer postaria dado vazio em core banking.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Read PDF Text primeiro; vazio fallback Read PDF With OCR": Contratos scanned retornam vazio silenciosamente. Performer postaria dado vazio em core banking.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-3
     severity: ERROR
     category: architectural
@@ -5891,7 +6379,10 @@ rules:
       arguments é logada em verbose — violação LGPD.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Password via SecureString de Orchestrator Credential": Para PDFs protegidos (extratos do cliente). Senha plaintext em arguments e logada em verbose violacao LGPD.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-4
     severity: ERROR
     category: breaking
@@ -5905,7 +6396,10 @@ rules:
     detect:
       type: regex
       pattern: 'Catch\b[^>]*x:TypeArguments="(?:IncorrectPasswordException|UnexpectedStructureException)"'
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Catch consolidado PdfException (v3.10.1+)": Substituiu IncorrectPasswordException + UnexpectedStructureException. Try/Catch em XAML migrado deve catchar PdfException.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-5
     severity: ERROR
     category: breaking
@@ -5916,7 +6410,10 @@ rules:
       Image no campo OCR Image.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pos v3.19.1 re-add Read PDF With OCR (schema mudou)": Upgrade exige remover/re-adicionar activity OU preencher manualmente Image no campo OCR Image.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-6
     severity: WARN
     category: architectural
@@ -5927,7 +6424,10 @@ rules:
       injetado quebra regex em campos valor/data).
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "PreserveFormat=True so quando parsing depende de coluna": Extratos tabulares: True. Contratos narrativos: False (whitespace injetado quebra regex em campos valor/data).
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-7
     severity: WARN
     category: architectural
@@ -5938,7 +6438,10 @@ rules:
       retry de queue item barato.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Extract PDF Page Range para fatiar antes de OCR": Memory spike em extrato 200+ paginas crasha robo. Per-page mantem retry de queue item barato.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-8
     severity: INFO
     category: architectural
@@ -5948,7 +6451,10 @@ rules:
       Versões anteriores podiam vazar texto invisível para extração.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pinar 3.22.1 contem fix invisible text (v3.20.2)": Versoes anteriores podiam vazar texto invisivel para extracao.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-9
     severity: INFO
     category: architectural
@@ -5959,7 +6465,10 @@ rules:
       mas relevante se time abrir cross-platform.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "5 activities tem versao cross-platform (v3.14.0+)": Via UiPath.DocumentUnderstanding.Activities. Nao e caminho Sicoob, mas relevante se time abrir cross-platform.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: PDF-10
     severity: INFO
     category: architectural
@@ -5972,7 +6481,10 @@ rules:
       type: agent_only
 
 # ---- DULS — DocumentUnderstanding LocalServer ----
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "FIPS Compliance Flag (v3.1.0+)": Algumas funcionalidades nao-FIPS ainda podem throw exception. Auditoria Sicoob pode requerer FIPS testar caminho especifico.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DULS-1
     severity: HALT
     category: breaking
@@ -5983,7 +6495,10 @@ rules:
       OCR (cloud) ou OmniPage offline.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Local Server: idioma unico ingles": Nao usar para documentos PT-BR. Para PT-BR usar Extended Languages OCR (cloud) ou OmniPage offline.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DULS-2
     severity: ERROR
     category: breaking
@@ -5993,7 +6508,10 @@ rules:
       Verificar AVX2 em VMs/hipervisores. Sem AVX2 ativação falha.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "CPU com AVX2 obrigatorio, min 4 cores": Verificar AVX2 em VMs/hipervisores. Sem AVX2 ativacao falha.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DULS-3
     severity: ERROR
     category: architectural
@@ -6004,7 +6522,10 @@ rules:
       Confusão comum: instalar e não setar UseLocalServer=True.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Pacote nao contem activities; so habilita UseLocalServer=True": Compatibilidade UiPath.OCR.Activities >= 3.1.0-preview. Confusao comum: instalar e nao setar UseLocalServer=True.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DULS-4
     severity: WARN
     category: architectural
@@ -6015,7 +6536,10 @@ rules:
       Vantagem para data residency Sicoob; exige máquina com capacidade.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Operacao totalmente offline": Sem Automation Cloud, sem API Key, sem URL externa, sem AI Center. Vantagem para data residency Sicoob; exige maquina com capacidade.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DULS-5
     severity: WARN
     category: architectural
@@ -6025,7 +6549,10 @@ rules:
       Revalidar regex/anchors após troca de endpoint.
     detect:
       type: agent_only
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Resultados podem diferir do endpoint cloud": Revalidar regex/anchors apos troca de endpoint.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: DULS-6
     severity: INFO
     category: architectural
@@ -6040,7 +6567,10 @@ rules:
 # ============================================================
 # Batch — U (Unused / Undeclared) — higiene + compile safety
 # ============================================================
-
+    fix:
+      prose: |
+        Corrigir este finding aplicando a regra "Velocidade depende da maquina; considerar VM dedicada": OCR pesado em farm Sicoob: dedicar VM em vez de rodar lado-a-lado com UI Automation Performer.
+        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: U-1
     severity: WARN
     category: architectural

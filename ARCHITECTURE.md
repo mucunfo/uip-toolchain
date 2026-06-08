@@ -7,19 +7,25 @@ qual arquivo modificar para qual tipo de mudança.
 
 | Arquivo | Função | Quando humano mexe |
 |---------|--------|--------------------|
-| `rules.yaml` | Todas as regras (id, severity, category, target, description, applies_to, detect, fix). | **Sempre. Único.** |
+| `rules.yaml` | Regras explícitas (id, severity, category, target, description, applies_to, detect, fix). | **Sempre para regras explícitas.** |
+| `assets/canonical_pins.yaml` | Fonte canônica dos pins D-1* e J-1 sintetizados pelo loader em parse-time. | Quando pin Studio/NuGet mudar |
 | `ARCHITECTURE.md` | Este arquivo. | Quando arquitetura mudar |
-| `pyproject.toml` | Deps + console scripts (`ccs-uip`, `ccs-uip-publish-dev`). | Quando entrada pública mudar |
+| `pyproject.toml` | Deps + console scripts (`ccs-uip`, `ccs-uip-publish`). | Quando entrada pública mudar |
+| `instalar-ccs-uip.cmd` | Launcher de duplo clique para instalação da toolchain em Windows. | Quando UX de instalação mudar |
+| `tools/install-ccs-uip.ps1` | Instalador interativo user-level: pip editable, PATH, uip/npm, .NET portable e diagnóstico. | Quando pré-requisito/instalação mudar |
 | `src/uip_engine/loader.py` | Parse YAML + schema validation. | Nunca (só se schema mudar) |
 | `src/uip_engine/_types.py` | Rule, Finding, Severity, Category, Target. | Quando schema mudar |
 | `src/uip_engine/encoding.py` | BOM detect + decode. | Nunca |
 | `src/uip_engine/context.py` | FileContext, ProjectContext. | Nunca |
+| `src/uip_engine/project_view.py` | ProjectView canônico: arquivos produtivos, diretórios ignorados e assinatura de cache por conteúdo/contrato. | Quando superfície de projeto mudar |
 | `src/uip_engine/suppressions.py` | rule-disable parser. | Nunca |
 | `src/uip_engine/detectors.py` | Registry de detectores. Cada `detect.type` em rules.yaml mapeia para função aqui. | Só se aparecer **novo tipo de detecção** |
 | `src/uip_engine/fixers.py` | Registry de fixers mecânicos. | Só se aparecer **novo tipo de fix** |
 | `src/uip_engine/runner.py` | Orquestrador: itera regras × arquivos. | Nunca |
 | `src/uip_engine/cli.py` | CLI interna: `all`, `review`, `fix`, `list`, `validate`, gates e utilitários. | Quando contrato de execução mudar |
-| `src/uip_engine/publish_dev.py` | Console script `ccs-uip-publish-dev`: pack/upload DEV/download handoff via CLI oficial `uip`. | Quando fluxo DEV/handoff mudar |
+| `src/uip_engine/publish_done.py` | Console script `ccs-uip-publish`: seleção batch, login único, upload DEV e download de `.nupkg` de handoff. | Quando UX pública do publish mudar |
+| `src/uip_engine/publish_dev.py` | Implementação single-project usada pelo batch publish. | Quando fluxo pack/upload/download por projeto mudar |
+| `src/uip_engine/publish_readiness.py` | Preparação oficial para pack: `project.uiproj` derivado, scrub controlado e invariantes J-9/W-40. | Quando contrato do pack oficial mudar |
 | `src/uip_engine/official_uip.py` | Adapter da CLI oficial UiPath (`uip`) com discovery, versão e envelope JSON. | Quando contrato da CLI oficial mudar |
 | `src/uip_engine/agent_skills.py` | Sync idempotente dos skills CCS para Codex/Claude. | Quando skill global mudar |
 | `src/uip_engine/heuristics/*.py` | Escape hatches python para regras `detect.type: python`. | Quando regra precisar de lógica não-declarativa |
@@ -30,13 +36,16 @@ qual arquivo modificar para qual tipo de mudança.
 
 ## Mudanças que NÃO requerem tocar arquivos além de rules.yaml
 
-- Adicionar regra (mesmo tipo de detect já registrado).
+- Adicionar regra explícita (mesmo tipo de detect já registrado).
 - Editar texto, severidade, exemplos.
 - Promover/rebaixar severidade.
 - Deletar regra.
 - Mudar `target` de regra (W-* virar `all`).
 - Mudar fix prose.
 - Mudar regex de detecção.
+
+Exceção deliberada: pins de Studio/NuGet governados por D-1*/J-1 vivem em
+`assets/canonical_pins.yaml`; o loader sintetiza as rules efetivas em parse-time.
 
 ## Mudanças que requerem tocar OUTRO arquivo
 
@@ -226,7 +235,7 @@ instalados via `pyproject.toml`:
 | Script | Função |
 |---|---|
 | `ccs-uip` | gate local completo, sem upload |
-| `ccs-uip-publish-dev` | operação autenticada: versão ativa PROD → bump → `uip rpa pack` → upload DEV → download `.nupkg` |
+| `ccs-uip-publish` | operação autenticada: seleção de projetos → bump por `projectVersion` → `uip rpa pack --skip-analyze` → upload DEV → download `.nupkg` |
 
 O comando `uip` fica reservado para a CLI oficial da UiPath (`@uipath/cli`) e
 não deve ser publicado por esta toolchain.
@@ -236,24 +245,34 @@ Subcomandos atômicos (`review`, `fix`, `migrate-windows`, `pack-scrub`,
 existindo para debug e para o pipeline interno do `cli all`, mas somente via
 `python -m uip_engine.cli ...`; o comando público `ccs-uip` rejeita subcomandos.
 
-`ccs-uip-publish-dev` fica fora do `ccs-uip` porque usa sessão/login e muda
+`ccs-uip-publish` fica fora do `ccs-uip` porque usa sessão/login e muda
 estado em tenant DEV. Ele deve permanecer explícito no shell e nos logs.
 
 ## Pre-publish gate (`review` = canonical do gate, chamado dentro do `ccs-uip`)
 
-`review` é o **canonical pre-publish gate**: SEMPRE roda o pipeline completo
-sem opt-out. Se passa, projeto é publish-safe garantido.
+`review` é o **canonical pre-publish gate**: roda regras locais primeiro,
+bloqueia precondições estruturais de publish-readiness, e só então executa
+gates externos oficiais/legados. Sem opt-out por CLI. Se passa, projeto é
+publish-safe garantido.
+
+### Precondições estruturais
+
+`J-9`, `W-40` e `A-19d` são blockers de formato/contrato antes de qualquer
+gate externo caro. Se qualquer uma dessas regras emitir `ERROR`/`HALT`, o
+review retorna erro e não invoca restore/analyzer/pack/activity-compile nessa
+execução. Isso evita cascata de diagnósticos do `uip` sobre uma árvore que a
+própria engine já sabe que não é publicável.
 
 ### Pipeline de gates
 
 | # | Gate | Função | Implementação |
 |---|------|--------|---------------|
-| 1 | Rules Sicoob | Regras locais YAML (A-*, S-*, N-*, W-*, D-*, etc.). | `runner.run` |
+| 1 | Rules Sicoob | Regras locais YAML (A-*, S-*, N-*, W-*, D-*, etc.) sobre a ProjectView produtiva. | `runner.run` + `project_view.py` |
 | 2 | Lib-contract override | Downgrade findings que conflitam com contrato CCS_* exposto. | `_apply_sicoob_lib_overrides` |
 | 3 | UiPath restore | official `uip rpa restore <project> <tmp-out>` preferred — peer dep/feed/package graph resolution before analyzer/pack. On failure emits `UIPATH:RESTORE_*` and blocks later official analyzer/pack for that run. | `_run_official_restore_gate` |
 | 4 | UiPath Analyzer | official `uip rpa analyze` preferred; legacy uipcli `analyze` fallback — ST-* oficiais, contrato lib NuGet, Roslyn compile, SecureString flow. Findings `UIPATH:<code>`. | `_inject_analyzer_findings` |
 | 5 | NuGet restore fallback | Legacy `nuget restore project.json` only when official restore did not handle dependencies. Emite `NUGET:NU<NNNN>` por code. NU1101/1102/1107/1605/3026/5048 promoted ERROR. | `_run_nuget_restore_gate` |
-| 6 | UiPath pack (publish dry-run) | official `uip rpa pack <project> <out>` preferred; legacy `uipcli publish -o Process -f <tmpdir>` fallback — equivalent a pack dry-run sem upload. Captura BC* compile errors + validation que só aparecem no flow de publish. Emite `UIPATH:PACK`. | `_run_uipcli_pack_gate` |
+| 6 | UiPath pack (publish dry-run) | official `uip rpa pack <prepared-project> <out> --skip-analyze` preferred; legacy `uipcli publish -o Process -f <tmpdir>` fallback — equivalent a pack dry-run sem upload. Captura BC* compile errors + validation que só aparecem no flow de publish. Emite `UIPATH:PACK`. | `_run_uipcli_pack_gate` + `publish_readiness.py` |
 
 ### Cobertura por gate
 
@@ -269,7 +288,7 @@ sem opt-out. Se passa, projeto é publish-safe garantido.
 ### Opt-out
 
 Sem opt-out via CLI. `--no-analyzer-gate` flag mantida apenas como deprecation
-warning — emite `[WARNING] --no-analyzer-gate is deprecated and ignored; review always runs analyzer gate.` e ignora.
+warning — emite `[WARNING] --no-analyzer-gate is deprecated and ignored; review controls analyzer/pack gates.` e ignora.
 
 **Env override (test harness apenas)**: `UIP_TOOLCHAIN_DISABLE_EXTERNAL_GATES=1`
 pula gates externos analyzer/nuget/pack (não invoca `uip`/uipcli/nuget). Usado pelo pytest harness (em
@@ -281,9 +300,9 @@ unit tests. NÃO usar em produção.
 Cada gate falha graceful se binary não disponível:
 - Official restore (uip ausente): falls through to legacy NuGet/analyzer/pack gates.
 - Official restore failure: emits `UIPATH:RESTORE_*`; analyzer/pack are skipped for that review run.
-- Analyzer fallback (uipcli ausente): warn stderr `[analyzer-gate] uipcli not found — gate skipped`. Set `UIPATH_STUDIO_CLI`.
+- Analyzer fallback (official `uip` e uipcli ausentes): warn stderr `[analyzer-gate] official uip unavailable and uipcli not found — gate skipped`. Set `UIPATH_UIP_CLI` ou `UIPATH_STUDIO_CLI`.
 - NuGet fallback (nuget.exe ausente): warn `[NUGET-GATE] nuget binary not found; skipping`. Set `UIPATH_NUGET_CLI` ou install nuget.exe / dotnet SDK. Se só dotnet disponível, skipa silente (dotnet restore não suporta UiPath project.json).
-- Pack fallback (uipcli ausente): warn `[PACK-GATE] uipcli not found — gate skipped`.
+- Pack fallback (official `uip` e uipcli ausentes): warn `[PACK-GATE] official uip unavailable and uipcli not found — gate skipped`.
 
 ### Tempo total
 
@@ -314,7 +333,7 @@ Executa antes (baseline) e depois (post-diff) do fix loop. Captura o que Layer 1
 
 **Studio version mismatch**: uipcli respeita `project.json.targetFramework`. Local Studio v26.x analisando project Windows-5.x carrega rules compat. Diff gate elimina falsos positivos vindos de rules-novas em Studio local.
 
-**Cache** (F27): baseline cacheado em `.uip-toolchain/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA1(project.json mtime + xaml count + max xaml mtime) invalida quando projeto muda materialmente. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados).
+**Cache** (F27/F41): baseline cacheado em `.uip-toolchain/.tmp/analyzer_cache/<project_sig>/analyzer_baseline_<content_sig>.json`. `project_sig`=SHA1(absolute path do project_root, 16 hex chars) isola per-project. `content_sig`=SHA256 truncado gerado por `project_view.py`: conteúdo de `project.json`, `project.uiproj`, `webAppManifest.json`, `NuGet.config`, XAMLs produtivos, lista canônica de diretórios ignorados, `rules.yaml`, módulos de gate/readiness e identidade da CLI oficial `uip` quando disponível. Aloja em engine `.tmp/` (gitignored, descartável) — NÃO polui o working dir do projeto UiPath. Re-runs consecutivos pulam baseline (~30-60s economizados) sem aceitar cache obsoleto por mtime, regra, helper ou CLI.
 
 **Discovery**: ordem de busca:
 1. Official CLI: env var `UIPATH_UIP_CLI`, depois PATH lookup de `uip`.
@@ -517,7 +536,7 @@ serializa em XAML mesmo não exibindo no painel design-time).
   ```
   [SEV] [rule_id] linha N: <message>
         why: <description 1ª linha>
-        fix: <fix.prose 1ª linha — fallback description quando prose ausente>
+        fix: <fix.prose 1ª linha>
   ```
 - Exit code: ignorado por Claude Code (hook não bloqueia).
 
@@ -537,11 +556,17 @@ review humano, prompt injection externa.
 
 Princípio: `rules.yaml` é fonte única. LLM consome rules **JIT via findings**,
 não via catálogo carregado no system prompt. Custo base de contexto = 0.
+O runtime esperado é modelo frontier (Claude Opus, Codex ou equivalente), mas
+a rule nunca depende de fornecedor/modelo específico.
 
 Campos por rule consumidos pelo LLM (em ordem de prioridade):
-1. `fix.prose` — imperativo direto (≤3 linhas). Backfill opt-in caso a caso.
-2. `description` — fallback quando prose ausente. Hook renderiza 1ª linha.
+1. `fix.prose` — imperativo direto; obrigatório em toda rule efetiva.
+2. `description` — contexto secundário, nunca fallback para ausência de prose.
 3. `examples` — só em review humano, não inline em hook.
 
 Não fragmentar prose em arquivos paralelos. Se prose precisa expandir, vive
 inline em `rules.yaml` no campo `fix.prose`.
+
+`python -m uip_engine.cli validate` roda schema + rule-quality. Falha se uma
+rule ficar sem `fix.prose` ou se o texto acoplar execução a runtime/agente
+específico.
