@@ -207,7 +207,7 @@ def _single_args(
         "--dev-tenant",
         DEV_TENANT,
         "--out-dir",
-        str(work_root / candidate.folder_name),
+        str(work_root / f"{candidate.index:03d}"),
         "--download-dir",
         str(out_dir),
         "--timeout",

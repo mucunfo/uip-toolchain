@@ -143,13 +143,48 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     assert calls[2][:3] == [
         "rpa", "pack", str((tmp_path / "RepoA").resolve()),
     ]
-    assert calls[2][3].endswith(str(Path("RepoA") / "pack"))
+    assert calls[2][3].endswith(str(Path("001") / "pack"))
     assert str(tmp_path / "out" / ".work") not in calls[2][3]
     assert calls[2][4:] == [
         "--package-version", "1.0.1",
         "--skip-analyze",
         "--output", "json",
     ]
+
+
+def test_batch_uses_short_work_dir_for_long_project_paths(tmp_path):
+    long_repo = (
+        "conciliacao-contabil-carteiras-credito-identificar-diferencas"
+        "\\conciliacao-contabil-carteiras-credito-identificar-diferencas-dispatcher"
+    )
+    project = tmp_path / long_repo
+    project.mkdir(parents=True)
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "ConciliacaoContabilCarteiraCreditoIdentificarDiferencas_Dispatcher",
+            "projectVersion": "1.0.0",
+        }),
+        encoding="utf-8",
+    )
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    candidate = publish_done.discover_projects(tmp_path)[0]
+    args = publish_done.build_parser().parse_args([
+        "major",
+        str(tmp_path),
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    single = publish_done._single_args(
+        candidate=candidate,
+        batch_args=args,
+        out_dir=tmp_path / "out",
+        work_root=tmp_path / "work",
+    )
+
+    assert single.project == str(project.resolve())
+    assert single.out_dir == str(tmp_path / "work" / "001")
+    assert long_repo not in single.out_dir
 
 
 def test_batch_dry_run_does_not_call_uip(tmp_path):
