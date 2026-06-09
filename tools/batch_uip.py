@@ -22,9 +22,15 @@ WHY THIS EXISTS — timeout root-cause (observed 2026-05-28):
 
 MECHANISM:
   1. heavy-detection (project.json target/deps) -> heavy scheduled first.
-  2. two-phase adaptive timeout: Phase A parallel (t1); every TIMEOUT is
-     auto-requeued to Phase B sequential (t2 >> t1). No manual intervention.
-  3. nuget warms naturally after the first project; pace drops sharply.
+  2. Phase A is serialized by default because official `uip rpa analyze` and
+     restore are not reliably safe under concurrent `ccs-uip` processes in the
+     same Windows user profile / NuGet cache. `--workers` is retained for
+     command compatibility but is clamped to 1.
+  3. two-phase adaptive retry: every TIMEOUT or FAIL is auto-requeued to
+     Phase B sequential (t2 >> t1). The official UiPath host can occasionally
+     surface transient restore/analyzer assembly-load failures; a second clean
+     serial run distinguishes that from a persistent project blocker.
+  4. nuget warms naturally after the first project; pace drops sharply.
 """
 from __future__ import annotations
 import argparse, json, re, subprocess, sys, time
@@ -120,7 +126,11 @@ def main() -> int:
         "--workers",
         type=int,
         default=3,
-        help="Parallel workers for Phase A (default: %(default)s).",
+        help=(
+            "Requested Phase A workers. Clamped to 1 while official uip gates "
+            "are active, because concurrent analyzer/restore runs are unstable "
+            "(default: %(default)s)."
+        ),
     )
     ap.add_argument(
         "--t1",
@@ -138,20 +148,40 @@ def main() -> int:
     projects = discover(Path(a.input))
     heavy = [p for p in projects if is_heavy(p)]
     order = heavy + [p for p in projects if p not in heavy]
+    phase_a_workers = 1
+    if a.workers != phase_a_workers:
+        print(
+            f"[batch] --workers {a.workers} requested; clamped to 1 because "
+            "official uip analyzer/restore is not concurrency-safe in this "
+            "environment."
+        )
     print(f"adaptive batch: {len(projects)} projects ({len(heavy)} heavy) | "
-          f"Phase A workers={a.workers} t1={a.t1}s | Phase B seq t2={a.t2}s")
+          f"Phase A workers={phase_a_workers} t1={a.t1}s | Phase B seq t2={a.t2}s")
     results: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+    with ThreadPoolExecutor(max_workers=phase_a_workers) as ex:
         futs = {ex.submit(run_one, p, a.t1): p for p in order}
         for i, f in enumerate(as_completed(futs), 1):
             r = f.result(); results[r["name"]] = r
             print(f"[A {i:2}/{len(order)}] {str(r['exit']):8} {r['decision']:16} {r['secs']}s  {r['name']}")
-    tos = [results[Path(p).name]["path"] for p in order if results[Path(p).name]["exit"] == "TIMEOUT"]
-    if tos:
-        print(f"\nPhase B: {len(tos)} timeout(s) -> sequential retry (t2={a.t2}s)")
-        for j, p in enumerate(tos, 1):
+    retry_paths = [
+        results[Path(p).name]["path"]
+        for p in order
+        if (
+            results[Path(p).name]["exit"] == "TIMEOUT"
+            or results[Path(p).name].get("decision") == "FAIL"
+        )
+    ]
+    if retry_paths:
+        print(
+            f"\nPhase B: {len(retry_paths)} timeout/fail item(s) -> "
+            f"sequential retry (t2={a.t2}s)"
+        )
+        for j, p in enumerate(retry_paths, 1):
             r = run_one(p, a.t2); results[r["name"]] = r
-            print(f"[B {j}/{len(tos)}] {str(r['exit']):8} {r['decision']:16} {r['secs']}s  {r['name']}")
+            print(
+                f"[B {j}/{len(retry_paths)}] {str(r['exit']):8} "
+                f"{r['decision']:16} {r['secs']}s  {r['name']}"
+            )
     final = [results[Path(p).name] for p in projects]
     npass = sum(1 for r in final if r["decision"] in ("PASS", "PASS-WITH-NOTES", "PENDING_REVIEW"))
     pct = round(100 * npass / len(final), 1) if final else 0.0

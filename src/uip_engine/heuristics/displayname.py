@@ -6,6 +6,7 @@ Flagged: `Step 3` invocando `RealizarTransferencia.xaml`.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from uip_engine._types import Finding
 
@@ -32,6 +33,38 @@ def _basename(path: str) -> str:
     return name
 
 
+def _canonical_path(path: str) -> str:
+    p = path.replace("\\", "/").strip().lstrip("./")
+    while p.startswith("/"):
+        p = p[1:]
+    return p
+
+
+def _workflow_path_matches_disk(pc, workflow_file_name: str) -> bool:
+    """Return True only when WorkflowFileName resolves with exact casing.
+
+    S-8b derives DisplayName from WorkflowFileName. If WorkflowFileName is
+    missing or case-skewed, S-8b must not normalize DisplayName from a broken
+    reference; S-19b owns that blocker.
+    """
+    if pc is None:
+        return True
+    if workflow_file_name.startswith("[") or workflow_file_name.startswith("{"):
+        return False
+
+    requested = _canonical_path(workflow_file_name)
+    for xaml in Path(pc.root).rglob("*.xaml"):
+        parts = {part.lower() for part in xaml.parts}
+        if ".local" in parts or ".tmp" in parts:
+            continue
+        try:
+            if xaml.relative_to(pc.root).as_posix() == requested:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def detect_s8b_displayname_mismatch(rule, fc, pc):
     """DisplayName must equal basename(WorkflowFileName), with optional `(suffix)`.
 
@@ -51,6 +84,8 @@ def detect_s8b_displayname_mismatch(rule, fc, pc):
             else:
                 file, display = m.group(1), m.group(2)
             if file.startswith("[") or "{" in file:
+                continue
+            if not _workflow_path_matches_disk(pc, file):
                 continue
             expected = _basename(file)
             # Allow exact match OR `<expected> (suffix)` (any context).

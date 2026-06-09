@@ -1,5 +1,5 @@
 """Tests Tier 0 regras novas: D-1q-CCS-AUTO, J-MUST-RESTORE-ALL,
-J-PIN-BRACKETS, W-MSCORLIB-REF."""
+J-PIN-BRACKETS."""
 from __future__ import annotations
 
 import json

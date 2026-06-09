@@ -40,5 +40,5 @@ python -m uip_engine.cli review <project> --format json
 For batch validation, use:
 
 ```powershell
-python tools/batch_uip.py <input-file> --workers 3 --t1 900 --t2 2400
+python tools/batch_uip.py <input-file> --workers 1 --t1 900 --t2 2400
 ```

@@ -1646,37 +1646,10 @@ rules:
       prose: |
         Corrigir este finding aplicando a regra "Studio Modern quirks pos-migracao": Nao-deterministicos, nao detectaveis estaticamente: (a) `Invoke Workflow` retorna "Nao e possivel localizar o fluxo de trabalho" em runtime recriar a atividade Invoke Workflow apontando para o mesmo arquivo....
         Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
-  - id: W-MSCORLIB-REF
-    severity: INFO
-    category: architectural
-    target: windows
-    title: "<AssemblyReference>mscorlib</AssemblyReference> em XAML (legacy artifact)"
-    description: |
-      Activity Migrator pós Legacy→Windows converte `xmlns:` corretamente
-      pra `System.Private.CoreLib` mas deixa `<AssemblyReference>mscorlib`
-      no bloco `TextExpression.ReferencesForImplementation`. Bench reference
-      tem esse padrão em todos XAMLs e compila/executa OK.
-
-      Não bloqueia compile + runtime. Reportado como INFO pra rastreabilidade
-      e eventual cleanup batch (não auto-aplicado: removal pode requerer
-      Modern UI Studio refresh).
-    applies_to:
-      include: ["**/*.xaml"]
-      exclude:
-        - "**/.local/**"
-        - "**/.tmp/**"
-    detect:
-      type: regex
-      pattern: "<AssemblyReference>mscorlib</AssemblyReference>"
-
 # ---- J — project.json ----
 
   # J-1 (studioVersion pin) sintetizado em parse-time pelo loader a partir
   # de `assets/canonical_pins.yaml::studio.version`. Ver `canonical.py`.
-    fix:
-      prose: |
-        Corrigir este finding aplicando a regra "<AssemblyReference>mscorlib</AssemblyReference> em XAML (legacy artifact)": Activity Migrator pos LegacyWindows converte `xmlns:` corretamente pra `System.Private.CoreLib` mas deixa `<AssemblyReference>mscorlib` no bloco `TextExpression.ReferencesForImplementation`. Bench reference....
-        Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: J-4
     severity: ERROR
     category: breaking
@@ -3526,6 +3499,40 @@ rules:
           `project.json::designOptions.processOptions.ignoredFiles`.
         - Caso não: refatorar caller para não invocar o file static.
         Studio publish revalida — confirmar zero S-19 antes de publicar.
+
+  - id: S-19b
+    severity: ERROR
+    category: breaking
+    target: all
+    title: "InvokeWorkflowFile referencia workflow ausente ou com casing divergente"
+    description: |
+      `WorkflowFileName="Path\Workflow.xaml"` deve apontar para um arquivo
+      real do projeto com o mesmo casing do path em disco. Windows esconde
+      divergencia de maiusculas/minusculas no filesystem local, mas o pacote
+      publicado/Robot pode resolver o workflow de forma case-sensitive e falhar
+      em runtime com:
+
+        Nao e possivel encontrar o fluxo de trabalho <path>. Verifique se ele
+        faz parte do projeto.
+
+      Caso real: caller invocava `Processamento\GetAndCheckFiles.xaml`, mas o
+      arquivo empacotado era `Processamento\GetandCheckFiles.xaml`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.invoke_refs
+        function: detect_invoke_workflow_file_path_mismatch
+    fix:
+      apply_class: structural
+      prose: |
+        Ajustar `WorkflowFileName` para o path real do arquivo no projeto,
+        preservando exatamente o casing. Se o arquivo nao existir, restaurar o
+        workflow ou remover/refatorar o InvokeWorkflowFile.
 
   - id: S-8b
     severity: WARN

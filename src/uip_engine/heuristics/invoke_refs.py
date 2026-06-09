@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import re
 
+from pathlib import Path
+
 from uip_engine._types import Finding
 
 
@@ -56,6 +58,26 @@ def _normalize(path: str) -> str:
     while p.startswith("/"):
         p = p[1:]
     return p.lower()
+
+
+def _canonical_preserve_case(path: str) -> str:
+    """Canonical path with forward slashes while preserving case."""
+    p = path.replace("\\", "/").strip().lstrip("./")
+    while p.startswith("/"):
+        p = p[1:]
+    return p
+
+
+def _project_xaml_paths(pc) -> dict[str, str]:
+    """Map normalized relative XAML path -> exact relative path on disk."""
+    paths: dict[str, str] = {}
+    for xaml in Path(pc.root).rglob("*.xaml"):
+        parts = {part.lower() for part in xaml.parts}
+        if ".local" in parts or ".tmp" in parts:
+            continue
+        rel = xaml.relative_to(pc.root).as_posix()
+        paths[_normalize(rel)] = rel
+    return paths
 
 
 def _ignored_files_set(pc) -> set[str]:
@@ -106,5 +128,62 @@ def detect_invoke_ignoredfile_ref(rule, fc, pc):
                     fix_prose=(rule.fix or {}).get("prose"),
                 )
             )
+
+    return findings
+
+
+def detect_invoke_workflow_file_path_mismatch(rule, fc, pc):
+    """Detect static InvokeWorkflowFile paths that are missing or case-skewed.
+
+    UiPath packages may resolve invoked workflow entries case-sensitively even
+    on Windows. A repo can therefore pass local filesystem checks while the
+    published package fails at runtime with "cannot find workflow".
+    """
+    if pc is None:
+        return []
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    actual_by_norm = _project_xaml_paths(pc)
+    findings: list[Finding] = []
+    content = fc.active_content
+
+    for m in _RE_INVOKE_WFF.finditer(content):
+        wff = m.group(1)
+        if wff.startswith("[") or wff.startswith("{"):
+            continue
+        requested = _canonical_preserve_case(wff)
+        norm = _normalize(wff)
+        actual = actual_by_norm.get(norm)
+        if actual is None:
+            line = _line_for(content, m.start())
+            findings.append(Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=line,
+                message=(
+                    f"{rule.title}: WorkflowFileName='{wff}' nao existe no "
+                    "projeto. Robot/pack pode falhar com 'cannot find workflow'."
+                ),
+                fix_prose=(rule.fix or {}).get("prose"),
+            ))
+            continue
+        if requested != actual:
+            line = _line_for(content, m.start())
+            findings.append(Finding(
+                rule_id=rule.id,
+                severity=rule.severity,
+                category=rule.category,
+                file=str(fc.path),
+                line=line,
+                message=(
+                    f"{rule.title}: WorkflowFileName='{wff}' difere do path "
+                    f"real '{actual}' apenas por casing/separador. Pacote/Robot "
+                    "pode resolver case-sensitive em runtime."
+                ),
+                fix_prose=(rule.fix or {}).get("prose"),
+            ))
 
     return findings

@@ -17,6 +17,7 @@ from uip_engine._types import Rule, Severity
 from uip_engine.context import FileContext, ProjectContext
 from uip_engine.heuristics.invoke_refs import (
     detect_invoke_ignoredfile_ref,
+    detect_invoke_workflow_file_path_mismatch,
     _normalize,
 )
 
@@ -33,6 +34,22 @@ def _mk_rule() -> Rule:
         fix={
             "apply_class": "structural",
             "prose": "Remover de ignoredFiles ou refatorar caller.",
+        },
+    )
+
+
+def _mk_path_rule() -> Rule:
+    return Rule(
+        id="S-19b",
+        severity=Severity.ERROR,
+        category="breaking",
+        target="all",
+        title="InvokeWorkflowFile referencia workflow ausente ou com casing divergente",
+        description="",
+        detect={"type": "python"},
+        fix={
+            "apply_class": "structural",
+            "prose": "Ajustar WorkflowFileName para o path real.",
         },
     )
 
@@ -246,6 +263,99 @@ def test_s19_loader_validates_apply_class():
     assert s19.severity == Severity.ERROR
     assert s19.category == "breaking"
     assert s19.fix and s19.fix.get("apply_class") == "structural"
+
+
+# ============================================================================
+# Detect S-19b — flagga workflow ausente ou path com casing divergente
+# ============================================================================
+
+def test_s19b_flags_case_mismatch_against_file_on_disk(tmp_path):
+    """Caller referencia GetAndCheckFiles.xaml, mas arquivo real e
+    GetandCheckFiles.xaml -> finding ERROR."""
+    proj, pc = _mk_project(tmp_path, ignored=None)
+    processamento = proj / "Processamento"
+    processamento.mkdir()
+    (processamento / "GetandCheckFiles.xaml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?><Activity />',
+        encoding="utf-8",
+    )
+    body = (
+        '  <ui:InvokeWorkflowFile DisplayName="GetAndCheckFiles" '
+        'WorkflowFileName="Processamento\\GetAndCheckFiles.xaml"/>\n'
+    )
+    fc = _write_xaml(proj, body, name="Process.xaml")
+
+    findings = detect_invoke_workflow_file_path_mismatch(_mk_path_rule(), fc, pc)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule_id == "S-19b"
+    assert f.severity == Severity.ERROR
+    assert "GetAndCheckFiles.xaml" in f.message
+    assert "GetandCheckFiles.xaml" in f.message
+
+
+def test_s19b_flags_missing_static_workflow_file(tmp_path):
+    """WorkflowFileName estatico sem arquivo correspondente -> finding ERROR."""
+    proj, pc = _mk_project(tmp_path, ignored=None)
+    body = '  <ui:InvokeWorkflowFile WorkflowFileName="Missing.xaml"/>\n'
+    fc = _write_xaml(proj, body, name="Process.xaml")
+
+    findings = detect_invoke_workflow_file_path_mismatch(_mk_path_rule(), fc, pc)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "S-19b"
+    assert "Missing.xaml" in findings[0].message
+    assert "nao existe" in findings[0].message
+
+
+def test_s19b_allows_exact_path_with_different_separator(tmp_path):
+    """Separador \\ ou / nao deve importar quando o casing bate."""
+    proj, pc = _mk_project(tmp_path, ignored=None)
+    processamento = proj / "Processamento"
+    processamento.mkdir()
+    (processamento / "GetandCheckFiles.xaml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?><Activity />',
+        encoding="utf-8",
+    )
+    body = (
+        '  <ui:InvokeWorkflowFile '
+        'WorkflowFileName="Processamento\\GetandCheckFiles.xaml"/>\n'
+    )
+    fc = _write_xaml(proj, body, name="Process.xaml")
+
+    findings = detect_invoke_workflow_file_path_mismatch(_mk_path_rule(), fc, pc)
+
+    assert findings == []
+
+
+def test_s19b_skips_dynamic_workflow_file_name(tmp_path):
+    """WorkflowFileName=[expr] nao e resolvido estaticamente."""
+    proj, pc = _mk_project(tmp_path, ignored=None)
+    body = '  <ui:InvokeWorkflowFile WorkflowFileName="[in_StWorkflow]"/>\n'
+    fc = _write_xaml(proj, body, name="Process.xaml")
+
+    findings = detect_invoke_workflow_file_path_mismatch(_mk_path_rule(), fc, pc)
+
+    assert findings == []
+
+
+def test_s19b_loader_validates_apply_class():
+    """S-19b deve carregar como ERROR estrutural."""
+    from uip_engine.loader import load_rules
+    from uip_engine import detectors, fixers
+
+    rules_path = Path(__file__).resolve().parents[1] / "rules.yaml"
+    rules = load_rules(
+        rules_path,
+        registered_detectors=set(detectors.REGISTRY.keys()),
+        registered_fixers=set(fixers.REGISTRY.keys()),
+    )
+    s19b = next((r for r in rules if r.id == "S-19b"), None)
+    assert s19b is not None
+    assert s19b.severity == Severity.ERROR
+    assert s19b.category == "breaking"
+    assert s19b.fix and s19b.fix.get("apply_class") == "structural"
 
 
 # ============================================================================

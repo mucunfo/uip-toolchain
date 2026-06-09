@@ -1373,6 +1373,7 @@ def _inject_official_analyzer_findings(result, project_root: Path, timeout: int,
     from .official_uip import (
         discover_official_uip,
         iter_analyzer_records,
+        official_failure_text,
         run_official_uip,
     )
 
@@ -1409,6 +1410,17 @@ def _inject_official_analyzer_findings(result, project_root: Path, timeout: int,
                   file=sys.stderr)
         try:
             res = run_official_uip(args, timeout=timeout, uip_path=official)
+            if (
+                res.returncode != 0
+                and "Could not load file or assembly" in official_failure_text(res)
+            ):
+                if verbose:
+                    print(
+                        "[analyzer-gate] official uip assembly-load failure; "
+                        "retrying once before reporting blocker.",
+                        file=sys.stderr,
+                    )
+                res = run_official_uip(args, timeout=timeout, uip_path=official)
         except Exception as exc:
             result.add(Finding(
                 rule_id="UIPATH:ANALYZE_HALT",
@@ -1431,7 +1443,7 @@ def _inject_official_analyzer_findings(result, project_root: Path, timeout: int,
             injected += 1
 
         if res.returncode != 0 and injected == 0:
-            from .official_uip import diagnose_official_uip_failure, official_failure_text
+            from .official_uip import diagnose_official_uip_failure
 
             diagnostics = diagnose_official_uip_failure(
                 official_failure_text(res),

@@ -153,8 +153,9 @@ python -m uip_engine.cli docs --out .tmp/all-rules.md
 # Workspace multi-projeto
 python -m uip_engine.cli review <workspace> --multi-project
 
-# Batch de validação/fix multi-projeto com retry para projetos lentos
-python tools/batch_uip.py C:\Users\lisan\Desktop\temp\_uip_relacao.txt --workers 3 --t1 900 --t2 2400
+# Batch de validação/fix multi-projeto com retry para TIMEOUT/FAIL transitório
+# `uip rpa analyze`/restore oficial é serializado para evitar falso FAIL por concorrência.
+python tools/batch_uip.py C:\Users\lisan\Desktop\temp\_uip_relacao.txt --workers 1 --t1 900 --t2 2400
 
 # Diagnóstico da CLI oficial UiPath usada pelos gates externos
 python -m uip_engine.cli doctor-uipath-cli

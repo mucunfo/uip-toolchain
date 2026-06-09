@@ -433,3 +433,43 @@ def test_official_analyzer_gate_classifies_assembly_failure(monkeypatch, tmp_pat
     assert len(result.findings) == 1
     assert result.findings[0].rule_id == "UIPATH:CLI_ASSEMBLY_MISSING"
     assert "Microsoft.VisualStudio.Services.Common" in result.findings[0].message
+
+
+def test_official_analyzer_gate_retries_transient_assembly_failure(
+    monkeypatch,
+    tmp_path,
+):
+    project = tmp_path / "Proj"
+    project.mkdir()
+    (project / "project.json").write_text("{}", encoding="utf-8")
+    first_payload = {
+        "Result": "Error",
+        "Message": (
+            "Analyze failed: Could not load file or assembly "
+            "'UiPath.Process.Activities, Culture=neutral'"
+        ),
+    }
+    second_payload = {"Result": "Success", "Code": "Analyze", "Data": {"Success": True}}
+    result = ValidationResult()
+    fake_uip = tmp_path / "uip.cmd"
+    fake_uip.write_text("", encoding="utf-8")
+    calls = {"count": 0}
+
+    def fake_run(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return _official_result(first_payload, 1)
+        return _official_result(second_payload, 0)
+
+    monkeypatch.setattr(official_uip, "discover_official_uip", lambda: fake_uip)
+    monkeypatch.setattr(
+        official_uip,
+        "get_official_uip_version",
+        lambda _: official_uip.OfficialUipVersion("1.1.0", 1, 1, 0),
+    )
+    monkeypatch.setattr(official_uip, "run_official_uip", fake_run)
+
+    assert cli._inject_official_analyzer_findings(result, project, 10, False)
+
+    assert calls["count"] == 2
+    assert result.findings == []
