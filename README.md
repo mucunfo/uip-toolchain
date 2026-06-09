@@ -56,7 +56,7 @@ Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 | `UIP_TOOLCHAIN_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
 | `UIP_TOOLCHAIN_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
-| `UIP_TOOLCHAIN_DEV_ROBOT_PACKER` | `%USERPROFILE%\Documents\UiPathStudio23x\UiPath\Studio\UiRobot.exe` | override do packer 23.10 usado por `ccs-uip-publish` |
+| `UIP_TOOLCHAIN_DEV_ROBOT_PACKER` | auto-discovery 23.10 | override explícito do `UiRobot.exe` 23.10 usado por `ccs-uip-publish` |
 
 Status final do `ccs-uip <path>`:
 
@@ -186,7 +186,7 @@ Fluxo:
 5. com commit habilitado, faz `git fetch origin <branch>` e bloqueia se a branch local estiver atrás/divergente do remoto;
 6. grava a próxima versão no `project.json` antes do pack;
 7. prepara o projeto para o pack (`project.uiproj` derivado de `project.json`);
-8. exige packer `UiRobot.exe` 23.10 (`UIP_TOOLCHAIN_DEV_ROBOT_PACKER` pode apontar para o binário);
+8. exige packer `UiRobot.exe` 23.10; a descoberta tenta `UIP_TOOLCHAIN_DEV_ROBOT_PACKER`, `Documents\UiPathStudio23x`, instalações padrão em `%LOCALAPPDATA%`, `%ProgramFiles%` e `PATH`;
 9. remove referências legadas conhecidamente incompatíveis com pack headless e roda `UiRobot.exe pack <project.json> -o <out> -v <version>`;
 10. faz upload do pacote em `RPA_Desenvolvimento`;
 11. valida que o `.nupkg` gerado contém TFM compatível com DEV net6 (`net6.0-windows*`) antes de qualquer upload;

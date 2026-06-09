@@ -329,6 +329,68 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
     assert calls[2] == ["login", "tenant", "list", "--output", "json"]
 
 
+def test_discover_dev_robot_packer_finds_standard_candidate_after_wrong_version(monkeypatch, tmp_path):
+    wrong = tmp_path / "wrong" / "UiRobot.exe"
+    right = tmp_path / "right" / "UiRobot.exe"
+    wrong.parent.mkdir()
+    right.parent.mkdir()
+    wrong.write_text("", encoding="utf-8")
+    right.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        publish_dev,
+        "_dev_robot_packer_candidates",
+        lambda: [
+            publish_dev._PackerCandidate(wrong, "standard install"),
+            publish_dev._PackerCandidate(right, "portable 23.10"),
+        ],
+    )
+    monkeypatch.setattr(
+        publish_dev,
+        "_uirobot_version",
+        lambda path: "UiRobot 25.10.1" if path == wrong else "UiRobot 23.10.8",
+    )
+
+    assert publish_dev.discover_dev_robot_packer() == right
+
+
+def test_discover_dev_robot_packer_fails_for_explicit_wrong_version(monkeypatch, tmp_path):
+    wrong = tmp_path / "UiRobot.exe"
+    wrong.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        publish_dev,
+        "_dev_robot_packer_candidates",
+        lambda: [
+            publish_dev._PackerCandidate(
+                wrong,
+                publish_dev.DEV_ROBOT_PACKER_ENV_VAR,
+                explicit=True,
+            ),
+        ],
+    )
+    monkeypatch.setattr(publish_dev, "_uirobot_version", lambda path: "UiRobot 25.10.1")
+
+    with pytest.raises(RuntimeError, match="not a Studio/Robot 23.10 packer"):
+        publish_dev.discover_dev_robot_packer()
+
+
+def test_default_dev_robot_packer_candidates_include_standard_windows_installs(monkeypatch, tmp_path):
+    local_app_data = tmp_path / "LocalAppData"
+    program_files = tmp_path / "ProgramFiles"
+    monkeypatch.delenv(publish_dev.DEV_ROBOT_PACKER_ENV_VAR, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    monkeypatch.setenv("ProgramFiles", str(program_files))
+    monkeypatch.delenv("ProgramW6432", raising=False)
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.setattr(publish_dev.shutil, "which", lambda name: None)
+
+    candidates = publish_dev._default_dev_robot_packer_candidates()
+
+    assert local_app_data / "Programs" / "UiPath" / "Studio" / "UiRobot.exe" in candidates
+    assert program_files / "UiPath" / "Studio" / "UiRobot.exe" in candidates
+
+
 def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
     project = tmp_path / "Project"
     project.mkdir()

@@ -60,6 +60,13 @@ class PublishPlan:
     changed_files: tuple[Path, ...] = ()
 
 
+@dataclass(frozen=True)
+class _PackerCandidate:
+    path: Path
+    source: str
+    explicit: bool = False
+
+
 RunUip = Callable[[list[str]], OfficialUipResult]
 RunPack = Callable[[Path, Path, str, int], None]
 RunReview = Callable[[Path], None]
@@ -178,15 +185,95 @@ def _find_nupkg(pack_dir: Path, package_key: str, version: str) -> Path:
     raise RuntimeError(f"UiRobot pack did not create a .nupkg in {pack_dir}")
 
 
-def _default_dev_robot_packer_candidates() -> list[Path]:
-    candidates: list[Path] = []
+def _append_candidate(
+    candidates: list[_PackerCandidate],
+    seen: set[str],
+    path: Path,
+    *,
+    source: str,
+    explicit: bool = False,
+) -> None:
+    key = str(path).lower()
+    if key in seen:
+        return
+    seen.add(key)
+    candidates.append(_PackerCandidate(path=path, source=source, explicit=explicit))
+
+
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return Path(value) if value else None
+
+
+def _dev_robot_packer_candidates() -> list[_PackerCandidate]:
+    candidates: list[_PackerCandidate] = []
+    seen: set[str] = set()
+
     explicit = os.environ.get(DEV_ROBOT_PACKER_ENV_VAR)
     if explicit:
-        candidates.append(Path(explicit))
-    candidates.append(
-        Path.home() / "Documents" / "UiPathStudio23x" / "UiPath" / "Studio" / "UiRobot.exe"
+        _append_candidate(
+            candidates,
+            seen,
+            Path(explicit),
+            source=DEV_ROBOT_PACKER_ENV_VAR,
+            explicit=True,
+        )
+
+    _append_candidate(
+        candidates,
+        seen,
+        Path.home() / "Documents" / "UiPathStudio23x" / "UiPath" / "Studio" / "UiRobot.exe",
+        source="portable 23.10",
     )
+
+    local_app_data = _env_path("LOCALAPPDATA")
+    if local_app_data:
+        _append_candidate(
+            candidates,
+            seen,
+            local_app_data / "Programs" / "UiPath" / "Studio" / "UiRobot.exe",
+            source="%LOCALAPPDATA% standard install",
+        )
+        _append_candidate(
+            candidates,
+            seen,
+            local_app_data / "UiPath" / "Studio" / "UiRobot.exe",
+            source="%LOCALAPPDATA% UiPath install",
+        )
+        ui_path_root = local_app_data / "UiPath"
+        if ui_path_root.is_dir():
+            for path in sorted(ui_path_root.glob("app-*/UiRobot.exe")):
+                _append_candidate(
+                    candidates,
+                    seen,
+                    path,
+                    source="%LOCALAPPDATA% UiPath app-* install",
+                )
+
+    for env_name in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+        root = _env_path(env_name)
+        if root:
+            _append_candidate(
+                candidates,
+                seen,
+                root / "UiPath" / "Studio" / "UiRobot.exe",
+                source=f"%{env_name}% standard install",
+            )
+
+    on_path = shutil.which("UiRobot.exe")
+    if on_path:
+        _append_candidate(
+            candidates,
+            seen,
+            Path(on_path),
+            source="PATH",
+        )
+
     return candidates
+
+
+def _default_dev_robot_packer_candidates() -> list[Path]:
+    return [candidate.path for candidate in _dev_robot_packer_candidates()]
 
 
 def _uirobot_version(packer: Path) -> str:
@@ -208,22 +295,46 @@ def _uirobot_version(packer: Path) -> str:
 
 
 def discover_dev_robot_packer() -> Path:
-    for candidate in _default_dev_robot_packer_candidates():
-        if not candidate.is_file():
-            continue
-        version = _uirobot_version(candidate)
-        if DEV_ROBOT_PACKER_VERSION_RE.search(version):
-            return candidate
-        raise RuntimeError(
-            f"{candidate} is not a Studio/Robot 23.10 packer. Version output: {version}. "
-            f"Set {DEV_ROBOT_PACKER_ENV_VAR} to a UiRobot.exe from Studio/Robot 23.10."
-        )
+    searched: list[str] = []
+    rejected: list[str] = []
 
-    searched = ", ".join(str(path) for path in _default_dev_robot_packer_candidates())
+    for candidate in _dev_robot_packer_candidates():
+        searched.append(f"{candidate.path} ({candidate.source})")
+        if not candidate.path.is_file():
+            if candidate.explicit:
+                raise RuntimeError(
+                    f"{DEV_ROBOT_PACKER_ENV_VAR} points to a missing UiRobot.exe: "
+                    f"{candidate.path}"
+                )
+            continue
+        try:
+            version = _uirobot_version(candidate.path)
+        except RuntimeError as exc:
+            if candidate.explicit:
+                raise
+            rejected.append(f"{candidate.path} ({candidate.source}): {exc}")
+            continue
+        if DEV_ROBOT_PACKER_VERSION_RE.search(version):
+            return candidate.path
+        message = (
+            f"{candidate.path} ({candidate.source}) is not a Studio/Robot 23.10 packer. "
+            f"Version output: {version}."
+        )
+        if candidate.explicit:
+            raise RuntimeError(
+                f"{message} Set {DEV_ROBOT_PACKER_ENV_VAR} to a UiRobot.exe "
+                "from Studio/Robot 23.10."
+            )
+        rejected.append(message)
+
+    searched_text = ", ".join(searched)
+    rejected_text = ""
+    if rejected:
+        rejected_text = " Existing non-compatible candidates: " + " | ".join(rejected)
     raise RuntimeError(
         "Studio/Robot 23.10 UiRobot.exe packer not found. "
         f"Set {DEV_ROBOT_PACKER_ENV_VAR} to a UiRobot.exe from Studio/Robot 23.10. "
-        f"Searched: {searched}"
+        f"Searched: {searched_text}.{rejected_text}"
     )
 
 
