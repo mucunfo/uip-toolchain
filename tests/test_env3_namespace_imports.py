@@ -14,10 +14,14 @@ from types import SimpleNamespace
 import pytest
 
 from uip_engine.context import FileContext
-from uip_engine.fixers import apply_insert_namespace_import
+from uip_engine._types import Rule, Severity
+from uip_engine.fixers import apply_insert_namespace_import, apply_strip_namespace_import
 from uip_engine.heuristics.legacy_refs import (
     detect_env3_ensure_namespace_imports,
+    detect_env5_studio_namespace_baseline,
+    detect_env6_stale_namespace_imports,
     _ENV3_NAMESPACE_PATTERNS,
+    _STUDIO_BASELINE_NAMESPACE_IMPORTS,
 )
 
 
@@ -37,7 +41,25 @@ def _wrap_xaml(ns_body: str, body_extra: str = "") -> str:
 
 
 def _make_rule() -> SimpleNamespace:
-    return SimpleNamespace(id="ENV-3", severity=2, category="breaking")
+    return SimpleNamespace(
+        id="ENV-3",
+        severity=2,
+        category="breaking",
+        fix={"prose": "fix"},
+    )
+
+
+def _real_rule(rid: str) -> Rule:
+    return Rule(
+        id=rid,
+        severity=Severity.INFO,
+        category="architectural",
+        target="windows",
+        title=f"test {rid}",
+        description="",
+        detect={"type": "python", "params": {}},
+        fix={"apply_class": "deterministic", "prose": "fix"},
+    )
 
 
 def _make_fc(tmp_path: Path, content: str, name: str = "x.xaml") -> FileContext:
@@ -228,3 +250,37 @@ def test_detect_then_apply_round_trip(tmp_path: Path) -> None:
     fc2 = FileContext(path=f)
     findings2 = detect_env3_ensure_namespace_imports(_make_rule(), fc2, None)
     assert findings2 == []
+
+
+def test_env5_emits_missing_studio_baseline_namespaces(tmp_path: Path) -> None:
+    fc = _make_fc(tmp_path, _wrap_xaml(
+        '      <x:String>System</x:String>\n'
+        '      <x:String>System.Activities</x:String>\n'
+    ))
+
+    findings = detect_env5_studio_namespace_baseline(_real_rule("ENV-5"), fc, None)
+
+    names = {f.fix_mechanical["name"] for f in findings}
+    assert "GlobalConstantsNamespace" in names
+    assert "GlobalVariablesNamespace" in names
+    assert "System" not in names
+    assert names.issubset(_STUDIO_BASELINE_NAMESPACE_IMPORTS)
+
+
+def test_env6_strips_dynamicupdate_namespace(tmp_path: Path) -> None:
+    f = tmp_path / "x.xaml"
+    f.write_text(_wrap_xaml(
+        '      <x:String>System</x:String>\n'
+        '      <x:String>System.Activities.DynamicUpdate</x:String>\n'
+    ), encoding="utf-8")
+    fc = FileContext(path=f)
+
+    findings = detect_env6_stale_namespace_imports(_real_rule("ENV-6"), fc, None)
+
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical == {
+        "type": "strip_namespace_import",
+        "name": "System.Activities.DynamicUpdate",
+    }
+    assert apply_strip_namespace_import(f, findings[0].fix_mechanical, dry_run=False)
+    assert "System.Activities.DynamicUpdate" not in f.read_text(encoding="utf-8")

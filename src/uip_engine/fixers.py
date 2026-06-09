@@ -920,6 +920,161 @@ def apply_delete_variable(file: Path, spec: dict, dry_run: bool = True) -> bool:
     return True
 
 
+def _line_for(content: str, offset: int) -> int:
+    return content[:offset].count("\n") + 1
+
+
+def _remove_exact_span_preserving_line(content: str, start: int, end: int) -> str:
+    """Remove a matched XML declaration, expanding to its whole line when safe."""
+    line_start = content.rfind("\n", 0, start) + 1
+    line_end = content.find("\n", end)
+    if line_end == -1:
+        line_end = len(content)
+        trailing_newline = ""
+    else:
+        trailing_newline = content[line_end:line_end + 1]
+    prefix = content[line_start:start]
+    suffix = content[end:line_end]
+    if prefix.strip() == "" and suffix.strip() == "":
+        return content[:line_start] + content[line_end + len(trailing_newline):]
+    return content[:start] + content[end:]
+
+
+@register("delete_variable_declaration")
+def apply_delete_variable_declaration(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Remove one exact `<Variable ...>` declaration.
+
+    Unlike `delete_variable`, this fixer is occurrence-scoped. It is used by
+    scope-aware unused-variable rules where the same variable name may exist in
+    another scope and must be preserved.
+
+    Spec:
+      declaration: exact XML declaration text to remove
+      line: optional 1-based line guard for the declaration occurrence
+      name: optional safety guard; declaration must contain Name="<name>"
+    """
+    declaration = spec.get("declaration")
+    if not declaration or not isinstance(declaration, str):
+        return False
+    name = spec.get("name")
+    if name and f'Name="{name}"' not in declaration:
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+    matches = list(re.finditer(re.escape(declaration), content))
+    if not matches:
+        return False
+
+    expected_line = spec.get("line")
+    chosen = None
+    if isinstance(expected_line, int):
+        for m in matches:
+            if _line_for(content, m.start()) == expected_line:
+                chosen = m
+                break
+    if chosen is None and len(matches) == 1:
+        chosen = matches[0]
+    if chosen is None:
+        return False
+
+    new_content = _remove_exact_span_preserving_line(
+        content, chosen.start(), chosen.end()
+    )
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
+def _remove_root_argument_default(content: str, class_name: str | None, arg_name: str) -> str:
+    """Remove root default value forms for a deleted x:Property argument."""
+    if not arg_name:
+        return content
+
+    class_candidates: list[str] = []
+    if class_name:
+        class_candidates.append(class_name)
+        short_name = class_name.split(".")[-1]
+        if short_name not in class_candidates:
+            class_candidates.append(short_name)
+
+    if not class_candidates:
+        return content
+
+    new_content = content
+    for candidate in class_candidates:
+        tag = f"this:{candidate}.{arg_name}"
+        # Attribute default on root Activity, before arg_default_to_element_form.
+        new_content = re.sub(
+            rf'\s+{re.escape(tag)}="[^"]*"',
+            "",
+            new_content,
+            count=1,
+        )
+        # Element default after </x:Members>.
+        open_close = re.compile(
+            rf'\s*<{re.escape(tag)}\b[^>]*>.*?</{re.escape(tag)}>\s*',
+            re.DOTALL,
+        )
+        new_content = open_close.sub("\n", new_content, count=1)
+        self_closed = re.compile(
+            rf'\s*<{re.escape(tag)}\b[^>]*/>\s*',
+            re.DOTALL,
+        )
+        new_content = self_closed.sub("\n", new_content, count=1)
+    return new_content
+
+
+@register("delete_argument_declaration")
+def apply_delete_argument_declaration(file: Path, spec: dict, dry_run: bool = True) -> bool:
+    """Remove one exact `<x:Property ...>` argument declaration.
+
+    Spec:
+      declaration: exact XML declaration text to remove
+      line: optional 1-based line guard for the declaration occurrence
+      name: safety guard; declaration must contain Name="<name>"
+      class_name: optional x:Class used to remove matching root default value
+    """
+    declaration = spec.get("declaration")
+    if not declaration or not isinstance(declaration, str):
+        return False
+    name = spec.get("name")
+    if not name or f'Name="{name}"' not in declaration:
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+    matches = list(re.finditer(re.escape(declaration), content))
+    if not matches:
+        return False
+
+    expected_line = spec.get("line")
+    chosen = None
+    if isinstance(expected_line, int):
+        for m in matches:
+            if _line_for(content, m.start()) == expected_line:
+                chosen = m
+                break
+    if chosen is None and len(matches) == 1:
+        chosen = matches[0]
+    if chosen is None:
+        return False
+
+    new_content = _remove_exact_span_preserving_line(
+        content, chosen.start(), chosen.end()
+    )
+    new_content = _remove_root_argument_default(
+        new_content,
+        spec.get("class_name"),
+        name,
+    )
+    if new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
+    return True
+
+
 @register("set_json_field")
 def apply_set_json_field(file: Path, spec: dict, dry_run: bool = True) -> bool:
     """Set JSON field at dot-path to canonical value. Idempotent.
@@ -3032,6 +3187,71 @@ def apply_project_manifest_remove_stale_entries(
     return True
 
 
+@register("delete_project_file")
+def apply_delete_project_file(
+    file: Path,
+    spec: dict,
+    dry_run: bool = True,
+    project_root: Path | None = None,
+) -> bool:
+    """Delete a narrowly-allowed project file.
+
+    This fixer is intentionally allowlisted for Studio hygiene artifacts:
+      - screenshot image files under `.screenshots`
+      - orphan XAML workflows under the current project root
+
+    Spec:
+      target: absolute or project-relative file path
+      sha256: optional race guard; if present, target content must match
+      kind: "screenshot" or "workflow"
+    """
+    import hashlib as _hashlib
+
+    target_raw = spec.get("target")
+    kind = spec.get("kind")
+    if not target_raw or kind not in {"screenshot", "workflow"}:
+        return False
+
+    root = (Path(project_root) if project_root is not None else file.parent).resolve()
+    target = Path(target_raw)
+    if not target.is_absolute():
+        target = root / target
+    try:
+        target = target.resolve()
+        target.relative_to(root)
+    except (OSError, ValueError):
+        return False
+    if not target.is_file():
+        return False
+
+    rel_parts = {p.lower() for p in target.relative_to(root).parts}
+    suffix = target.suffix.lower()
+    if kind == "screenshot":
+        if ".screenshots" not in rel_parts or suffix not in {
+            ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp",
+        }:
+            return False
+    elif kind == "workflow":
+        if suffix != ".xaml":
+            return False
+        if target.name.lower() in {"main.xaml", "process.xaml"}:
+            return False
+
+    expected_hash = spec.get("sha256")
+    try:
+        raw = target.read_bytes()
+    except OSError:
+        return False
+    if expected_hash:
+        actual_hash = _hashlib.sha256(raw).hexdigest()
+        if actual_hash != expected_hash:
+            return False
+
+    if not dry_run:
+        target.unlink()
+    return True
+
+
 @register("sync_project_uiproj")
 def apply_sync_project_uiproj(
     file: Path,
@@ -4042,6 +4262,52 @@ def apply_insert_namespace_import(file: Path, spec: dict, dry_run: bool = True,
         raw = file.read_bytes()
         prefix = b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b""
         file.write_bytes(prefix + new_content.encode("utf-8"))
+    return True
+
+
+@register("strip_namespace_import")
+def apply_strip_namespace_import(file: Path, spec: dict, dry_run: bool = True,
+                                  project_root: Path | None = None) -> bool:
+    """Remove one `<x:String>Namespace</x:String>` import from
+    `<TextExpression.NamespacesForImplementation>`.
+
+    Spec:
+      name: exact namespace import name
+
+    The replacement is intentionally narrow: it only removes x:String entries,
+    preserves BOM, and leaves collection capacity untouched because Studio also
+    tolerates stale Capacity values.
+    """
+    name = (spec or {}).get("name")
+    if not name or not isinstance(name, str):
+        return False
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", name):
+        return False
+
+    content = file.read_text(encoding="utf-8-sig")
+    block_re = re.compile(
+        r"(<TextExpression\.NamespacesForImplementation>)(?P<body>.*?)"
+        r"(</TextExpression\.NamespacesForImplementation>)",
+        re.DOTALL,
+    )
+    changed = False
+
+    def _replace_block(m: re.Match) -> str:
+        nonlocal changed
+        body = m.group("body")
+        item_re = re.compile(
+            rf"[ \t]*<x:String>{re.escape(name)}</x:String>[ \t]*(?:\r?\n)?"
+        )
+        new_body, count = item_re.subn("", body)
+        if count:
+            changed = True
+        return m.group(1) + new_body + m.group(3)
+
+    new_content = block_re.sub(_replace_block, content)
+    if not changed or new_content == content:
+        return False
+    if not dry_run:
+        _write_preserving_bom(file, new_content, _file_has_bom(file))
     return True
 
 

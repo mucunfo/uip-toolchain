@@ -11,6 +11,7 @@ Sprint 1: detect-only. Fixers in sprint 2.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from html import unescape as _xml_unescape
 from pathlib import Path
 from typing import Iterable
@@ -39,6 +40,9 @@ _RE_ANNOTATION = re.compile(
 _RE_ANNOTATION_ATTR = re.compile(
     r'sap2010:Annotation\.AnnotationText\s*=\s*"[^"]*"'
 )
+_RE_DISPLAYNAME_ATTR = re.compile(
+    r'\bDisplayName\s*=\s*"[^"]*"'
+)
 _RE_PROPERTY_ATTRS = re.compile(
     r'<x:Property\.Attributes>.*?</x:Property\.Attributes>',
     re.DOTALL,
@@ -52,6 +56,7 @@ def _scrub_doc_regions(content: str) -> str:
         return " " * len(m.group(0))
     out = _RE_ANNOTATION.sub(_blank, content)
     out = _RE_ANNOTATION_ATTR.sub(_blank, out)
+    out = _RE_DISPLAYNAME_ATTR.sub(_blank, out)
     out = _RE_PROPERTY_ATTRS.sub(_blank, out)
     return out
 
@@ -69,6 +74,144 @@ _RE_VARIABLES_BLOCK = re.compile(
     re.DOTALL,
 )
 
+_RE_VARIABLES_BLOCK_NS_SIMPLE = re.compile(
+    r'<([A-Za-z_][\w.\-:]*?)\.Variables\b[^>]*?>',
+    re.DOTALL,
+)
+_RE_TAG_TOKEN = re.compile(
+    r'<(?P<closing>/)?(?P<tag>[A-Za-z_][\w.\-:]*)(?P<attrs>[^<>]*?)(?P<self>/)?>',
+    re.DOTALL,
+)
+_RE_VARIABLE_TYPEARGS = re.compile(r'\bx:TypeArguments="([^"]*)"')
+
+
+@dataclass(frozen=True)
+class _ElementSpan:
+    tag: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
+class _ScopeSpan:
+    variables_start: int
+    variables_end: int
+    parent_tag: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
+class _VariableDecl:
+    name: str
+    type_sig: str
+    start: int
+    end: int
+    text: str
+    scope: _ScopeSpan
+
+
+def _variable_decl_end(content: str, m: re.Match) -> int:
+    if m.group(0).rstrip().endswith("/>"):
+        return m.end()
+    close = content.find("</Variable>", m.end())
+    if close < 0:
+        return m.end()
+    return close + len("</Variable>")
+
+
+def _iter_element_spans(content: str) -> list[_ElementSpan]:
+    stack: list[tuple[str, int]] = []
+    spans: list[_ElementSpan] = []
+    for m in _RE_TAG_TOKEN.finditer(content):
+        tag = m.group("tag")
+        if tag.startswith("!"):
+            continue
+        if m.group("closing"):
+            for i in range(len(stack) - 1, -1, -1):
+                if stack[i][0] == tag:
+                    _tag, start = stack.pop(i)
+                    spans.append(_ElementSpan(tag=tag, start=start, end=m.end()))
+                    break
+            continue
+        if m.group("self") or m.group(0).rstrip().endswith("/>"):
+            spans.append(_ElementSpan(tag=tag, start=m.start(), end=m.end()))
+            continue
+        stack.append((tag, m.start()))
+    return spans
+
+
+def _build_scope_spans(content: str) -> list[_ScopeSpan]:
+    element_spans = _iter_element_spans(content)
+    scopes: list[_ScopeSpan] = []
+    for m in _RE_VARIABLES_BLOCK_NS_SIMPLE.finditer(content):
+        parent_tag = m.group(1)
+        close = content.find(f"</{parent_tag}.Variables>", m.end())
+        if close < 0:
+            continue
+        variables_end = close + len(f"</{parent_tag}.Variables>")
+        candidates = [
+            s for s in element_spans
+            if s.tag == parent_tag and s.start < m.start() and s.end >= variables_end
+        ]
+        if candidates:
+            parent = min(candidates, key=lambda s: s.end - s.start)
+            start, end = parent.start, parent.end
+        else:
+            start, end = m.start(), variables_end
+        scopes.append(_ScopeSpan(
+            variables_start=m.start(),
+            variables_end=variables_end,
+            parent_tag=parent_tag,
+            start=start,
+            end=end,
+        ))
+    return scopes
+
+
+def _scope_for_decl(scopes: list[_ScopeSpan], offset: int, content_len: int) -> _ScopeSpan:
+    candidates = [s for s in scopes if s.variables_start < offset < s.variables_end]
+    if candidates:
+        return min(candidates, key=lambda s: s.variables_end - s.variables_start)
+    return _ScopeSpan(-1, -1, "", 0, content_len)
+
+
+def _iter_variable_decls(content: str) -> list[_VariableDecl]:
+    scopes = _build_scope_spans(content)
+    decls: list[_VariableDecl] = []
+    for m in _RE_VARIABLE.finditer(content):
+        name = m.group(1)
+        end = _variable_decl_end(content, m)
+        text = content[m.start():end]
+        tm = _RE_VARIABLE_TYPEARGS.search(m.group(0))
+        type_sig = tm.group(1) if tm else ""
+        decls.append(_VariableDecl(
+            name=name,
+            type_sig=type_sig,
+            start=m.start(),
+            end=end,
+            text=text,
+            scope=_scope_for_decl(scopes, m.start(), len(content)),
+        ))
+    return decls
+
+
+def _is_ancestor_scope(outer: _ScopeSpan, inner: _ScopeSpan) -> bool:
+    return (
+        outer.start <= inner.start
+        and inner.end <= outer.end
+        and (outer.start, outer.end) != (inner.start, inner.end)
+    )
+
+
+def _delete_decl_mech(decl: _VariableDecl, content: str) -> dict:
+    return {
+        "type": "delete_variable_declaration",
+        "name": decl.name,
+        "line": _line_for(content, decl.start),
+        "declaration": decl.text,
+    }
+
 
 def _scope_offset_for(content: str, var_offset: int) -> int:
     """Retorna offset do `<*.Variables>` enclosing block. -1 se var não está
@@ -85,63 +228,93 @@ def detect_duplicate_variable_names(rule, fc, pc):
     Distingue:
       - **Same-scope duplicate** (mesmo `<*.Variables>` block): redundante,
         XAML inválido. Auto-delete extras (mantém primeira).
-      - **Cross-scope duplicate** (scopes diferentes): shadowing legit OU
-        risco. Alert contextual, sem auto-fix.
+      - **Ancestor-shadow duplicate** (mesmo Name/Type em escopo interno com
+        declaração ancestral equivalente): redundante. Auto-delete o inner,
+        protegido pelo VB orphan gate.
+      - Outros cross-scope duplicates: shadowing legit OU risco. Alert
+        contextual, sem auto-fix.
     """
     content = fc.active_content
     findings: list[Finding] = []
 
-    # (scope_offset, name_lc) → list of (offset, decl_text)
-    by_scope_name: dict[tuple[int, str], list[tuple[int, str]]] = {}
-    by_name_global: dict[str, list[int]] = {}
+    decls = _iter_variable_decls(content)
+    by_scope_name: dict[tuple[int, int, str], list[_VariableDecl]] = {}
+    by_name_global: dict[str, list[_VariableDecl]] = {}
 
-    for m in _RE_VARIABLE.finditer(content):
-        name = m.group(1)
-        scope = _scope_offset_for(content, m.start())
-        by_scope_name.setdefault((scope, name.lower()), []).append(
-            (m.start(), m.group(0))
-        )
-        by_name_global.setdefault(name.lower(), []).append(m.start())
+    for decl in decls:
+        by_scope_name.setdefault(
+            (decl.scope.start, decl.scope.end, decl.name.lower()), []
+        ).append(decl)
+        by_name_global.setdefault(decl.name.lower(), []).append(decl)
 
-    # Pass 1: same-scope duplicates → deterministic delete
-    for (scope, name_lc), entries in by_scope_name.items():
+    mechanical_offsets: set[int] = set()
+
+    # Pass 1: same-scope duplicates -> deterministic delete
+    for (_scope_start, _scope_end, name_lc), entries in by_scope_name.items():
         if len(entries) <= 1:
             continue
-        first_offset = entries[0][0]
-        m0 = re.search(r'<Variable\b[^>]*\bName="([^"]+)"', content[first_offset:first_offset+200])
-        original_name = m0.group(1) if m0 else name_lc
-        # Emit 1 finding per extra (entries[1:])
-        for offset, decl_text in entries[1:]:
+        first = entries[0]
+        original_name = first.name
+        for decl in entries[1:]:
+            mechanical_offsets.add(decl.start)
             findings.append(Finding(
                 rule_id=rule.id, severity=rule.severity, category=rule.category,
-                file=str(fc.path), line=_line_for(content, offset),
+                file=str(fc.path), line=_line_for(content, decl.start),
                 message=(
                     f"{rule.title}: '{original_name}' duplicate same-scope — "
-                    f"removendo extra (mantém first em line {_line_for(content, first_offset)})"
+                    f"removendo extra (mantém first em line {_line_for(content, first.start)})"
                 ),
-                fix_mechanical={
-                    "type": "regex_replace",
-                    "pattern": re.escape(decl_text),
-                    "replacement": "",
-                },
+                fix_mechanical=_delete_decl_mech(decl, content),
                 fix_prose=(rule.fix or {}).get("prose"),
             ))
 
-    # Pass 2: cross-scope duplicates (scopes diferentes mesmo name) → contextual
-    same_scope_seen = {(s, n) for (s, n), e in by_scope_name.items() if len(e) > 1}
-    for name_lc, offsets in by_name_global.items():
-        if len(offsets) <= 1:
+    # Pass 2: inner declaration shadowing an equivalent ancestor -> mechanical.
+    for name_lc, entries in by_name_global.items():
+        if len(entries) <= 1:
             continue
-        scopes = {_scope_offset_for(content, o) for o in offsets}
+        for inner in entries:
+            if inner.start in mechanical_offsets:
+                continue
+            ancestor = next(
+                (
+                    outer for outer in entries
+                    if outer is not inner
+                    and outer.type_sig == inner.type_sig
+                    and _is_ancestor_scope(outer.scope, inner.scope)
+                ),
+                None,
+            )
+            if ancestor is None:
+                continue
+            mechanical_offsets.add(inner.start)
+            findings.append(Finding(
+                rule_id=rule.id, severity=rule.severity, category=rule.category,
+                file=str(fc.path), line=_line_for(content, inner.start),
+                message=(
+                    f"{rule.title}: '{inner.name}' shadow duplicate em escopo "
+                    f"interno com ancestral equivalente na line "
+                    f"{_line_for(content, ancestor.start)} — removendo inner"
+                ),
+                fix_mechanical=_delete_decl_mech(inner, content),
+                fix_prose=(rule.fix or {}).get("prose"),
+            ))
+
+    # Pass 3: remaining cross-scope duplicates -> contextual.
+    for name_lc, entries in by_name_global.items():
+        if len(entries) <= 1:
+            continue
+        scopes = {(d.scope.start, d.scope.end) for d in entries}
         if len(scopes) <= 1:
             continue  # all in same scope (handled above)
-        m0 = re.search(r'<Variable\b[^>]*\bName="([^"]+)"', content[offsets[0]:offsets[0]+200])
-        original_name = m0.group(1) if m0 else name_lc
+        unresolved = [d for d in entries if d.start not in mechanical_offsets]
+        if len(unresolved) <= 1:
+            continue
+        original_name = entries[0].name
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
-            file=str(fc.path), line=_line_for(content, offsets[0]),
+            file=str(fc.path), line=_line_for(content, entries[0].start),
             message=(
-                f"{rule.title}: '{original_name}' declarado {len(offsets)}× "
+                f"{rule.title}: '{original_name}' declarado {len(entries)}× "
                 f"em {len(scopes)} scopes diferentes — review manual (shadowing OK; "
                 f"se intencional silenciar via supressão)"
             ),
@@ -158,26 +331,35 @@ def detect_unused_variables(rule, fc, pc):
 
     rule_mech = (rule.fix or {}).get("mechanical")
 
-    for m in _RE_VARIABLE.finditer(content):
-        name = m.group(1)
-        # Build a scrubbed copy with the declaration itself blanked, so the
-        # declaration line doesn't count as a "use".
-        decl_start, decl_end = m.start(), m.end()
+    for decl in _iter_variable_decls(content):
+        name = decl.name
+        scope_start = max(0, decl.scope.start)
+        scope_end = min(len(scrubbed), decl.scope.end)
+        scoped = scrubbed[scope_start:scope_end]
+        rel_decl_start = max(0, decl.start - scope_start)
+        rel_decl_end = min(len(scoped), decl.end - scope_start)
         haystack = (
-            scrubbed[:decl_start]
-            + (" " * (decl_end - decl_start))
-            + scrubbed[decl_end:]
+            scoped[:rel_decl_start]
+            + (" " * (rel_decl_end - rel_decl_start))
+            + scoped[rel_decl_end:]
         )
         if _ident_re(name).search(haystack):
             continue
-        # Per-finding mechanical: inject `name` no spec do delete_variable.
+        # Per-finding mechanical: inject exact declaration so homonyms in
+        # sibling/ancestor scopes are preserved.
         mech = None
-        if rule_mech and rule_mech.get("type") == "delete_variable":
+        if rule_mech and rule_mech.get("type") in {
+            "delete_variable",
+            "delete_variable_declaration",
+        }:
             mech = dict(rule_mech)
             mech["name"] = name
+            mech["line"] = _line_for(content, decl.start)
+            mech["declaration"] = decl.text
+            mech["type"] = "delete_variable_declaration"
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
-            file=str(fc.path), line=_line_for(content, m.start()),
+            file=str(fc.path), line=_line_for(content, decl.start),
             message=f"{rule.title}: '{name}'",
             fix_mechanical=mech,
             fix_prose=(rule.fix or {}).get("prose"),
@@ -190,6 +372,7 @@ def detect_unused_variables(rule, fc, pc):
 _RE_PROPERTY = re.compile(
     r'<x:Property\b[^>]*\bName="([^"]+)"[^>]*\bType="([^"]+)"',
 )
+_RE_XCLASS = re.compile(r'\bx:Class="([^"]+)"')
 # Detects `WorkflowFileName="..."` literal vs dynamic `[expr]`.
 _RE_INVOKE_LITERAL = re.compile(
     r'<ui:InvokeWorkflowFile\b[^>]*\bWorkflowFileName="([^"\[][^"]*)"',
@@ -206,6 +389,60 @@ _RE_BINDING_KEY = re.compile(r'x:Key="([^"]+)"')
 
 # Project-level cache: {project_root: {"unsafe": bool, "callers_by_target": dict}}
 _PROJECT_CACHE: dict[Path, dict] = {}
+
+
+def _property_decl_end(content: str, m: re.Match) -> int:
+    tag_end = content.find(">", m.end())
+    if tag_end < 0:
+        return m.end()
+    tag_end += 1
+    if content[m.start():tag_end].rstrip().endswith("/>"):
+        return tag_end
+    close = content.find("</x:Property>", tag_end)
+    if close < 0:
+        return tag_end
+    return close + len("</x:Property>")
+
+
+def _xclass_name(content: str) -> str | None:
+    m = _RE_XCLASS.search(content)
+    return m.group(1) if m else None
+
+
+def _scrub_argument_default_regions(content: str, class_name: str | None, arg_name: str) -> str:
+    """Remove root default forms for the candidate arg from usage scanning."""
+    if not arg_name:
+        return content
+    if class_name:
+        candidates = [class_name]
+        short_name = class_name.split(".")[-1]
+        if short_name not in candidates:
+            candidates.append(short_name)
+        tag_patterns = [
+            re.escape(f"this:{candidate}.{arg_name}") for candidate in candidates
+        ]
+    else:
+        tag_patterns = [r"this:[A-Za-z_][\w.]*\." + re.escape(arg_name)]
+
+    def _blank(m: re.Match) -> str:
+        return " " * len(m.group(0))
+
+    out = content
+    for tag_pattern in tag_patterns:
+        out = re.sub(rf'\s+{tag_pattern}="[^"]*"', _blank, out)
+        out = re.sub(
+            rf'<{tag_pattern}\b[^>]*>.*?</{tag_pattern}>',
+            _blank,
+            out,
+            flags=re.DOTALL,
+        )
+        out = re.sub(
+            rf'<{tag_pattern}\b[^>]*/>',
+            _blank,
+            out,
+            flags=re.DOTALL,
+        )
+    return out
 
 
 def _build_project_index(project_root: Path) -> dict:
@@ -283,6 +520,8 @@ def detect_unused_arguments(rule, fc, pc):
     content = fc.active_content
     scrubbed = _scrub_doc_regions(content)
     findings: list[Finding] = []
+    rule_mech = (rule.fix or {}).get("mechanical")
+    class_name = _xclass_name(content)
 
     callee_path = fc.path.resolve()
     callers = index["by_target"].get(callee_path, [])
@@ -303,6 +542,7 @@ def detect_unused_arguments(rule, fc, pc):
             + (" " * (decl_end - decl_start))
             + scrubbed[decl_end:]
         )
+        haystack = _scrub_argument_default_regions(haystack, class_name, name)
         if _ident_re(name).search(haystack):
             continue
         # Passthrough: callee invokes other xaml passing same arg
@@ -313,11 +553,20 @@ def detect_unused_arguments(rule, fc, pc):
         if bound_anywhere:
             # Caller passes value — used externally, not unused.
             continue
+        decl_end = _property_decl_end(content, m)
+        declaration = content[m.start():decl_end]
+        mech = None
+        if rule_mech and rule_mech.get("type") == "delete_argument_declaration":
+            mech = dict(rule_mech)
+            mech["name"] = name
+            mech["line"] = _line_for(content, m.start())
+            mech["declaration"] = declaration
+            mech["class_name"] = class_name
         findings.append(Finding(
             rule_id=rule.id, severity=rule.severity, category=rule.category,
             file=str(fc.path), line=_line_for(content, m.start()),
             message=f"{rule.title}: '{name}' ({type_str})",
-            fix_mechanical=(rule.fix or {}).get("mechanical"),
+            fix_mechanical=mech,
             fix_prose=(rule.fix or {}).get("prose"),
         ))
     return findings

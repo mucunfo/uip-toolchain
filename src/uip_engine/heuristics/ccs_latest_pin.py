@@ -35,6 +35,10 @@ _XAML_CCS_XMLNS_RE = re.compile(
     r"\"clr-namespace:[^\"]*;assembly=(?P<assembly>CCS_[A-Za-z0-9_]+)\"",
     re.IGNORECASE,
 )
+_XAML_CCS_ASSEMBLY_REF_RE = re.compile(
+    r"<AssemblyReference>\s*(?P<assembly>CCS_[A-Za-z0-9_]+)\s*</AssemblyReference>",
+    re.IGNORECASE,
+)
 _TEXT_EXPRESSION_BLOCK_RE = re.compile(
     r"<TextExpression\.(?:Namespaces|References)ForImplementation>.*?"
     r"</TextExpression\.(?:Namespaces|References)ForImplementation>",
@@ -83,10 +87,10 @@ def _scan_latest(nupkgs_dir: Path | None = None) -> dict[str, str]:
 def _scan_project_ccs_assemblies(root: Path) -> dict[str, Path]:
     """Map CCS package names hard-used by XAML to first source file.
 
-    AssemblyReference/TextExpression imports alone are Studio residue. Treat a
-    XAML dependency as hard only when a CCS xmlns prefix is used in an element
-    tag or a qualified CCS_X. expression appears outside import/reference
-    blocks.
+    CCS AssemblyReference is a hard dependency for the official analyzer:
+    LoadAssembliesStep attempts to load it even if no activity tag currently
+    uses a CCS xmlns prefix. TextExpression namespace imports alone remain
+    Studio residue; they do not load assemblies by themselves.
     """
     found: dict[str, Path] = {}
     for xaml in root.rglob("*.xaml"):
@@ -95,6 +99,8 @@ def _scan_project_ccs_assemblies(root: Path) -> dict[str, Path]:
         except OSError:
             continue
         stripped = _TEXT_EXPRESSION_BLOCK_RE.sub("", content)
+        for match in _XAML_CCS_ASSEMBLY_REF_RE.finditer(content):
+            found.setdefault(match.group("assembly"), xaml)
         for match in _XAML_CCS_XMLNS_RE.finditer(content):
             prefix = match.group("prefix")
             package = match.group("assembly")

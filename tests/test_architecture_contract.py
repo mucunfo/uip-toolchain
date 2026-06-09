@@ -13,5 +13,5 @@ def test_architecture_tracks_public_publish_contract():
     assert "ccs-uip-publish-done" not in text
     assert "`ccs-uip-publish`" in text
     assert "publish_readiness.py" in text
-    assert "uip rpa pack --skip-analyze" in text
+    assert "UiRobot.exe pack" in text
     assert "ProjectView" in text

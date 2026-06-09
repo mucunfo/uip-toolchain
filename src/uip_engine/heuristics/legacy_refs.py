@@ -172,6 +172,22 @@ _RE_NS_FOR_IMPL_BLOCK = re.compile(
 )
 _RE_NS_STRING = re.compile(r"<x:String>([^<]+)</x:String>")
 
+_STUDIO_BASELINE_NAMESPACE_IMPORTS: frozenset[str] = frozenset({
+    "GlobalConstantsNamespace",
+    "GlobalVariablesNamespace",
+    "System",
+    "System.Activities",
+    "System.Collections.Generic",
+    "System.Collections.ObjectModel",
+    "System.Linq",
+    "UiPath.Core",
+    "UiPath.Core.Activities",
+})
+
+_STALE_NAMESPACE_IMPORTS: frozenset[str] = frozenset({
+    "System.Activities.DynamicUpdate",
+})
+
 
 def detect_env3_ensure_namespace_imports(rule, fc, pc):
     """ENV-3: emite finding por namespace usado em VB expressions MAS não
@@ -232,6 +248,82 @@ def detect_env3_ensure_namespace_imports(rule, fc, pc):
             )
         )
 
+    return findings
+
+
+def _namespace_imports(content: str) -> tuple[set[str], bool]:
+    block_m = _RE_NS_FOR_IMPL_BLOCK.search(content)
+    if not block_m:
+        return set(), False
+    return {
+        m.group(1).strip()
+        for m in _RE_NS_STRING.finditer(block_m.group(1))
+        if m.group(1).strip()
+    }, True
+
+
+def detect_env5_studio_namespace_baseline(rule, fc, pc):
+    """ENV-5: keep the namespace-import block aligned with Studio save output.
+
+    Studio may auto-import these namespaces when a workflow is opened/saved,
+    creating noisy diffs after the CLI pipeline. The fix is cosmetic and
+    idempotent: insert only missing imports in XAML files that already have a
+    NamespacesForImplementation block.
+    """
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    present, has_block = _namespace_imports(fc.active_content)
+    if not has_block:
+        return []
+
+    missing = sorted(_STUDIO_BASELINE_NAMESPACE_IMPORTS - present)
+    findings: list[Finding] = []
+    for name in missing:
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=1,
+            message=(
+                f"{rule.title}: namespace `{name}` ausente do baseline "
+                f"serializado pelo Studio"
+            ),
+            fix_mechanical={
+                "type": "insert_namespace_import",
+                "name": name,
+            },
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
+    return findings
+
+
+def detect_env6_stale_namespace_imports(rule, fc, pc):
+    """ENV-6: remove namespaces Studio strips on save after Windows migration."""
+    if fc.path.suffix.lower() != ".xaml":
+        return []
+
+    present, has_block = _namespace_imports(fc.active_content)
+    if not has_block:
+        return []
+
+    stale = sorted(_STALE_NAMESPACE_IMPORTS & present)
+    findings: list[Finding] = []
+    for name in stale:
+        findings.append(Finding(
+            rule_id=rule.id,
+            severity=rule.severity,
+            category=rule.category,
+            file=str(fc.path),
+            line=1,
+            message=f"{rule.title}: namespace `{name}` legado",
+            fix_mechanical={
+                "type": "strip_namespace_import",
+                "name": name,
+            },
+            fix_prose=(rule.fix or {}).get("prose"),
+        ))
     return findings
 
 

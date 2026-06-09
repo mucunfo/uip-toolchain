@@ -20,7 +20,7 @@ import re
 
 from lxml import etree
 
-from uip_engine._types import Finding, Severity
+from uip_engine._types import Finding
 from uip_engine.context import FileContext
 
 
@@ -197,9 +197,7 @@ def detect_cx1_cyclomatic(rule, fc: FileContext, pc) -> list[Finding]:
     err = _threshold(params, "threshold_error", 20)
     cc = _cyclomatic(fc.active_content)
     if cc > err:
-        f = _emit(rule, fc, cc, "cyclomatic", err)
-        f.severity = Severity.ERROR
-        return [f]
+        return [_emit(rule, fc, cc, "cyclomatic", err)]
     if cc > warn:
         return [_emit(rule, fc, cc, "cyclomatic", warn)]
     return []
@@ -212,9 +210,7 @@ def detect_cx2_depth(rule, fc: FileContext, pc) -> list[Finding]:
     root = _parse_xaml(fc.content)
     d = _max_nesting_depth(root)
     if d > err:
-        f = _emit(rule, fc, d, "nesting_depth", err)
-        f.severity = Severity.ERROR
-        return [f]
+        return [_emit(rule, fc, d, "nesting_depth", err)]
     if d > warn:
         return [_emit(rule, fc, d, "nesting_depth", warn)]
     return []
@@ -226,9 +222,7 @@ def detect_cx3_fanout(rule, fc: FileContext, pc) -> list[Finding]:
     err = _threshold(params, "threshold_error", 15)
     fo = _fan_out(fc.active_content)
     if fo > err:
-        f = _emit(rule, fc, fo, "fan_out", err)
-        f.severity = Severity.ERROR
-        return [f]
+        return [_emit(rule, fc, fo, "fan_out", err)]
     if fo > warn:
         return [_emit(rule, fc, fo, "fan_out", warn)]
     return []
@@ -241,9 +235,7 @@ def detect_cx4_activities(rule, fc: FileContext, pc) -> list[Finding]:
     root = _parse_xaml(fc.content)
     ac = _activity_count(root)
     if ac > err:
-        f = _emit(rule, fc, ac, "activity_count", err)
-        f.severity = Severity.ERROR
-        return [f]
+        return [_emit(rule, fc, ac, "activity_count", err)]
     if ac > warn:
         return [_emit(rule, fc, ac, "activity_count", warn)]
     return []

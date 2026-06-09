@@ -815,6 +815,101 @@ def test_delete_variable_idempotent(tmp_path):
     assert changed is False
 
 
+def test_delete_variable_declaration_removes_only_selected_occurrence(tmp_path):
+    from uip_engine.fixers import apply_delete_variable_declaration
+    f = tmp_path / "x.xaml"
+    first = '<Variable x:TypeArguments="x:String" Name="vStDuplicada" />'
+    second = '<Variable x:TypeArguments="x:String" Name="vStDuplicada" Default="[String.Empty]" />'
+    f.write_text(
+        "<root>\n"
+        "  <Sequence.Variables>\n"
+        f"    {first}\n"
+        "  </Sequence.Variables>\n"
+        "  <Sequence>\n"
+        "    <Sequence.Variables>\n"
+        f"      {second}\n"
+        "    </Sequence.Variables>\n"
+        "  </Sequence>\n"
+        "</root>\n",
+        encoding="utf-8",
+    )
+    spec = {
+        "type": "delete_variable_declaration",
+        "name": "vStDuplicada",
+        "line": 7,
+        "declaration": second,
+    }
+    changed = apply_delete_variable_declaration(f, spec, dry_run=False)
+    assert changed
+    out = f.read_text(encoding="utf-8")
+    assert first in out
+    assert second not in out
+
+
+def test_delete_argument_declaration_removes_property_and_default(tmp_path):
+    from uip_engine.fixers import apply_delete_argument_declaration
+
+    f = tmp_path / "x.xaml"
+    declaration = '<x:Property Name="in_StUnused" Type="InArgument(x:String)" />'
+    f.write_text(
+        '<Activity x:Class="Workflow.Main" '
+        'this:Main.in_StAttrUnused="[&quot;x&quot;]">\n'
+        "  <x:Members>\n"
+        f"    {declaration}\n"
+        '    <x:Property Name="in_StKept" Type="InArgument(x:String)" />\n'
+        '    <x:Property Name="in_StAttrUnused" Type="InArgument(x:String)" />\n'
+        "  </x:Members>\n"
+        "  <this:Main.in_StUnused>\n"
+        '    <InArgument x:TypeArguments="x:String">["x"]</InArgument>\n'
+        "  </this:Main.in_StUnused>\n"
+        "</Activity>\n",
+        encoding="utf-8",
+    )
+
+    changed = apply_delete_argument_declaration(
+        f,
+        {
+            "type": "delete_argument_declaration",
+            "name": "in_StUnused",
+            "line": 3,
+            "declaration": declaration,
+            "class_name": "Workflow.Main",
+        },
+        dry_run=False,
+    )
+
+    assert changed
+    out = f.read_text(encoding="utf-8")
+    assert declaration not in out
+    assert "this:Main.in_StUnused" not in out
+    assert 'Name="in_StKept"' in out
+    assert 'Name="in_StAttrUnused"' in out
+    assert 'this:Main.in_StAttrUnused="[&quot;x&quot;]"' in out
+
+
+def test_strip_namespace_import(tmp_path):
+    from uip_engine.fixers import apply_strip_namespace_import
+    f = tmp_path / "x.xaml"
+    f.write_text(
+        "<Activity>\n"
+        "  <TextExpression.NamespacesForImplementation>\n"
+        "    <scg:List x:TypeArguments=\"x:String\">\n"
+        "      <x:String>System</x:String>\n"
+        "      <x:String>System.Activities.DynamicUpdate</x:String>\n"
+        "    </scg:List>\n"
+        "  </TextExpression.NamespacesForImplementation>\n"
+        "</Activity>\n",
+        encoding="utf-8",
+    )
+    changed = apply_strip_namespace_import(
+        f, {"name": "System.Activities.DynamicUpdate"}, dry_run=False
+    )
+    assert changed
+    out = f.read_text(encoding="utf-8")
+    assert "System.Activities.DynamicUpdate" not in out
+    assert "<x:String>System</x:String>" in out
+
+
 def test_delete_empty_element_open_close(tmp_path):
     from uip_engine.fixers import apply_delete_empty_element
     f = tmp_path / "x.xaml"

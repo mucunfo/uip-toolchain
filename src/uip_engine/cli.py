@@ -498,7 +498,7 @@ def ccs_uip_main(argv: list[str] | None = None) -> int:
             "  ccs-uip <project_path> [--apply-contextual]\n"
             "      Pipeline completo (migration probe → deterministic fix →\n"
             "      external gates → contextual report). FAIL só para\n"
-            "      deploy blockers mecânicos/pipeline/HALT.\n"
+            "      qualquer ERROR/HALT ativo.\n"
             "      --apply-contextual: modo assistido por IA para aplicar fixes\n"
             "      contextuais (default: lista como PASS-WITH-NOTES, sem aplicar).\n"
             "\n"
@@ -717,7 +717,7 @@ def build_parser() -> argparse.ArgumentParser:
         "all",
         help="GOD COMMAND — pipeline completo: migration probe + "
              "deterministic auto-fix + external gates + contextual "
-             "report. FAIL só para deploy blockers.",
+             "report. FAIL para qualquer ERROR/HALT.",
     )
     al.add_argument("path", help="Project root path")
     al.add_argument("--apply-contextual", action="store_true",
@@ -1763,10 +1763,11 @@ def _run_official_build_gate(result, project_path: str, timeout: int = 180,
         ]
         if nuget_config is not None:
             args.extend(["--nuget-sources-config-path", str(nuget_config)])
-        governance = os.environ.get("UIPATH_GOVERNANCE_FILE_PATH")
+        import os as _os
+        governance = _os.environ.get("UIPATH_GOVERNANCE_FILE_PATH")
         if governance:
             args.extend(["--governance-file-path", governance])
-            gtype = os.environ.get("UIPATH_GOVERNANCE_FILE_TYPE")
+            gtype = _os.environ.get("UIPATH_GOVERNANCE_FILE_TYPE")
             if gtype:
                 args.extend(["--governance-file-type", gtype])
         if verbose:
@@ -3069,11 +3070,10 @@ def _phase3_contextual_apply(project: Path, rules_file: str) -> dict:
 
 # F37: Pipeline-integrity rule_ids — gate-injected findings que indicam o
 # engine NÃO conseguiu validar o projeto (preflight check failed, analyzer
-# hung, pack hung). Bloqueiam PASS porque sinalizam que o resultado do
-# pipeline não é confiável (não que o projeto tem bug específico). Outros
-# UIPATH:* (Studio analyzer findings, NU* nuget warnings) são contextual:
-# analyzer reportou problema real mas engine não auto-fixa erros do Studio
-# analyzer; user deve revisar manualmente via Studio UI.
+# hung, pack hung). `apply_class` continua útil para orientar fix/display,
+# mas o contrato de pronto é mais simples: qualquer ERROR não suprimido
+# bloqueia deploy. Achado manual/contextual com severity ERROR não é nota
+# deploy-safe; é revisão obrigatória.
 _GATE_INTEGRITY_BLOCKING_RULES = frozenset({
     "UIPATH:PREFLIGHT",       # official uip not found / project.json missing
     "UIPATH:ANALYZE_HALT",    # uip rpa analyze failed/timeout
@@ -3115,13 +3115,11 @@ def _effective_apply_class(finding, rule_index) -> str:
 
 def _classify_contextual_pending(result, rule_index) -> list:
     """Filtra findings que precisam decisão humana — effective_class ∈
-    {contextual, structural}, qualquer severity (incluindo ERROR).
+    {contextual, structural}, sem incluir ERROR/HALT.
 
-    Anteriormente filtrava só WARN/INFO, mas detectors com `threshold_error`
-    promovem WARN→ERROR sem que isso implique fixer mecânico — apenas
-    sinalizam gravidade. Esses findings continuam apply_class=contextual
-    e seu único fix é prose/manual. Tratá-los como blockers de PASS é
-    incorreto — eles são PENDING_REVIEW (humano decide aceitar/refatorar).
+    ERROR contextual/structural continua exigindo decisão humana, mas agora
+    bloqueia "pronto" por severidade. PASS_WITH_NOTES fica reservado para
+    WARN/INFO residuais.
 
     F37: inclui também findings com effective_class downgrade — rules
     deterministic cujo fixer skipou (safety guard) E gate-injected findings
@@ -3132,7 +3130,7 @@ def _classify_contextual_pending(result, rule_index) -> list:
     for f in result.findings:
         if f.suppressed:
             continue
-        if f.severity == Severity.HALT:
+        if f.severity in (Severity.ERROR, Severity.HALT):
             continue
         cls = _effective_apply_class(f, rule_index)
         if cls in ("contextual", "structural"):
@@ -3141,22 +3139,17 @@ def _classify_contextual_pending(result, rule_index) -> list:
 
 
 def _is_blocking_error(finding, rule_index) -> bool:
-    """ERROR conta como blocker de PASS APENAS se effective_class=deterministic
-    (engine sabe corrigir mecanicamente — se ainda há ERROR, é bug do fixer
-    ou o fixer skipou COM fix_mechanical declarado). Errors com effective_class
-    contextual/structural (incluindo safety-guarded deterministic + Studio
-    analyzer findings) são PENDING_REVIEW (decisão humana), não FAIL."""
-    if finding.severity != Severity.ERROR or finding.suppressed:
-        return False
-    return _effective_apply_class(finding, rule_index) == "deterministic"
+    """Qualquer ERROR ativo bloqueia PASS.
+
+    `apply_class` decide como tratar o fix; não decide segurança de deploy.
+    """
+    return finding.severity == Severity.ERROR and not finding.suppressed
 
 
 def _classify_deploy_blockers(result, rule_index) -> list:
     """Findings que bloqueiam deploy no contrato público `ccs-uip <path>`.
 
-    Contextual/structural ERRORs aparecem como notas em PASS-WITH-NOTES, mas
-    não entram nesta lista. HALT sempre bloqueia porque indica política crítica
-    ou integridade de pipeline sem fallback seguro.
+    ERROR e HALT sempre bloqueiam. WARN/INFO contextuais seguem como notas.
     """
     blockers = []
     for f in result.findings:
@@ -3183,10 +3176,10 @@ def _print_status(status: str, *, project: Path, apply_contextual: bool) -> None
     elif status == "PASS_WITH_NOTES":
         if apply_contextual:
             print("[PASS-WITH-NOTES] contextual aplicado, findings remanescentes "
-                  "exigem decisão manual. Deploy-safe.")
+                  "WARN/INFO exigem decisão manual.")
         else:
-            print("[PASS-WITH-NOTES] sem blockers. Contextual findings são "
-                  "informacionais — projeto deploy-safe.")
+            print("[PASS-WITH-NOTES] sem ERROR/HALT. Contextual findings "
+                  "WARN/INFO são informacionais.")
             print(f"  Opt-in fix: ccs-uip {project} --apply-contextual")
     elif status == "FAIL":
         print("[FAIL] deploy blockers residuais.")
@@ -3217,7 +3210,7 @@ def _cmd_all(args) -> int:
         PHASE 4 decide PASS / PASS_WITH_NOTES / FAIL
 
       PASS            → exit 0 (clean)
-      PASS_WITH_NOTES → exit 0 (contextual findings informacionais, deploy-safe;
+      PASS_WITH_NOTES → exit 0 (contextual findings WARN/INFO;
                         opt-in --apply-contextual aplica fixes manuais)
       FAIL            → exit 2 (default — blocker: deterministic ERROR ou HALT).
                         Com --watch: loop com watch.wait_for_change aguardando
@@ -3324,8 +3317,8 @@ def _cmd_all(args) -> int:
         rc, result = _run_review_quiet(project, rules_file)
 
         # `errors` (display) = total bruto. `errors_blocking` (PASS gate) =
-        # subset com apply_class=deterministic. Errors contextual/structural
-        # são PENDING_REVIEW (folded em contextual_pending below).
+        # qualquer ERROR ativo. `apply_class` orienta fix/display, não segurança
+        # de deploy.
         errors = sum(1 for f in result.findings
                      if f.severity == Severity.ERROR and not f.suppressed)
         errors_blocking = sum(1 for f in result.findings
@@ -3358,12 +3351,9 @@ def _cmd_all(args) -> int:
                           apply_mode=apply_ctx)
 
         # ---- PHASE 4: decisão ----
-        # Blocker = ERROR com apply_class=deterministic (engine deve ter fixado;
-        # se ainda há, é bug do fixer) OU HALT (regra crítica de policy).
-        # Errors contextual/structural NÃO bloqueiam — viram PASS_WITH_NOTES.
-        # User policy: deploy não pode depender de --apply-contextual. Contextual
-        # findings são informacionais (decisão humana sobre refactor), não
-        # impedem deploy runtime-safe — engine retorna EXIT_OK pra CI/agentic.
+        # Blocker = qualquer ERROR ativo ou HALT. Contextual WARN/INFO viram
+        # PASS_WITH_NOTES. `--apply-contextual` pode reduzir notas, mas deploy
+        # nunca depende de aceitar ERROR manual como pronto.
         if errors_blocking > 0 or halts > 0:
             status = "FAIL"
         elif contextual_pending:

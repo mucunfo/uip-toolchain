@@ -1,4 +1,5 @@
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,33 @@ def _result(data, *, code="Ok", returncode=0, result="Success"):
     )
 
 
+def _write_nupkg(path: Path, *, tfm: str = "net6.0-windows7.0") -> None:
+    stem = path.name.removesuffix(".nupkg")
+    package_id, major, minor, patch = stem.rsplit(".", 3)
+    version = ".".join([major, minor, patch])
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            f"{package_id}.nuspec",
+            "\n".join([
+                '<?xml version="1.0" encoding="utf-8"?>',
+                '<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">',
+                "  <metadata>",
+                f"    <id>{package_id}</id>",
+                f"    <version>{version}</version>",
+                "    <dependencies>",
+                f'      <group targetFramework="{tfm}" />',
+                "    </dependencies>",
+                "  </metadata>",
+                "</package>",
+            ]),
+        )
+        archive.writestr(f"lib/{tfm}/{package_id}.dll", b"")
+
+
+def _review_ok(project: Path) -> None:
+    assert (project / "project.json").is_file()
+
+
 def test_bump_version_requires_explicit_semver():
     assert publish_dev.bump_version("1.2.3", "major") == "2.0.0"
     assert publish_dev.bump_version("1.2.3", "minor") == "1.3.0"
@@ -61,6 +89,7 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
         encoding="utf-8",
     )
     calls = []
+    pack_calls = []
 
     def fake_run(command):
         calls.append(command)
@@ -70,11 +99,6 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
-        if command[:2] == ["rpa", "pack"]:
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "InvoiceProcessing.1.0.1.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
         if command[:3] == ["or", "packages", "upload"]:
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
@@ -83,6 +107,11 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
             destination.write_bytes(b"downloaded")
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "InvoiceProcessing.1.0.1.nupkg")
 
     args = publish_dev.build_parser().parse_args([
         str(project),
@@ -93,7 +122,12 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
         str(tmp_path / "downloads"),
     ])
 
-    plan = publish_dev.execute(args, run_uip=fake_run)
+    plan = publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
 
     assert plan.current_version == "1.0.0"
     assert plan.next_version == "1.0.1"
@@ -106,24 +140,105 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     assert calls[1] == [
         "login", "tenant", "list", "--output", "json",
     ]
-    assert calls[2] == [
-        "rpa", "pack", str(project.resolve()), str(tmp_path / "out" / "pack"),
-        "--package-version", "1.0.1",
-        "--skip-analyze",
-        "--output", "json",
+    assert pack_calls == [
+        (project / "project.json", tmp_path / "out" / "pack", "1.0.1", 600),
     ]
-    assert calls[3][0:4] == [
+    assert calls[2][0:4] == [
         "or",
         "packages",
         "upload",
         str(tmp_path / "out" / "pack" / "InvoiceProcessing.1.0.1.nupkg"),
     ]
-    assert "--tenant" in calls[3]
-    assert "RPA_Desenvolvimento" in calls[3]
-    assert calls[4][0:4] == ["or", "packages", "download", "InvoiceProcessing:1.0.1"]
-    assert calls[4][calls[4].index("--destination") + 1] == str(
+    assert "--tenant" in calls[2]
+    assert "RPA_Desenvolvimento" in calls[2]
+    assert calls[3][0:4] == ["or", "packages", "download", "InvoiceProcessing:1.0.1"]
+    assert calls[3][calls[3].index("--destination") + 1] == str(
         tmp_path / "downloads" / "InvoiceProcessing.1.0.1.nupkg"
     )
+
+
+def test_execute_blocks_net8_package_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.0.0"}),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            tfm="net8.0-windows7.0",
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError, match="not compatible with the DEV Robot net6"):
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=_review_ok,
+        )
+
+    assert not any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_blocks_when_pre_publish_review_fails(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    original = {"name": "InvoiceProcessing", "projectVersion": "1.0.0"}
+    (project / "project.json").write_text(json.dumps(original), encoding="utf-8")
+    calls = []
+    pack_calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        raise AssertionError(f"publish should fail before auth: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        raise AssertionError("publish should fail before pack")
+
+    def review_fail(project_root):
+        assert project_root == project.resolve()
+        raise RuntimeError("pre-publish review found blocking ERROR/HALT findings")
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError, match="pre-publish review"):
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=review_fail,
+        )
+
+    assert calls == []
+    assert pack_calls == []
+    assert json.loads((project / "project.json").read_text()) == original
 
 
 def test_execute_rolls_back_project_version_when_pack_fails(tmp_path):
@@ -138,10 +253,11 @@ def test_execute_rolls_back_project_version_when_pack_fails(tmp_path):
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
-        if command[:2] == ["rpa", "pack"]:
-            assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
-            return _result({"Message": "pack failed"}, returncode=1, result="Failure")
         raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
+        raise RuntimeError("pack failed")
 
     args = publish_dev.build_parser().parse_args([
         str(project),
@@ -151,7 +267,12 @@ def test_execute_rolls_back_project_version_when_pack_fails(tmp_path):
     ])
 
     with pytest.raises(RuntimeError):
-        publish_dev.execute(args, run_uip=fake_run)
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=_review_ok,
+        )
 
     assert (project / "project.json").read_text(encoding="utf-8") == json.dumps(original)
 
@@ -176,11 +297,6 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
-        if command[:2] == ["rpa", "pack"]:
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "InvoiceProcessing.1.2.4.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
         if command[:3] == ["or", "packages", "upload"]:
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
@@ -190,6 +306,10 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "InvoiceProcessing.1.2.4.nupkg")
+
     args = publish_dev.build_parser().parse_args([
         str(project),
         "patch",
@@ -197,7 +317,12 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
         str(tmp_path / "out"),
     ])
 
-    publish_dev.execute(args, run_uip=fake_run)
+    publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
 
     assert calls[0] == ["login", "status", "--output", "json"]
     assert calls[1] == ["login", "--interactive", "--output", "json"]
@@ -216,6 +341,7 @@ def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
         encoding="utf-8",
     )
     calls = []
+    pack_calls = []
 
     def fake_run(command):
         calls.append(command)
@@ -225,19 +351,6 @@ def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
-        if command[:2] == ["rpa", "pack"]:
-            assert Path(command[2]) == project.resolve()
-            generated_uiproj = json.loads((project / "project.uiproj").read_text())
-            assert generated_uiproj == {
-                "Name": "InvoiceProcessing",
-                "ProjectType": "Process",
-                "Description": "",
-                "MainFile": "Main.xaml",
-            }
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "InvoiceProcessing.1.2.4.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
         if command[:3] == ["or", "packages", "upload"]:
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
@@ -247,6 +360,19 @@ def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        assert project_json == project / "project.json"
+        generated_uiproj = json.loads((project / "project.uiproj").read_text())
+        assert generated_uiproj == {
+            "Name": "InvoiceProcessing",
+            "ProjectType": "Process",
+            "Description": "",
+            "MainFile": "Main.xaml",
+        }
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "InvoiceProcessing.1.2.4.nupkg")
+
     args = publish_dev.build_parser().parse_args([
         str(project),
         "patch",
@@ -254,10 +380,17 @@ def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
         str(tmp_path / "out"),
     ])
 
-    plan = publish_dev.execute(args, run_uip=fake_run)
+    plan = publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
 
     assert plan.next_version == "1.2.4"
-    assert calls[2][:2] == ["rpa", "pack"]
+    assert pack_calls == [
+        (project / "project.json", tmp_path / "out" / "pack", "1.2.4", 600),
+    ]
     assert (project / "project.uiproj").is_file()
     assert not (project / ".local").exists()
     assert not (project / "InvoiceProcessing.dll").exists()
@@ -314,6 +447,7 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
         encoding="utf-8",
     )
     calls = []
+    pack_calls = []
 
     def fake_run(command):
         calls.append(command)
@@ -323,31 +457,6 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
-        if command[:2] == ["rpa", "pack"]:
-            text = workflow.read_text(encoding="utf-8")
-            assert "<x:String>UiPath.Python</x:String>" in text
-            assert "<AssemblyReference>BalaReva.EasyExcel</AssemblyReference>" not in text
-            assert "<AssemblyReference>BalaReva.EasyExcel.Utilities</AssemblyReference>" not in text
-            assert "<AssemblyReference>BalaReva.Excel</AssemblyReference>" not in text
-            assert "<AssemblyReference>CCS_DataUtil</AssemblyReference>" not in text
-            assert "<AssemblyReference>CCS_EstruturaPastas</AssemblyReference>" not in text
-            assert "<AssemblyReference>CCS_SipagDirect</AssemblyReference>" not in text
-            assert "<AssemblyReference>CCS_SipagNet</AssemblyReference>" not in text
-            assert "<AssemblyReference>CCS_Sisbr_2_0</AssemblyReference>" not in text
-            assert "<AssemblyReference>CCS_TOPdesk</AssemblyReference>" not in text
-            assert "<AssemblyReference>Microsoft.Activities</AssemblyReference>" not in text
-            assert "<AssemblyReference>Microsoft.VisualStudio.Services.Common</AssemblyReference>" not in text
-            assert "<AssemblyReference>NPOI</AssemblyReference>" not in text
-            assert "<AssemblyReference>TimeSpan2</AssemblyReference>" not in text
-            assert "<AssemblyReference>UiPath.IntelligentOCR</AssemblyReference>" not in text
-            assert "<AssemblyReference>UiPath.Python</AssemblyReference>" not in text
-            assert "<AssemblyReference>UiPath.Python.Activities</AssemblyReference>" not in text
-            assert "<AssemblyReference>UiPath.Word.Activities</AssemblyReference>" not in text
-            assert "<AssemblyReference>UiPath.Word.Activities.Design</AssemblyReference>" not in text
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "InvoiceProcessing.1.2.4.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
         if command[:3] == ["or", "packages", "upload"]:
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
@@ -357,6 +466,31 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        text = workflow.read_text(encoding="utf-8")
+        assert "<x:String>UiPath.Python</x:String>" in text
+        assert "<AssemblyReference>BalaReva.EasyExcel</AssemblyReference>" not in text
+        assert "<AssemblyReference>BalaReva.EasyExcel.Utilities</AssemblyReference>" not in text
+        assert "<AssemblyReference>BalaReva.Excel</AssemblyReference>" not in text
+        assert "<AssemblyReference>CCS_DataUtil</AssemblyReference>" not in text
+        assert "<AssemblyReference>CCS_EstruturaPastas</AssemblyReference>" not in text
+        assert "<AssemblyReference>CCS_SipagDirect</AssemblyReference>" not in text
+        assert "<AssemblyReference>CCS_SipagNet</AssemblyReference>" not in text
+        assert "<AssemblyReference>CCS_Sisbr_2_0</AssemblyReference>" not in text
+        assert "<AssemblyReference>CCS_TOPdesk</AssemblyReference>" not in text
+        assert "<AssemblyReference>Microsoft.Activities</AssemblyReference>" not in text
+        assert "<AssemblyReference>Microsoft.VisualStudio.Services.Common</AssemblyReference>" not in text
+        assert "<AssemblyReference>NPOI</AssemblyReference>" not in text
+        assert "<AssemblyReference>TimeSpan2</AssemblyReference>" not in text
+        assert "<AssemblyReference>UiPath.IntelligentOCR</AssemblyReference>" not in text
+        assert "<AssemblyReference>UiPath.Python</AssemblyReference>" not in text
+        assert "<AssemblyReference>UiPath.Python.Activities</AssemblyReference>" not in text
+        assert "<AssemblyReference>UiPath.Word.Activities</AssemblyReference>" not in text
+        assert "<AssemblyReference>UiPath.Word.Activities.Design</AssemblyReference>" not in text
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "InvoiceProcessing.1.2.4.nupkg")
+
     args = publish_dev.build_parser().parse_args([
         str(project),
         "patch",
@@ -364,9 +498,16 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
         str(tmp_path / "out"),
     ])
 
-    publish_dev.execute(args, run_uip=fake_run)
+    publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
 
-    assert calls[2][:2] == ["rpa", "pack"]
+    assert pack_calls == [
+        (project / "project.json", tmp_path / "out" / "pack", "1.2.4", 600),
+    ]
 
 
 def test_scrub_pack_incompatible_refs_keeps_declared_dependency(tmp_path):

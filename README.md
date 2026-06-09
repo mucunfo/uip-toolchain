@@ -23,7 +23,7 @@ O instalador roda em modo usuario, sem permissao de administrador. Ele:
 - valida os comandos `ccs-uip` e `ccs-uip-publish`;
 - verifica a CLI oficial UiPath `uip`;
 - se Node/npm existir, oferece instalar `@uipath/cli@1` no escopo do usuario;
-- verifica .NET SDK 8+ e oferece o instalador portable de `tools/install-dotnet-sdk-portable.cmd` quando necessario;
+- verifica .NET SDK 8+ para gates oficiais do `ccs-uip` e oferece o instalador portable de `tools/install-dotnet-sdk-portable.cmd` quando necessario;
 - grava log em `.tmp/install-ccs-uip-*.log`.
 
 O instalador nao faz login no Orchestrator e nao publica pacote. Login e publish
@@ -56,14 +56,15 @@ Tudo o resto (rules-file, max-iters, watch loop, skip-migration, no-swap)
 | `UIP_TOOLCHAIN_WATCH_INTERVAL` | `2.0` | poll cadence watch (s) |
 | `UIP_TOOLCHAIN_MAX_ITERS` | `0` (ilimitado) | limite iters loop |
 | `UIP_TOOLCHAIN_KEEP_BACKUP` | `0` | mantém `_BeforeMigration_*` backups pós-PASS (default = auto-clean) |
+| `UIP_TOOLCHAIN_DEV_ROBOT_PACKER` | `%USERPROFILE%\Documents\UiPathStudio23x\UiPath\Studio\UiRobot.exe` | override do packer 23.10 usado por `ccs-uip-publish` |
 
 Status final do `ccs-uip <path>`:
 
 | Status | Exit | Significado |
 |---|---:|---|
-| `PASS` | `0` | sem blockers e sem pendências contextuais relevantes |
-| `PASS-WITH-NOTES` | `0` | deploy-safe; há achados contextuais/estruturais/governança para IA/humano |
-| `FAIL` | `2` | sobrou blocker mecânico/deploy-breaking, HALT ou falha de integridade do pipeline |
+| `PASS` | `0` | sem ERROR/HALT e sem pendências contextuais relevantes |
+| `PASS-WITH-NOTES` | `0` | sem ERROR/HALT; há WARN/INFO contextuais/estruturais/governança para IA/humano |
+| `FAIL` | `2` | sobrou ERROR, HALT ou falha de integridade do pipeline |
 
 `--apply-contextual` não é pré-requisito para deploy. Ele existe para aplicar
 correções que exigem interpretação semântica (mensagem, refactor, camada correta,
@@ -163,8 +164,9 @@ Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).
 
 ## Publicação DEV / handoff
 
-`ccs-uip-publish` é separado do gate local por design: ele faz login e opera
-tenant/pacotes via a CLI oficial `uip`.
+`ccs-uip-publish` é separado do gate local por design: ele empacota com
+`UiRobot.exe pack` 23.10 para gerar `.nupkg` compatível com DEV net6, e usa a
+CLI oficial `uip` só para login/upload/download no tenant.
 
 ```powershell
 ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done"
@@ -180,13 +182,18 @@ Fluxo:
 2. exige bump explícito `major`, `minor` ou `patch`;
 3. lê a versão atual de `project.json::projectVersion`;
 4. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual de todos os repositórios selecionados antes de qualquer pack/upload;
-5. grava a próxima versão no `project.json` antes do pack;
-6. prepara o projeto para o pack oficial (`project.uiproj` derivado de `project.json`);
-7. exige .NET SDK 8+, pois o `uip rpa pack` restaura um projeto temporário `net8.0`;
-8. remove referências legadas conhecidamente incompatíveis com pack headless e roda `uip rpa pack --skip-analyze`;
-9. faz upload do pacote em `RPA_Desenvolvimento`;
-10. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
-11. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
+5. com commit habilitado, faz `git fetch origin <branch>` e bloqueia se a branch local estiver atrás/divergente do remoto;
+6. grava a próxima versão no `project.json` antes do pack;
+7. prepara o projeto para o pack (`project.uiproj` derivado de `project.json`);
+8. exige packer `UiRobot.exe` 23.10 (`UIP_TOOLCHAIN_DEV_ROBOT_PACKER` pode apontar para o binário);
+9. remove referências legadas conhecidamente incompatíveis com pack headless e roda `UiRobot.exe pack <project.json> -o <out> -v <version>`;
+10. faz upload do pacote em `RPA_Desenvolvimento`;
+11. valida que o `.nupkg` gerado contém TFM compatível com DEV net6 (`net6.0-windows*`) antes de qualquer upload;
+12. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
+13. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
+
+O batch para no primeiro erro por padrão. Use `--keep-going` apenas quando quiser
+continuar processando os demais projetos mesmo após falhas.
 
 Se pack/upload/download falhar em um projeto, a alteração de `projectVersion`
 desse projeto é revertida para evitar versão local sem pacote publicado.
@@ -203,8 +210,8 @@ Cada rule classifica seu fix em uma de 3 classes (`fix.apply_class`):
 | Classe | Critério | `fix --apply` default |
 |---|---|---|
 | **deterministic** | Mecânico, output único correto, sem judgment | ✅ aplica |
-| **contextual** | Exige interpretação semântica (qual mensagem, qual valor) | ❌ nota em `PASS-WITH-NOTES` |
-| **structural** | Reorganiza estrutura (split/extract/move) | ❌ nota em `PASS-WITH-NOTES` |
+| **contextual** | Exige interpretação semântica (qual mensagem, qual valor) | ❌ nota em `PASS-WITH-NOTES` só se WARN/INFO; ERROR bloqueia |
+| **structural** | Reorganiza estrutura (split/extract/move) | ❌ nota em `PASS-WITH-NOTES` só se WARN/INFO; ERROR bloqueia |
 
 Default derivation (sem `apply_class` declarado):
 - `fix.auto_apply: false` (legado) → `contextual`

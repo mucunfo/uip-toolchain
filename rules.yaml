@@ -2001,6 +2001,78 @@ rules:
         `<TextExpression.NamespacesForImplementation>` pra Studio 23.10
         resolver types forwarded. Solução cosmética sem regressão.
 
+  - id: ENV-5
+    severity: INFO
+    category: architectural
+    target: windows
+    title: "Namespaces importados divergentes do baseline do Studio"
+    description: |
+      Studio Desktop adiciona namespaces padrao ao abrir/salvar workflows
+      Windows migrados, gerando diffs depois do `uip` headless mesmo quando o
+      build oficial esta limpo. A CLI oficial restaura, analisa e empacota,
+      mas nao replica o comando de UI "Import References" / save-normalization.
+
+      Baseline mecanico alinhado ao Studio:
+        - GlobalConstantsNamespace
+        - GlobalVariablesNamespace
+        - System
+        - System.Activities
+        - System.Collections.Generic
+        - System.Collections.ObjectModel
+        - System.Linq
+        - UiPath.Core
+        - UiPath.Core.Activities
+
+      Fix idempotente: inserir apenas `<x:String>` ausentes em
+      `<TextExpression.NamespacesForImplementation>`. Nao cria bloco em XAML
+      fragmentado; so normaliza workflows que ja usam a estrutura Studio.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.legacy_refs
+        function: detect_env5_studio_namespace_baseline
+    fix:
+      apply_class: deterministic
+      prose: |
+        Inserir os namespaces baseline ausentes. Isso elimina churn quando o
+        Studio abre/salva o XAML depois da migracao headless.
+
+  - id: ENV-6
+    severity: INFO
+    category: architectural
+    target: windows
+    title: "Namespace legado System.Activities.DynamicUpdate importado"
+    description: |
+      `System.Activities.DynamicUpdate` e heranca de XAML Legacy/Studio antigo.
+      Studio Desktop remove esse import ao salvar workflows Windows modernos,
+      gerando diffs cosmeticos em massa depois do pipeline headless.
+
+      Fix idempotente: remover apenas o item
+      `<x:String>System.Activities.DynamicUpdate</x:String>` do bloco
+      `<TextExpression.NamespacesForImplementation>`.
+    applies_to:
+      include: ["**/*.xaml"]
+      exclude:
+        - "**/.local/**"
+        - "**/.tmp/**"
+        - "**/.settings/**"
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.legacy_refs
+        function: detect_env6_stale_namespace_imports
+    fix:
+      apply_class: deterministic
+      prose: |
+        Remover import legado `System.Activities.DynamicUpdate` para deixar o
+        XAML no formato que o Studio salva em projetos Windows modernos.
+
   - id: ENV-4
     severity: ERROR
     category: breaking
@@ -2274,7 +2346,7 @@ rules:
         Corrigir este finding aplicando a regra "Persistence activities em Main.xaml": `WaitForFormTaskAndResume` e `CreateFormTask` DEVEM ficar em `Main.xaml`. Workflows com UI/DB/browser nao podem ser persistidos.
         Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-3
-    severity: ERROR
+    severity: WARN
     category: architectural
     target: all
     title: "Credenciais nunca como argumento (exceto chain Sicoob)"
@@ -2449,7 +2521,7 @@ rules:
         Corrigir este finding aplicando a regra "Extracao separada de filtragem": Extracao retorna TODOS os dados; filtragem e separada (em `Process/` ou transformacao dedicada).
         Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-13
-    severity: ERROR
+    severity: WARN
     category: architectural
     target: all
     title: "Mensagens de exception nunca hardcoded"
@@ -2556,7 +2628,7 @@ rules:
         Corrigir este finding aplicando a regra "Max ~150 linhas por workflow (indicador, nao hard limit)": A-5 (um conceito por workflow) prevalece sobre tamanho. Se workflow > 150 linhas E trata multiplos conceitos, extrair sub-workflows.
         Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: A-18
-    severity: ERROR
+    severity: WARN
     category: architectural
     target: all
     title: "Sem UI activities em workflows de dados"
@@ -4813,12 +4885,13 @@ rules:
       filenames `CCS_X.Y.Z.nupkg`) e exige que `project.json::dependencies`
       reflita esse valor. Cache NuGet local não é fonte de verdade para CCS_*.
 
-      Além de drift em dependências já declaradas, XAML com uso real de
-      assembly `CCS_*` precisa ter dependency direta no `project.json`; caso
-      contrário a CLI oficial pode restaurar/migrar sem o assembly e falhar no
-      analyzer com `LoadAssembliesStep`. `AssemblyReference` e imports
-      `TextExpression.*` sozinhos são tratados como resíduo de Studio, não como
-      hard dependency.
+      Alem de drift em dependencias ja declaradas, XAML que referencia assembly
+      `CCS_*` precisa ter dependency direta no `project.json`; caso contrario
+      a CLI oficial pode restaurar/migrar sem o assembly e falhar no analyzer
+      com `LoadAssembliesStep`. `<AssemblyReference>CCS_*</AssemblyReference>`
+      e hard dependency: a CLI oficial tenta carregar a assembly mesmo sem tag
+      de activity usando o xmlns. Imports `TextExpression.NamespacesForImplementation`
+      sem AssemblyReference continuam tratados como residuo de Studio.
 
       Sem canonical_pins.yaml: versão muda quando dev solta novo `.nupkg`,
       latest-on-disk evita atualizar YAML manualmente.
@@ -4944,7 +5017,7 @@ rules:
 # ---- EXC — Excel ----
 
   - id: EXC-1
-    severity: ERROR
+    severity: WARN
     category: architectural
     target: windows
     title: "Use Excel File (Modern) em vez de Excel Application Scope (Classic)"
@@ -5280,7 +5353,7 @@ rules:
         Corrigir este finding aplicando a regra "JSON grande via body Stream + desserializacao incremental": Body Text default carrega resposta completa em String, estoura limite 2GB CLR em response multi-MB.
         Preserve comportamento; se exigir decisao funcional, selector, credencial, endpoint ou refatoracao ampla, retorne PENDING_REVIEW.
   - id: UI-1
-    severity: ERROR
+    severity: WARN
     category: architectural
     target: windows
     title: "Modern activities (NClick/NTypeInto/NApplicationCard) — nunca Classic"
@@ -6596,8 +6669,9 @@ rules:
     fix:
       apply_class: deterministic
       mechanical:
-        type: delete_variable
-      # Detector injeta `name` per-finding antes do CLI chamar fixer.
+        type: delete_variable_declaration
+      # Detector injeta `name`, `line` e declaracao exata per-finding antes
+      # do CLI chamar fixer, preservando homonimas em outros scopes.
       # ViewState IdRef cleanup adiado — Studio tolera orphan IdRef em
       # ViewState (rendering hint, não-breaking). Se aparecer breakage
       # futuro, adicionar fixer secundário.
@@ -6627,8 +6701,9 @@ rules:
       o mesmo nome de arg → cadeia, não unused.
       Detect aborta projeto inteiro se houver `WorkflowFileName="[expr]"`
       dinâmico (não dá mapear caller estático).
-      Sprint 1: detect-only. Auto-fix mecânico em sprint 2 com guards
-      W-1 (caller self-closed) e default-value preservation.
+      Auto-fix mecânico remove apenas quando não há caller estático
+      passando o argumento e não há invoke dinâmico no projeto; o fixer
+      remove a declaração exata e default-value root correspondente.
     applies_to:
       include: ["**/*.xaml"]
       exclude:
@@ -6649,6 +6724,8 @@ rules:
         module: uip_engine.heuristics.unused
         function: detect_unused_arguments
     fix:
+      mechanical:
+        type: delete_argument_declaration
       prose: |
         1. Confirmar que nenhum caller passa binding com valor não-default.
         2. Remover `<x:Property Name="in_X" .../>` do `<x:Members>` no callee.
@@ -6744,7 +6821,8 @@ rules:
       apply_class: deterministic
       prose: |
         Same-scope (mesmo <*.Variables> block): auto-deleta duplicatas extras.
-        Cross-scope (scopes diferentes): renomear OU consolidar manual.
+        Inner shadow com Name+Type igual ao ancestral: auto-deleta inner.
+        Demais cross-scope: renomear OU consolidar manual.
 
   - id: N-13
     severity: WARN
@@ -7691,6 +7769,58 @@ rules:
 # Batch TCC — Test Case Coverage
 # ============================================================
 
+  - id: HY-7
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Screenshot Studio nao referenciado"
+    description: |
+      Arquivos de imagem em `.screenshots/` que nao aparecem em nenhum XAML
+      nem no project.json sao artefatos de design-time. O Studio tem limpeza
+      equivalente em Remove Unused Project Resources > Screenshots.
+
+      Fix mecanico e restrito: deleta apenas imagens dentro de `.screenshots/`
+      com hash SHA-256 igual ao valor detectado, evitando race com edicao
+      paralela.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.hygiene
+        function: detect_hy7_unused_screenshots
+    fix:
+      apply_class: deterministic
+      prose: |
+        Remover screenshot de design-time nao referenciado. O fixer so atua em
+        imagens dentro de `.screenshots/` e confere hash antes de deletar.
+
+  - id: HY-8
+    severity: INFO
+    category: architectural
+    target: all
+    title: "Workflow XAML nao alcancavel por InvokeWorkflowFile"
+    description: |
+      Workflow produtivo que nao e root (`Main.xaml`, `Process.xaml` ou
+      entryPoint do project.json) e nao e alcancavel por grafo estatico de
+      `<ui:InvokeWorkflowFile WorkflowFileName="...">`.
+
+      Guarda de seguranca: se qualquer workflow do projeto usar
+      `WorkflowFileName="[...]"`, a deteccao aborta o projeto inteiro porque
+      a chamada e dinamica. Tests/ tambem ficam fora da remocao mecanica.
+    applies_to:
+      include: ["project.json"]
+    detect:
+      type: python
+      params:
+        module: uip_engine.heuristics.hygiene
+        function: detect_hy8_unreachable_workflows
+    fix:
+      apply_class: deterministic
+      prose: |
+        Remover workflow nao alcancavel pelo grafo estatico. Se houver dispatch
+        dinamico por variavel, a regra nao emite finding.
+
   - id: TCC-1
     severity: WARN
     category: testing
@@ -7851,7 +7981,7 @@ rules:
 # ============================================================
 
   - id: S-HEALCHAIN
-    severity: ERROR
+    severity: WARN
     category: breaking
     target: all
     title: "TargetAnchorable.SearchSteps com fallback brittle (Image/OCR/CV)"

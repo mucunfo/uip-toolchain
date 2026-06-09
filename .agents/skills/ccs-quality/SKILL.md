@@ -23,10 +23,11 @@ ccs-uip <project>
 
 Expected status:
 
-- `PASS`: deploy-safe.
-- `PASS-WITH-NOTES`: deploy-safe with contextual or structural notes.
-- `FAIL`: blocker remains in migration, deterministic fix, analyzer, NuGet,
-  pack, or pipeline integrity.
+- `PASS`: no active ERROR/HALT.
+- `PASS-WITH-NOTES`: no active ERROR/HALT; contextual, structural, or
+  governance WARN/INFO remains for human/AI follow-up.
+- `FAIL`: active ERROR/HALT remains in migration, deterministic fix,
+  analyzer, NuGet, pack, or pipeline integrity.
 
 ## Triage
 

@@ -71,7 +71,7 @@ def test_cx1_high_warn(tmp_path):
     assert findings[0].severity == Severity.WARN
 
 
-def test_cx1_high_error(tmp_path):
+def test_cx1_high_uses_rule_severity(tmp_path):
     body = "<Sequence>" + "".join(
         f'<If Condition="[v{i}]"><If.Then /></If>' for i in range(22)
     ) + "</Sequence>"
@@ -79,7 +79,7 @@ def test_cx1_high_error(tmp_path):
     r = _rule("CX-1", "detect_cx1_cyclomatic", {"threshold_warn": 10, "threshold_error": 20})
     findings = detect_cx1_cyclomatic(r, fc, None)
     assert len(findings) == 1
-    assert findings[0].severity == Severity.ERROR
+    assert findings[0].severity == Severity.WARN
 
 
 def test_cx1_counts_switch_cases(tmp_path):

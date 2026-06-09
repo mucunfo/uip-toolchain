@@ -443,7 +443,7 @@ function Ensure-DotNet {
     }
 
     Write-Warn ".NET SDK 8+ nao encontrado."
-    Write-Host "O publish falha no uip rpa pack sem SDK 8+, pois o packager oficial restaura um projeto temporario net8.0."
+    Write-Host "Os gates oficiais do ccs-uip podem falhar sem SDK 8+, pois o packager oficial restaura um projeto temporario net8.0."
     if (Ask-YesNo "Instalar .NET SDK 8 portable em %USERPROFILE%\.dotnet agora?" $false) {
         $installer = Join-Path $RepoRoot "tools\install-dotnet-sdk-portable.cmd"
         if (-not (Test-Path $installer)) {

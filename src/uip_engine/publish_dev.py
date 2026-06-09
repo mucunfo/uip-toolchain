@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import locale
+import os
 import re
 import shutil
+import subprocess
 import sys
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from xml.etree import ElementTree as ET
 
 from .official_uip import (
     OfficialUipResult,
@@ -34,6 +39,12 @@ VALID_BUMPS = ("major", "minor", "patch")
 EXIT_OK = 0
 EXIT_ERROR = 2
 EXIT_INTERNAL = 10
+DEV_ROBOT_PACKER_ENV_VAR = "UIP_TOOLCHAIN_DEV_ROBOT_PACKER"
+DEV_ROBOT_COMPATIBLE_TFMS = frozenset({
+    "net6.0-windows",
+    "net6.0-windows7.0",
+})
+DEV_ROBOT_PACKER_VERSION_RE = re.compile(r"\b23\.10\.")
 
 
 @dataclass(frozen=True)
@@ -50,6 +61,8 @@ class PublishPlan:
 
 
 RunUip = Callable[[list[str]], OfficialUipResult]
+RunPack = Callable[[Path, Path, str, int], None]
+RunReview = Callable[[Path], None]
 
 
 _SEMVER_RE = re.compile(r"^\s*(\d+)\.(\d+)\.(\d+)(?:\s*)$")
@@ -162,7 +175,191 @@ def _find_nupkg(pack_dir: Path, package_key: str, version: str) -> Path:
         raise RuntimeError(
             f"could not identify generated package {expected.name}; found: {names}"
         )
-    raise RuntimeError(f"uip rpa pack did not create a .nupkg in {pack_dir}")
+    raise RuntimeError(f"UiRobot pack did not create a .nupkg in {pack_dir}")
+
+
+def _default_dev_robot_packer_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    explicit = os.environ.get(DEV_ROBOT_PACKER_ENV_VAR)
+    if explicit:
+        candidates.append(Path(explicit))
+    candidates.append(
+        Path.home() / "Documents" / "UiPathStudio23x" / "UiPath" / "Studio" / "UiRobot.exe"
+    )
+    return candidates
+
+
+def _uirobot_version(packer: Path) -> str:
+    proc = subprocess.run(
+        [str(packer), "version"],
+        capture_output=True,
+        text=True,
+        encoding=locale.getpreferredencoding(False),
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+    output = "\n".join(part.strip() for part in (proc.stdout, proc.stderr) if part.strip())
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"could not read UiRobot version from {packer}. Output:\n{output or '(empty)'}"
+        )
+    return output
+
+
+def discover_dev_robot_packer() -> Path:
+    for candidate in _default_dev_robot_packer_candidates():
+        if not candidate.is_file():
+            continue
+        version = _uirobot_version(candidate)
+        if DEV_ROBOT_PACKER_VERSION_RE.search(version):
+            return candidate
+        raise RuntimeError(
+            f"{candidate} is not a Studio/Robot 23.10 packer. Version output: {version}. "
+            f"Set {DEV_ROBOT_PACKER_ENV_VAR} to a UiRobot.exe from Studio/Robot 23.10."
+        )
+
+    searched = ", ".join(str(path) for path in _default_dev_robot_packer_candidates())
+    raise RuntimeError(
+        "Studio/Robot 23.10 UiRobot.exe packer not found. "
+        f"Set {DEV_ROBOT_PACKER_ENV_VAR} to a UiRobot.exe from Studio/Robot 23.10. "
+        f"Searched: {searched}"
+    )
+
+
+def run_dev_robot_pack(
+    project_json: Path,
+    pack_dir: Path,
+    version: str,
+    timeout: int,
+) -> None:
+    packer = discover_dev_robot_packer()
+    argv = [
+        str(packer),
+        "pack",
+        str(project_json),
+        "-o",
+        str(pack_dir),
+        "-v",
+        version,
+    ]
+    proc = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        encoding=locale.getpreferredencoding(False),
+        errors="replace",
+        timeout=timeout,
+        check=False,
+    )
+    output = "\n".join(part.strip() for part in (proc.stdout, proc.stderr) if part.strip())
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "UiRobot 23.10 pack failed. Command: "
+            f"{' '.join(argv)}\nOutput:\n{output or '(empty)'}"
+        )
+    if not any(pack_dir.glob("*.nupkg")):
+        raise RuntimeError(
+            "UiRobot 23.10 pack completed without a .nupkg. Command: "
+            f"{' '.join(argv)}\nOutput:\n{output or '(empty)'}"
+        )
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _nupkg_target_frameworks(nupkg: Path) -> list[str]:
+    frameworks: set[str] = set()
+    try:
+        with zipfile.ZipFile(nupkg) as archive:
+            for name in archive.namelist():
+                parts = name.replace("\\", "/").split("/")
+                if len(parts) >= 3 and parts[0] == "lib" and parts[1]:
+                    frameworks.add(parts[1])
+
+            for name in archive.namelist():
+                if not name.endswith(".nuspec"):
+                    continue
+                root = ET.fromstring(archive.read(name))
+                for element in root.iter():
+                    if _local_name(element.tag) == "group":
+                        target = element.attrib.get("targetFramework")
+                        if target:
+                            frameworks.add(target)
+    except zipfile.BadZipFile as exc:
+        raise RuntimeError(f"generated package is not a valid .nupkg: {nupkg}") from exc
+    except ET.ParseError as exc:
+        raise RuntimeError(f"generated package has an invalid .nuspec: {nupkg}") from exc
+
+    return sorted(frameworks)
+
+
+def validate_dev_robot_package_compatibility(nupkg: Path) -> None:
+    frameworks = _nupkg_target_frameworks(nupkg)
+    if any(framework in DEV_ROBOT_COMPATIBLE_TFMS for framework in frameworks):
+        return
+
+    actual = ", ".join(frameworks) if frameworks else "(none found)"
+    expected = ", ".join(sorted(DEV_ROBOT_COMPATIBLE_TFMS))
+    raise RuntimeError(
+        "generated package is not compatible with the DEV Robot net6 runtime. "
+        f"Package target framework(s): {actual}. Expected one of: {expected}. "
+        "Do not upload this package to DEV; repack it with a UiPath Studio/Robot "
+        "23.10-compatible packer or upgrade the target Robot before publishing."
+    )
+
+
+def run_publish_review_gate(project_root: Path) -> None:
+    from ._types import Severity
+    from .cli import (
+        DEFAULT_RULES_FILE,
+        DETECTOR_REGISTRY,
+        FIXER_REGISTRY,
+        _apply_sicoob_lib_overrides,
+        _load_rules_or_die,
+    )
+    from .runner import Runner
+
+    rules = _load_rules_or_die(str(DEFAULT_RULES_FILE))
+    runner = Runner(rules=rules, detectors=DETECTOR_REGISTRY, fixers=FIXER_REGISTRY)
+    result = runner.run(project_root)
+    _apply_sicoob_lib_overrides(result, verbose=False)
+
+    if result.internal_errors:
+        details = "\n".join(f"  - {error}" for error in result.internal_errors[:10])
+        raise RuntimeError(
+            "pre-publish review failed with internal errors; package was not built.\n"
+            f"{details}"
+        )
+
+    blockers = [
+        finding
+        for finding in result.findings
+        if not finding.suppressed
+        and finding.severity in (Severity.ERROR, Severity.HALT)
+    ]
+    if not blockers:
+        return
+
+    lines = []
+    for finding in blockers[:12]:
+        rel_file = Path(finding.file)
+        try:
+            rel_file = rel_file.relative_to(project_root)
+        except ValueError:
+            pass
+        lines.append(
+            f"  - {finding.rule_id} {rel_file}:{finding.line}: {finding.message}"
+        )
+    if len(blockers) > len(lines):
+        lines.append(f"  - ... plus {len(blockers) - len(lines)} more blocker(s)")
+    details = "\n".join(lines)
+    raise RuntimeError(
+        "pre-publish review found blocking ERROR/HALT findings; package was not built.\n"
+        f"Summary: errors={result.error_count}, halts={result.halt_count}.\n"
+        f"{details}"
+    )
 
 
 def _default_work_dir(project_root: Path, package_key: str, version: str) -> Path:
@@ -223,6 +420,8 @@ def execute(
     args: argparse.Namespace,
     *,
     run_uip: RunUip | None = None,
+    run_pack: RunPack | None = None,
+    run_review: RunReview | None = None,
     ensure_auth: bool = True,
 ) -> PublishPlan:
     project_root = Path(args.project).resolve()
@@ -234,6 +433,11 @@ def execute(
         return run_official_uip(command, timeout=timeout)
 
     runner = run_uip or _default_run_uip
+    pack_runner = run_pack or run_dev_robot_pack
+    review_runner = run_review or run_publish_review_gate
+
+    review_runner(project_root)
+
     if ensure_auth:
         ensure_login(runner, dev_tenant=args.dev_tenant)
 
@@ -272,18 +476,10 @@ def execute(
             )
             changed_files.extend(preparation.scrubbed_xamls)
 
-        modern_result = runner(
-            [
-                "rpa", "pack", str(project_root), str(pack_dir),
-                "--package-version", next_version,
-                "--skip-analyze",
-                "--output", "json",
-            ],
-        )
-        if not _uip_success(modern_result):
-            _envelope_data(modern_result)
+        pack_runner(project_json, pack_dir, next_version, timeout)
 
         packed_nupkg = _find_nupkg(pack_dir, package_key, next_version)
+        validate_dev_robot_package_compatibility(packed_nupkg)
 
         _run_checked(
             runner,

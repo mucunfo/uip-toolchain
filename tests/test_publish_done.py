@@ -1,5 +1,6 @@
 import json
 import subprocess
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,33 @@ def _project(root: Path, folder: str, name: str, *, packable: bool = True):
     if packable:
         (path / "project.uiproj").write_text("{}", encoding="utf-8")
     return path
+
+
+def _write_nupkg(path: Path, *, tfm: str = "net6.0-windows7.0") -> None:
+    stem = path.name.removesuffix(".nupkg")
+    package_id, major, minor, patch = stem.rsplit(".", 3)
+    version = ".".join([major, minor, patch])
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            f"{package_id}.nuspec",
+            "\n".join([
+                '<?xml version="1.0" encoding="utf-8"?>',
+                '<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">',
+                "  <metadata>",
+                f"    <id>{package_id}</id>",
+                f"    <version>{version}</version>",
+                "    <dependencies>",
+                f'      <group targetFramework="{tfm}" />',
+                "    </dependencies>",
+                "  </metadata>",
+                "</package>",
+            ]),
+        )
+        archive.writestr(f"lib/{tfm}/{package_id}.dll", b"")
+
+
+def _review_ok(project: Path) -> None:
+    assert (project / "project.json").is_file()
 
 
 def test_parse_selection_accepts_ranges_and_all():
@@ -92,6 +120,7 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     _project(tmp_path, "RepoA", "ProjectA")
     _project(tmp_path, "RepoB", "ProjectB")
     calls = []
+    pack_calls = []
     answers = iter(["1", "y"])
 
     def fake_input(prompt):
@@ -105,11 +134,6 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
-        if command[:2] == ["rpa", "pack"]:
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "ProjectA.1.0.1.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
         if command[:3] == ["or", "packages", "upload"]:
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
@@ -118,6 +142,11 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
             destination.write_bytes(b"downloaded")
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "ProjectA.1.0.1.nupkg")
 
     args = publish_done.build_parser().parse_args([
         "patch",
@@ -129,6 +158,8 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     results = publish_done.execute(
         args,
         run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
         input_func=fake_input,
         check_environment=False,
     )
@@ -140,16 +171,16 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     assert calls[0] == ["login", "status", "--output", "json"]
     assert calls[1] == ["login", "tenant", "list", "--output", "json"]
     assert sum(1 for c in calls if c[:2] == ["login", "status"]) == 1
-    assert calls[2][:3] == [
-        "rpa", "pack", str((tmp_path / "RepoA").resolve()),
+    assert pack_calls == [
+        (
+            (tmp_path / "RepoA" / "project.json").resolve(),
+            pack_calls[0][1],
+            "1.0.1",
+            600,
+        ),
     ]
-    assert calls[2][3].endswith(str(Path("001") / "pack"))
-    assert str(tmp_path / "out" / ".work") not in calls[2][3]
-    assert calls[2][4:] == [
-        "--package-version", "1.0.1",
-        "--skip-analyze",
-        "--output", "json",
-    ]
+    assert str(pack_calls[0][1]).endswith(str(Path("001") / "pack"))
+    assert str(tmp_path / "out" / ".work") not in str(pack_calls[0][1])
 
 
 def test_batch_uses_short_work_dir_for_long_project_paths(tmp_path):
@@ -210,32 +241,23 @@ def test_batch_dry_run_does_not_call_uip(tmp_path):
     assert results[0].ok
 
 
-def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
-    _project(tmp_path, "RepoA", "ProjectA", packable=False)
+def test_batch_stops_on_first_project_failure_by_default(tmp_path):
+    _project(tmp_path, "RepoA", "ProjectA")
+    _project(tmp_path, "RepoB", "ProjectB")
     calls = []
+    pack_calls = []
 
     def fake_run(command):
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
-            return _result([
-                {"TenantName": "RPA_Desenvolvimento"},
-            ])
-        if command[:2] == ["rpa", "pack"]:
-            assert (tmp_path / "RepoA" / "project.uiproj").is_file()
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "ProjectA.1.0.1.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
-        if command[:3] == ["or", "packages", "upload"]:
-            return _result({"Status": "Uploaded"})
-        if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
-            return _result({"SavedTo": str(destination)})
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
         raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        raise RuntimeError("pack failed")
 
     args = publish_done.build_parser().parse_args([
         "patch",
@@ -246,12 +268,68 @@ def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
         str(tmp_path / "out"),
     ])
 
-    results = publish_done.execute(args, run_uip=fake_run, check_environment=False)
+    results = publish_done.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+        check_environment=False,
+    )
+
+    assert len(results) == 1
+    assert not results[0].ok
+    assert len(pack_calls) == 1
+
+
+def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
+    _project(tmp_path, "RepoA", "ProjectA", packable=False)
+    calls = []
+    pack_calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([
+                {"TenantName": "RPA_Desenvolvimento"},
+            ])
+        if command[:3] == ["or", "packages", "upload"]:
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = Path(command[command.index("--destination") + 1])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"downloaded")
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append((project_json, pack_dir, version, timeout))
+        assert (tmp_path / "RepoA" / "project.uiproj").is_file()
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "ProjectA.1.0.1.nupkg")
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(tmp_path),
+        "--all",
+        "--yes",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    results = publish_done.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+        check_environment=False,
+    )
 
     assert len(results) == 1
     assert results[0].ok
-    assert any(command[:2] == ["rpa", "pack"] for command in calls)
-    assert not any(command[:2] == ["rpa-legacy", "pack"] for command in calls)
+    assert len(pack_calls) == 1
+    assert not any(command[:2] == ["rpa", "pack"] for command in calls)
     assert (tmp_path / "RepoA" / "project.uiproj").is_file()
     assert (tmp_path / "out" / "ProjectA.1.0.1.nupkg").is_file()
 
@@ -296,11 +374,6 @@ def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
-        if command[:2] == ["rpa", "pack"]:
-            pack_dir = Path(command[3])
-            pack_dir.mkdir(parents=True, exist_ok=True)
-            (pack_dir / "ProjectA.1.0.1.nupkg").write_bytes(b"packed")
-            return _result({"Status": "Packed"})
         if command[:3] == ["or", "packages", "upload"]:
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
@@ -309,6 +382,10 @@ def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
             destination.write_bytes(b"downloaded")
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "ProjectA.1.0.1.nupkg")
 
     args = publish_done.build_parser().parse_args([
         "patch",
@@ -323,7 +400,13 @@ def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
         "release/nc-179",
     ])
 
-    results = publish_done.execute(args, run_uip=fake_run, check_environment=False)
+    results = publish_done.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+        check_environment=False,
+    )
 
     assert len(results) == 1
     assert results[0].ok
@@ -390,44 +473,61 @@ def test_batch_commit_branch_preflight_runs_before_uip_calls(tmp_path):
     assert not called
 
 
-def test_ensure_dotnet_sdk_for_official_pack_accepts_existing_sdk_8(monkeypatch, tmp_path):
-    dotnet = tmp_path / "dotnet.cmd"
-    dotnet.write_text("", encoding="utf-8")
+def test_batch_remote_preflight_blocks_fetch_first_before_uip_calls(tmp_path):
+    remote = tmp_path / "remote.git"
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
+    subprocess.run(["git", "clone", str(remote), str(first)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(first), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(first), "config", "user.name", "Test User"], check=True)
+    _project(first, "RepoA", "ProjectA")
+    subprocess.run(["git", "-C", str(first), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(first), "commit", "-m", "initial"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(first), "branch", "-M", "release/nc-179"], check=True)
+    subprocess.run(["git", "-C", str(first), "push", "-u", "origin", "release/nc-179"], check=True, capture_output=True)
+    subprocess.run(["git", "clone", "-b", "release/nc-179", str(remote), str(second)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(first), "commit", "--allow-empty", "-m", "remote update"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(first), "push"], check=True, capture_output=True)
+    called = False
 
-    monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: str(dotnet))
+    def fake_run(command):
+        nonlocal called
+        called = True
+        raise AssertionError(command)
 
-    class Proc:
-        returncode = 0
-        stdout = "8.0.421 [C:\\Users\\lisan\\.dotnet\\sdk]\n"
-        stderr = ""
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(second),
+        "--all",
+        "--yes",
+        "--commit-message",
+        "chore: publish DEV packages",
+        "--commit-branch",
+        "release/nc-179",
+    ])
 
-    monkeypatch.setattr(publish_done.subprocess, "run", lambda *a, **k: Proc())
+    with pytest.raises(RuntimeError, match="behind origin/release/nc-179"):
+        publish_done.execute(args, run_uip=fake_run, check_environment=False)
 
-    publish_done.ensure_dotnet_sdk_for_official_pack()
-
-
-def test_ensure_dotnet_sdk_for_official_pack_rejects_sdk_6(monkeypatch, tmp_path):
-    dotnet = tmp_path / "dotnet.cmd"
-    dotnet.write_text("", encoding="utf-8")
-
-    monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: str(dotnet))
-
-    class Proc:
-        returncode = 0
-        stdout = "6.0.428 [C:\\Users\\lisandro.souza\\.dotnet\\sdk]\n"
-        stderr = ""
-
-    monkeypatch.setattr(publish_done.subprocess, "run", lambda *a, **k: Proc())
-
-    with pytest.raises(RuntimeError, match="requires .NET SDK 8\\+"):
-        publish_done.ensure_dotnet_sdk_for_official_pack()
+    assert not called
 
 
-def test_ensure_dotnet_sdk_for_official_pack_errors_when_sdk_is_missing(monkeypatch):
-    monkeypatch.setattr(publish_done.shutil, "which", lambda *a, **k: None)
+def test_ensure_dev_robot_packer_for_pack_accepts_23_packer(monkeypatch, tmp_path):
+    packer = tmp_path / "UiRobot.exe"
+    monkeypatch.setattr(publish_done, "discover_dev_robot_packer", lambda: packer)
 
-    with pytest.raises(RuntimeError, match=".NET SDK 8\\+ not found"):
-        publish_done.ensure_dotnet_sdk_for_official_pack()
+    publish_done.ensure_dev_robot_packer_for_pack()
+
+
+def test_ensure_dev_robot_packer_for_pack_propagates_missing_packer(monkeypatch):
+    def fail():
+        raise RuntimeError("Studio/Robot 23.10 UiRobot.exe packer not found")
+
+    monkeypatch.setattr(publish_done, "discover_dev_robot_packer", fail)
+
+    with pytest.raises(RuntimeError, match="23.10 UiRobot.exe packer not found"):
+        publish_done.ensure_dev_robot_packer_for_pack()
 
 
 def test_root_option_remains_supported(tmp_path):

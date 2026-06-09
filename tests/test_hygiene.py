@@ -13,6 +13,8 @@ from uip_engine.heuristics.hygiene import (
     detect_hy4_gitignore,
     detect_hy5_eol_mix,
     detect_hy6_bom_json,
+    detect_hy7_unused_screenshots,
+    detect_hy8_unreachable_workflows,
 )
 from uip_engine.fixers import REGISTRY as FIXER_REGISTRY
 
@@ -229,6 +231,115 @@ def test_hy6_with_bom(tmp_path):
     fc = FileContext(f)
     findings = detect_hy6_bom_json(_rule("HY-6", Severity.INFO), fc, None)
     assert len(findings) == 1
+
+
+# ---------- HY-7 unused screenshots ----------
+
+def test_hy7_detects_unreferenced_screenshot(tmp_path):
+    pc = _pc(tmp_path)
+    screenshots = tmp_path / ".screenshots"
+    screenshots.mkdir()
+    unused = screenshots / "unused.png"
+    unused.write_bytes(b"png")
+    (tmp_path / "Main.xaml").write_text("<Activity><Sequence /></Activity>", encoding="utf-8")
+    fc = FileContext(pc.root / "project.json")
+
+    findings = detect_hy7_unused_screenshots(
+        _rule("HY-7", Severity.INFO, mech={"type": "delete_project_file"}),
+        fc,
+        pc,
+    )
+
+    assert len(findings) == 1
+    mech = findings[0].fix_mechanical
+    assert mech["kind"] == "screenshot"
+    assert mech["target"].endswith("unused.png")
+
+
+def test_hy7_keeps_referenced_screenshot(tmp_path):
+    pc = _pc(tmp_path)
+    screenshots = tmp_path / ".screenshots"
+    screenshots.mkdir()
+    used = screenshots / "used.png"
+    used.write_bytes(b"png")
+    (tmp_path / "Main.xaml").write_text(
+        '<Activity InformativeScreenshot=".screenshots/used.png" />',
+        encoding="utf-8",
+    )
+    fc = FileContext(pc.root / "project.json")
+
+    assert detect_hy7_unused_screenshots(_rule("HY-7", Severity.INFO), fc, pc) == []
+
+
+def test_hy7_fixer_deletes_only_allowed_screenshot(tmp_path):
+    pc = _pc(tmp_path)
+    screenshots = tmp_path / ".screenshots"
+    screenshots.mkdir()
+    target = screenshots / "unused.png"
+    target.write_bytes(b"png")
+    fc = FileContext(pc.root / "project.json")
+    finding = detect_hy7_unused_screenshots(
+        _rule("HY-7", Severity.INFO, mech={"type": "delete_project_file"}),
+        fc,
+        pc,
+    )[0]
+
+    fixer = FIXER_REGISTRY["delete_project_file"]
+    assert fixer(pc.root / "project.json", finding.fix_mechanical, dry_run=False, project_root=pc.root)
+    assert not target.exists()
+
+
+# ---------- HY-8 unreachable workflows ----------
+
+def test_hy8_detects_unreachable_workflow(tmp_path):
+    pc = _pc(tmp_path)
+    (tmp_path / "Main.xaml").write_text(
+        '<Activity xmlns:ui="http://schemas.uipath.com/workflow/activities">'
+        '<ui:InvokeWorkflowFile WorkflowFileName="Reachable.xaml" />'
+        '</Activity>',
+        encoding="utf-8",
+    )
+    (tmp_path / "Reachable.xaml").write_text("<Activity />", encoding="utf-8")
+    (tmp_path / "Unused.xaml").write_text("<Activity />", encoding="utf-8")
+    fc = FileContext(pc.root / "project.json")
+
+    findings = detect_hy8_unreachable_workflows(
+        _rule("HY-8", Severity.INFO, mech={"type": "delete_project_file"}),
+        fc,
+        pc,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].fix_mechanical["kind"] == "workflow"
+    assert findings[0].fix_mechanical["target"].endswith("Unused.xaml")
+
+
+def test_hy8_aborts_on_dynamic_invokes(tmp_path):
+    pc = _pc(tmp_path)
+    (tmp_path / "Main.xaml").write_text(
+        '<Activity xmlns:ui="http://schemas.uipath.com/workflow/activities">'
+        '<ui:InvokeWorkflowFile WorkflowFileName="[in_Workflow]" />'
+        '</Activity>',
+        encoding="utf-8",
+    )
+    (tmp_path / "Unused.xaml").write_text("<Activity />", encoding="utf-8")
+    fc = FileContext(pc.root / "project.json")
+
+    assert detect_hy8_unreachable_workflows(_rule("HY-8", Severity.INFO), fc, pc) == []
+
+
+def test_hy8_keeps_framework_and_mock_workflows(tmp_path):
+    pc = _pc(tmp_path)
+    (tmp_path / "Main.xaml").write_text("<Activity />", encoding="utf-8")
+    framework = tmp_path / "0.Framework"
+    framework.mkdir()
+    (framework / "CloseAllApplications.xaml").write_text("<Activity />", encoding="utf-8")
+    mocks = tmp_path / "Mocks" / "Template"
+    mocks.mkdir(parents=True)
+    (mocks / "Example_mock.xaml").write_text("<Activity />", encoding="utf-8")
+    fc = FileContext(pc.root / "project.json")
+
+    assert detect_hy8_unreachable_workflows(_rule("HY-8", Severity.INFO), fc, pc) == []
 
 
 def test_hy6_fixer_strips(tmp_path):

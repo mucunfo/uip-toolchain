@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .official_uip import OfficialUipResult, _official_uip_subprocess_env, run_official_uip
+from .official_uip import OfficialUipResult, run_official_uip
 from .project_view import PUBLISH_SKIP_DIRS, iter_project_json_files
 from .publish_dev import (
     DEV_TENANT,
@@ -19,9 +19,12 @@ from .publish_dev import (
     EXIT_OK,
     VALID_BUMPS,
     PublishPlan,
+    RunPack,
+    RunReview,
     RunUip,
     _project_name,
     build_parser as build_single_parser,
+    discover_dev_robot_packer,
     ensure_login,
     execute as execute_one,
 )
@@ -174,6 +177,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip final confirmation after the multi-select prompt.",
     )
     parser.add_argument(
+        "--keep-going",
+        action="store_true",
+        help="Continue with remaining projects after a project failure. Default: stop on first failure.",
+    )
+    parser.add_argument(
         "--commit-message",
         default=None,
         help="After a successful publish, commit and push all current changes "
@@ -214,39 +222,6 @@ def _single_args(
         str(batch_args.timeout),
     ]
     return build_single_parser().parse_args(argv)
-
-
-def _list_dotnet_sdks(dotnet: str, env: dict[str, str]) -> tuple[int, list[str], str]:
-    proc = subprocess.run(
-        [dotnet, "--list-sdks"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=30,
-        check=False,
-        env=env,
-    )
-    output = "\n".join(part for part in (proc.stdout, proc.stderr) if part).strip()
-    sdk_lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    return proc.returncode, sdk_lines, output
-
-
-def _sdk_major_from_line(line: str) -> int | None:
-    version = line.strip().split(maxsplit=1)[0] if line.strip() else ""
-    if not version:
-        return None
-    try:
-        return int(version.split(".", 1)[0])
-    except ValueError:
-        return None
-
-
-def _has_required_pack_sdk(sdk_lines: list[str]) -> bool:
-    return any(
-        major is not None and major >= 8
-        for major in (_sdk_major_from_line(line) for line in sdk_lines)
-    )
 
 
 def _run_git(git_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -291,6 +266,41 @@ def _current_branch(git_root: Path) -> str:
     return branch
 
 
+def _remote_branch_missing(output: str) -> bool:
+    lowered = output.lower()
+    return (
+        "couldn't find remote ref" in lowered
+        or "could not find remote ref" in lowered
+        or "couldn't find remote branch" in lowered
+    )
+
+
+def _preflight_remote_push(git_root: Path, branch: str) -> None:
+    fetch = _run_git(git_root, ["fetch", "origin", branch])
+    fetch_output = _git_output_or_error(fetch)
+    if fetch.returncode != 0:
+        if _remote_branch_missing(fetch_output):
+            return
+        raise RuntimeError(f"git fetch origin {branch} failed in {git_root}: {fetch_output}")
+
+    counts = _run_git(git_root, ["rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"])
+    if counts.returncode != 0:
+        raise RuntimeError(f"could not compare local branch with origin/{branch}: {_git_output_or_error(counts)}")
+
+    pieces = counts.stdout.strip().split()
+    if len(pieces) != 2:
+        raise RuntimeError(
+            f"unexpected git rev-list output while comparing origin/{branch}: {counts.stdout.strip()!r}"
+        )
+    ahead, behind = (int(piece) for piece in pieces)
+    if behind > 0:
+        relation = "diverged from" if ahead > 0 else "behind"
+        raise RuntimeError(
+            f"local branch {branch} in {git_root} is {relation} origin/{branch} "
+            f"(ahead {ahead}, behind {behind}). Pull/rebase before publishing."
+        )
+
+
 def commit_publish_changes(
     plan: PublishPlan,
     *,
@@ -303,6 +313,7 @@ def commit_publish_changes(
         raise RuntimeError(
             f"current branch is '{branch}', expected '{expected_branch}' in {git_root}"
         )
+    _preflight_remote_push(git_root, expected_branch)
 
     proc = _run_git(git_root, ["add", "-A"])
     if proc.returncode != 0:
@@ -334,48 +345,31 @@ def preflight_commit_branch(
     *,
     expected_branch: str,
 ) -> None:
+    checked: set[Path] = set()
     for candidate in selected:
         git_root = _git_root(candidate.root)
+        if git_root in checked:
+            continue
+        checked.add(git_root)
         branch = _current_branch(git_root)
         if branch != expected_branch:
             raise RuntimeError(
                 f"{candidate.folder_name}: current branch is '{branch}', "
                 f"expected '{expected_branch}' in {git_root}"
             )
+        _preflight_remote_push(git_root, expected_branch)
 
 
-def ensure_dotnet_sdk_for_official_pack() -> None:
-    env = _official_uip_subprocess_env()
-    dotnet = shutil.which("dotnet", path=env.get("PATH", ""))
-    if dotnet is None:
-        raise RuntimeError(
-            ".NET SDK 8+ not found. Official `uip rpa pack` restores a net8.0 "
-            "temporary project before generating the .nupkg. Install .NET SDK 8 "
-            "or run tools\\install-dotnet-sdk-portable.cmd before publishing."
-        )
-
-    returncode, sdk_lines, output = _list_dotnet_sdks(dotnet, env)
-    if returncode != 0 or not sdk_lines:
-        raise RuntimeError(
-            "`dotnet --list-sdks` did not return an installed SDK. Official "
-            "`uip rpa pack` requires .NET SDK 8+ for its net8.0 temporary "
-            f"restore project. Output: {output or '(empty)'}"
-        )
-
-    if not _has_required_pack_sdk(sdk_lines):
-        found = "; ".join(sdk_lines)
-        raise RuntimeError(
-            "Official `uip rpa pack` requires .NET SDK 8+ because the current "
-            f"RPA tool restores a net8.0 temporary project. Found SDK(s): {found}. "
-            "Install .NET SDK 8 or run tools\\install-dotnet-sdk-portable.cmd "
-            "before publishing."
-        )
+def ensure_dev_robot_packer_for_pack() -> None:
+    discover_dev_robot_packer()
 
 
 def execute(
     args: argparse.Namespace,
     *,
     run_uip: RunUip | None = None,
+    run_pack: RunPack | None = None,
+    run_review: RunReview | None = None,
     input_func: Callable[[str], str] = input,
     check_environment: bool = True,
 ) -> list[BatchItemResult]:
@@ -401,7 +395,7 @@ def execute(
         ]
 
     if check_environment:
-        ensure_dotnet_sdk_for_official_pack()
+        ensure_dev_robot_packer_for_pack()
 
     if args.commit_message:
         preflight_commit_branch(selected, expected_branch=args.commit_branch)
@@ -440,6 +434,8 @@ def execute(
                         work_root=work_root,
                     ),
                     run_uip=runner,
+                    run_pack=run_pack,
+                    run_review=run_review,
                     ensure_auth=False,
                 )
                 print(f"  OK {plan.current_version} -> {plan.next_version}")
@@ -469,6 +465,9 @@ def execute(
                         error=str(exc),
                     )
                 )
+                if not args.keep_going:
+                    print("  Stopping after first failure. Use --keep-going to continue.", file=sys.stderr)
+                    break
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
 

@@ -205,9 +205,10 @@ PHASE 3  contextual        (dry-run default; --apply-contextual aplica)
 PHASE 4  decisão           PASS / PASS-WITH-NOTES / FAIL
 ```
 
-Em **FAIL**, exit imediato (modo CI/agentic) com exit 2. Em **PASS**, exit 0.
-Em **PASS-WITH-NOTES** (contextual/structural/governança residual), exit 0:
-deploy-safe, com notas para IA/humano.
+Em **FAIL**, exit imediato (modo CI/agentic) com exit 2. Qualquer ERROR/HALT
+ativo bloqueia pronto, independente de apply_class. Em **PASS**, exit 0.
+Em **PASS-WITH-NOTES** (WARN/INFO contextual/structural/governança residual),
+exit 0 com notas para IA/humano.
 
 **Interface pública do gate local** — só 2 variações aceitas:
 
@@ -235,7 +236,7 @@ instalados via `pyproject.toml`:
 | Script | Função |
 |---|---|
 | `ccs-uip` | gate local completo, sem upload |
-| `ccs-uip-publish` | operação autenticada: seleção de projetos → bump por `projectVersion` → `uip rpa pack --skip-analyze` → upload DEV → download `.nupkg` |
+| `ccs-uip-publish` | operação autenticada: seleção de projetos → bump por `projectVersion` → `UiRobot.exe pack` 23.10/net6 → upload DEV via `uip` → download `.nupkg` |
 
 O comando `uip` fica reservado para a CLI oficial da UiPath (`@uipath/cli`) e
 não deve ser publicado por esta toolchain.

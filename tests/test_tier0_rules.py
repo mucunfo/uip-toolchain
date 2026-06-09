@@ -82,10 +82,10 @@ def test_scan_project_ccs_assemblies_reads_hard_xaml_usage(tmp_path):
     )
     found = _scan_project_ccs_assemblies(pc.root)
     assert found["CCS_SipagNet"] == xaml
-    assert "CCS_Controle" not in found
+    assert found["CCS_Controle"] == xaml
 
 
-def test_scan_project_ccs_assemblies_ignores_text_expression_imports(tmp_path):
+def test_scan_project_ccs_assemblies_treats_assembly_reference_as_hard_dependency(tmp_path):
     pc = _mk_pc(tmp_path, {"dependencies": {}})
     xaml = pc.root / "Framework" / "Init.xaml"
     xaml.parent.mkdir()
@@ -97,6 +97,21 @@ def test_scan_project_ccs_assemblies_ignores_text_expression_imports(tmp_path):
         "  <TextExpression.ReferencesForImplementation>\n"
         "    <AssemblyReference>CCS_EstruturaPastas</AssemblyReference>\n"
         "  </TextExpression.ReferencesForImplementation>\n"
+        "</Activity>\n",
+        encoding="utf-8",
+    )
+    assert _scan_project_ccs_assemblies(pc.root) == {"CCS_EstruturaPastas": xaml}
+
+
+def test_scan_project_ccs_assemblies_ignores_namespace_import_without_assembly_ref(tmp_path):
+    pc = _mk_pc(tmp_path, {"dependencies": {}})
+    xaml = pc.root / "Framework" / "Init.xaml"
+    xaml.parent.mkdir()
+    xaml.write_text(
+        "<Activity>\n"
+        "  <TextExpression.NamespacesForImplementation>\n"
+        "    <x:String>CCS_EstruturaPastas.EstruturaPastas</x:String>\n"
+        "  </TextExpression.NamespacesForImplementation>\n"
         "</Activity>\n",
         encoding="utf-8",
     )
@@ -158,7 +173,7 @@ def test_ccs_latest_pin_adds_missing_dependency_from_hard_xaml_usage(tmp_path):
     }
 
 
-def test_ccs_latest_pin_ignores_stale_assembly_reference_only(tmp_path):
+def test_ccs_latest_pin_adds_missing_dependency_from_assembly_reference(tmp_path):
     rule = _mk_rule("D-1q-CCS-AUTO")
     pc = _mk_pc(tmp_path, {
         "targetFramework": "Windows",
@@ -180,7 +195,47 @@ def test_ccs_latest_pin_ignores_stale_assembly_reference_only(tmp_path):
     (nupkgs / "CCS_SipagNet.2.0.0.nupkg").touch()
     with patch("uip_engine.heuristics.ccs_latest_pin._NUPKGS_DIR", nupkgs):
         findings = detect_ccs_latest_pin(rule, FileContext(pc.root / "project.json"), pc)
-    assert findings == []
+    assert len(findings) == 1
+    f = findings[0]
+    assert "CCS_SipagNet" in f.message
+    assert "InitAllApplications.xaml" in f.message
+    assert f.fix_mechanical == {
+        "type": "set_dependency_pin",
+        "package": "CCS_SipagNet",
+        "version": "[2.0.0]",
+    }
+
+
+def test_ccs_latest_pin_regression_portalmastercard_assembly_ref_requires_dependency(tmp_path):
+    rule = _mk_rule("D-1q-CCS-AUTO")
+    pc = _mk_pc(tmp_path, {
+        "targetFramework": "Windows",
+        "dependencies": {"CCS_Controle": "[1.1.0]"},
+    })
+    xaml = pc.root / "Framework" / "InitAllApplications.xaml"
+    xaml.parent.mkdir()
+    xaml.write_text(
+        "<Activity>\n"
+        "  <TextExpression.ReferencesForImplementation>\n"
+        "    <AssemblyReference>CCS_PortalMastercard</AssemblyReference>\n"
+        "  </TextExpression.ReferencesForImplementation>\n"
+        "</Activity>\n",
+        encoding="utf-8",
+    )
+    nupkgs = tmp_path / "nupkgs"
+    nupkgs.mkdir()
+    (nupkgs / "CCS_Controle.1.1.0.nupkg").touch()
+    (nupkgs / "CCS_PortalMastercard.2.0.0.nupkg").touch()
+    with patch("uip_engine.heuristics.ccs_latest_pin._NUPKGS_DIR", nupkgs):
+        findings = detect_ccs_latest_pin(rule, FileContext(pc.root / "project.json"), pc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert "CCS_PortalMastercard" in f.message
+    assert f.fix_mechanical == {
+        "type": "set_dependency_pin",
+        "package": "CCS_PortalMastercard",
+        "version": "[2.0.0]",
+    }
 
 
 def test_ccs_latest_pin_diagnoses_missing_referenced_ccs_package(tmp_path):
