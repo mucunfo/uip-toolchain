@@ -182,16 +182,18 @@ Fluxo:
 1. varre a pasta informada e permite selecionar os projetos;
 2. exige bump explícito `major`, `minor` ou `patch`;
 3. lê a versão atual de `project.json::projectVersion`;
-4. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual de todos os repositórios selecionados antes de qualquer pack/upload;
-5. com commit habilitado, faz `git fetch origin <branch>` e bloqueia se a branch local estiver atrás/divergente do remoto;
-6. grava a próxima versão no `project.json` antes do pack;
-7. prepara o projeto para o pack (`project.uiproj` derivado de `project.json`);
-8. exige packer `UiRobot.exe` 23.10; a descoberta tenta `UIP_TOOLCHAIN_DEV_ROBOT_PACKER`, `Documents\UiPathStudio23x`, instalações padrão em `%LOCALAPPDATA%`, `%ProgramFiles%` e `PATH`;
-9. remove referências legadas conhecidamente incompatíveis com pack headless e roda `UiRobot.exe pack <project.json> -o <out> -v <version>`;
-10. faz upload do pacote em `RPA_Desenvolvimento`;
-11. valida que o `.nupkg` gerado contém TFM compatível com DEV net6 (`net6.0-windows*`) antes de qualquer upload;
-12. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
-13. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
+4. autentica no `uip` e valida acesso ao tenant `RPA_Desenvolvimento`;
+5. no pre-publish, substitui a validação local de `D-1q-CCS-AUTO` por consulta ao Orchestrator (`uip or packages versions <CCS_*> --tenant RPA_Desenvolvimento`); não há fallback para `.nupkgs` local no publish;
+6. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual de todos os repositórios selecionados antes de qualquer pack/upload;
+7. com commit habilitado, faz `git fetch origin <branch>` e bloqueia se a branch local estiver atrás/divergente do remoto;
+8. grava a próxima versão no `project.json` antes do pack;
+9. prepara o projeto para o pack (`project.uiproj` derivado de `project.json`);
+10. exige packer `UiRobot.exe` 23.10; a descoberta tenta `UIP_TOOLCHAIN_DEV_ROBOT_PACKER`, `Documents\UiPathStudio23x`, instalações padrão em `%LOCALAPPDATA%`, `%ProgramFiles%` e `PATH`;
+11. remove referências legadas conhecidamente incompatíveis com pack headless e roda `UiRobot.exe pack <project.json> -o <out> -v <version>`;
+12. faz upload do pacote em `RPA_Desenvolvimento`;
+13. valida que o `.nupkg` gerado contém TFM compatível com DEV net6 (`net6.0-windows*`) antes de qualquer upload;
+14. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
+15. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
 
 O batch para no primeiro erro por padrão. Use `--keep-going` apenas quando quiser
 continuar processando os demais projetos mesmo após falhas.

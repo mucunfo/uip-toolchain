@@ -45,6 +45,7 @@ DEV_ROBOT_COMPATIBLE_TFMS = frozenset({
     "net6.0-windows7.0",
 })
 DEV_ROBOT_PACKER_VERSION_RE = re.compile(r"\b23\.10\.")
+CCS_LATEST_PIN_RULE_ID = "D-1q-CCS-AUTO"
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,193 @@ def _tenant_names(data: Any) -> set[str]:
         if name:
             names.add(name)
     return names
+
+
+def _strip_dependency_version(value: Any) -> str:
+    match = re.match(r"^\[?\s*([^,\]\s]+)\s*(?:,\s*[^\]]+)?\]?$", str(value))
+    return match.group(1) if match else str(value).strip()
+
+
+def _iter_values(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _iter_values(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_values(child)
+
+
+def _extract_package_versions(data: Any) -> list[str]:
+    versions: set[str] = set()
+    version_key_re = re.compile(r"^(?:package)?version$", re.IGNORECASE)
+    semver_re = re.compile(r"\b\d+\.\d+\.\d+(?:[-+][A-Za-z0-9_.+-]+)?\b")
+
+    for item in _iter_values(data):
+        if not isinstance(item, dict):
+            continue
+        for key, value in item.items():
+            if not version_key_re.match(str(key)):
+                continue
+            if isinstance(value, str):
+                match = semver_re.search(value)
+                if match:
+                    versions.add(match.group(0))
+
+    if isinstance(data, str):
+        match = semver_re.search(data)
+        if match:
+            versions.add(match.group(0))
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, str):
+                match = semver_re.search(item)
+                if match:
+                    versions.add(match.group(0))
+
+    from .heuristics.ccs_latest_pin import _parse_semver
+
+    return sorted(versions, key=_parse_semver)
+
+
+def _remote_package_versions(
+    run_uip: RunUip,
+    *,
+    package: str,
+    dev_tenant: str,
+) -> list[str]:
+    result = run_uip([
+        "or", "packages", "versions", package,
+        "--tenant", dev_tenant,
+        "--output", "json",
+    ])
+    data = _envelope_data(result)
+    return _extract_package_versions(data)
+
+
+def validate_ccs_packages_against_orchestrator(
+    project_root: Path,
+    *,
+    run_uip: RunUip,
+    dev_tenant: str,
+) -> list["Finding"]:
+    """Validate CCS package pins against the authenticated Orchestrator feed.
+
+    Publish is a tenant-mutating online operation, so local `.nupkgs` must not
+    decide package availability. The remote feed is the source of truth here.
+    """
+    from ._types import Finding, Severity
+    from .heuristics.ccs_latest_pin import _parse_semver, _scan_project_ccs_assemblies
+
+    data = _load_project_json(project_root)
+    deps = data.get("dependencies")
+    if not isinstance(deps, dict):
+        return []
+
+    required: dict[str, str | None] = {
+        str(pkg): _strip_dependency_version(version)
+        for pkg, version in deps.items()
+        if str(pkg).lower().startswith("ccs_")
+    }
+
+    referenced = _scan_project_ccs_assemblies(project_root)
+    deps_lower = {pkg.lower() for pkg in required}
+    for pkg in referenced:
+        if pkg.lower() not in deps_lower:
+            required[pkg] = None
+
+    findings: list[Finding] = []
+    for pkg in sorted(required, key=str.lower):
+        declared = required[pkg]
+        try:
+            versions = _remote_package_versions(
+                run_uip,
+                package=pkg,
+                dev_tenant=dev_tenant,
+            )
+        except Exception as exc:
+            findings.append(Finding(
+                rule_id=CCS_LATEST_PIN_RULE_ID,
+                severity=Severity.ERROR,
+                category="publish_remote_feed",
+                file=str(project_root / "project.json"),
+                line=1,
+                message=(
+                    "CCS_* deve ser validado no Orchestrator durante publish: "
+                    f"nao foi possivel consultar {pkg} em {dev_tenant} via "
+                    f"`uip or packages versions`. Erro: {exc}. "
+                    "Nao ha fallback local para .nupkgs no publish."
+                ),
+            ))
+            continue
+
+        if not versions:
+            findings.append(Finding(
+                rule_id=CCS_LATEST_PIN_RULE_ID,
+                severity=Severity.ERROR,
+                category="publish_remote_feed",
+                file=str(project_root / "project.json"),
+                line=1,
+                message=(
+                    "CCS_* deve existir no Orchestrator durante publish: "
+                    f"pacote {pkg} nao possui versoes disponiveis em "
+                    f"{dev_tenant}. Nao ha fallback local para .nupkgs no "
+                    "publish."
+                ),
+            ))
+            continue
+
+        latest = max(versions, key=_parse_semver)
+        if declared is None:
+            source = referenced.get(pkg)
+            try:
+                source_label = str(source.relative_to(project_root)) if source else "XAML"
+            except ValueError:
+                source_label = str(source)
+            findings.append(Finding(
+                rule_id=CCS_LATEST_PIN_RULE_ID,
+                severity=Severity.ERROR,
+                category="publish_remote_feed",
+                file=str(project_root / "project.json"),
+                line=1,
+                message=(
+                    f"XAML referencia assembly '{pkg}' em {source_label}, "
+                    "mas project.json::dependencies nao declara o pacote. "
+                    f"Versao mais recente no Orchestrator {dev_tenant}: {latest}."
+                ),
+            ))
+            continue
+
+        if declared not in versions:
+            findings.append(Finding(
+                rule_id=CCS_LATEST_PIN_RULE_ID,
+                severity=Severity.ERROR,
+                category="publish_remote_feed",
+                file=str(project_root / "project.json"),
+                line=1,
+                message=(
+                    f"project.json declara {pkg}=[{declared}], mas essa versao "
+                    f"nao existe no Orchestrator {dev_tenant}. Versoes "
+                    f"disponiveis: {', '.join(versions)}. Nao ha fallback local "
+                    "para .nupkgs no publish."
+                ),
+            ))
+            continue
+
+        if declared != latest:
+            findings.append(Finding(
+                rule_id=CCS_LATEST_PIN_RULE_ID,
+                severity=Severity.ERROR,
+                category="publish_remote_feed",
+                file=str(project_root / "project.json"),
+                line=1,
+                message=(
+                    f"project.json declara {pkg}=[{declared}], mas a versao "
+                    f"mais recente no Orchestrator {dev_tenant} e {latest}."
+                ),
+            ))
+
+    return findings
 
 
 def ensure_login(
@@ -421,7 +609,12 @@ def validate_dev_robot_package_compatibility(nupkg: Path) -> None:
     )
 
 
-def run_publish_review_gate(project_root: Path) -> None:
+def run_publish_review_gate(
+    project_root: Path,
+    *,
+    run_uip: RunUip | None = None,
+    dev_tenant: str = DEV_TENANT,
+) -> None:
     from ._types import Severity
     from .cli import (
         DEFAULT_RULES_FILE,
@@ -436,6 +629,22 @@ def run_publish_review_gate(project_root: Path) -> None:
     runner = Runner(rules=rules, detectors=DETECTOR_REGISTRY, fixers=FIXER_REGISTRY)
     result = runner.run(project_root)
     _apply_sicoob_lib_overrides(result, verbose=False)
+    # D-1q's normal detector is intentionally local/offline and reads
+    # `.nupkgs`. Publish is online and authenticated, so replace that local
+    # source-of-truth with the Orchestrator feed used by upload/download.
+    for finding in result.findings:
+        if finding.rule_id == CCS_LATEST_PIN_RULE_ID:
+            finding.suppressed = True
+    remote_runner = run_uip
+    if remote_runner is None:
+        remote_runner = lambda command: run_official_uip(command, timeout=180)
+    result.findings.extend(
+        validate_ccs_packages_against_orchestrator(
+            project_root,
+            run_uip=remote_runner,
+            dev_tenant=dev_tenant,
+        )
+    )
 
     if result.internal_errors:
         details = "\n".join(f"  - {error}" for error in result.internal_errors[:10])
@@ -545,11 +754,22 @@ def execute(
 
     runner = run_uip or _default_run_uip
     pack_runner = run_pack or run_dev_robot_pack
-    review_runner = run_review or run_publish_review_gate
+    if run_review is None:
+        def review_runner(project: Path) -> None:
+            run_publish_review_gate(
+                project,
+                run_uip=runner,
+                dev_tenant=args.dev_tenant,
+            )
+    else:
+        review_runner = run_review
+
+    if ensure_auth and run_review is None:
+        ensure_login(runner, dev_tenant=args.dev_tenant)
 
     review_runner(project_root)
 
-    if ensure_auth:
+    if ensure_auth and run_review is not None:
         ensure_login(runner, dev_tenant=args.dev_tenant)
 
     next_version = bump_version(current_version, args.bump)

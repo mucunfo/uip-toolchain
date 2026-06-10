@@ -4891,6 +4891,9 @@ rules:
       resolve dinamicamente a versão mais recente por pacote (max semver de
       filenames `CCS_X.Y.Z.nupkg`) e exige que `project.json::dependencies`
       reflita esse valor. Cache NuGet local não é fonte de verdade para CCS_*.
+      No `ccs-uip-publish`, esta decisao local/offline e substituida por
+      validacao online no Orchestrator autenticado (`uip or packages versions`)
+      e nao ha fallback para `.nupkgs`, para evitar divergencia entre maquinas.
 
       Alem de drift em dependencias ja declaradas, XAML que referencia assembly
       `CCS_*` precisa ter dependency direta no `project.json`; caso contrario

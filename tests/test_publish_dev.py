@@ -329,6 +329,202 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
     assert calls[2] == ["login", "tenant", "list", "--output", "json"]
 
 
+def test_publish_ccs_validation_uses_orchestrator_versions(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "dependencies": {
+                "CCS_Controle": "[1.1.0]",
+                "CCS_SipagDirect": "[3.0.3]",
+            },
+        }),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        assert command[:3] == ["or", "packages", "versions"]
+        package = command[3]
+        if package == "CCS_Controle":
+            return _result([{"Version": "1.1.0"}])
+        if package == "CCS_SipagDirect":
+            return _result([{"Version": "3.0.3"}])
+        raise AssertionError(package)
+
+    findings = publish_dev.validate_ccs_packages_against_orchestrator(
+        project,
+        run_uip=fake_run,
+        dev_tenant="RPA_Desenvolvimento",
+    )
+
+    assert findings == []
+    assert calls == [
+        [
+            "or", "packages", "versions", "CCS_Controle",
+            "--tenant", "RPA_Desenvolvimento",
+            "--output", "json",
+        ],
+        [
+            "or", "packages", "versions", "CCS_SipagDirect",
+            "--tenant", "RPA_Desenvolvimento",
+            "--output", "json",
+        ],
+    ]
+
+
+def test_publish_ccs_validation_blocks_when_declared_version_is_not_remote_latest(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "dependencies": {
+                "CCS_Controle": "[1.0.0]",
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    def fake_run(command):
+        return _result([
+            {"Version": "1.0.0"},
+            {"Version": "1.1.0"},
+        ])
+
+    findings = publish_dev.validate_ccs_packages_against_orchestrator(
+        project,
+        run_uip=fake_run,
+        dev_tenant="RPA_Desenvolvimento",
+    )
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == publish_dev.CCS_LATEST_PIN_RULE_ID
+    assert "Orchestrator RPA_Desenvolvimento" in findings[0].message
+    assert "1.1.0" in findings[0].message
+
+
+def test_publish_ccs_validation_has_no_local_nupkgs_fallback_on_remote_failure(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "dependencies": {
+                "CCS_Controle": "[1.1.0]",
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    def fake_run(command):
+        return _result({"Message": "tenant unavailable"}, returncode=1, result="Failure")
+
+    findings = publish_dev.validate_ccs_packages_against_orchestrator(
+        project,
+        run_uip=fake_run,
+        dev_tenant="RPA_Desenvolvimento",
+    )
+
+    assert len(findings) == 1
+    assert "Nao ha fallback local para .nupkgs no publish" in findings[0].message
+
+
+def test_publish_ccs_validation_flags_referenced_ccs_without_dependency_using_remote_latest(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "dependencies": {},
+        }),
+        encoding="utf-8",
+    )
+    xaml = project / "Framework" / "Init.xaml"
+    xaml.parent.mkdir()
+    xaml.write_text(
+        '<Activity xmlns:c="clr-namespace:CCS_SipagNet;assembly=CCS_SipagNet">\n'
+        "  <c:Login />\n"
+        "</Activity>\n",
+        encoding="utf-8",
+    )
+
+    def fake_run(command):
+        assert command[:4] == ["or", "packages", "versions", "CCS_SipagNet"]
+        return _result([{"Version": "2.0.0"}])
+
+    findings = publish_dev.validate_ccs_packages_against_orchestrator(
+        project,
+        run_uip=fake_run,
+        dev_tenant="RPA_Desenvolvimento",
+    )
+
+    assert len(findings) == 1
+    assert "dependencies nao declara" in findings[0].message
+    assert "2.0.0" in findings[0].message
+
+
+def test_execute_authenticates_before_default_publish_review(monkeypatch, tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "dependencies": {},
+        }),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["or", "packages", "upload"]:
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = Path(command[command.index("--destination") + 1])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"downloaded")
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(command)
+
+    review_seen = []
+
+    def fake_review(project_root, *, run_uip, dev_tenant):
+        review_seen.append((project_root, dev_tenant, list(calls)))
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "InvoiceProcessing.1.0.1.nupkg")
+
+    monkeypatch.setattr(publish_dev, "run_publish_review_gate", fake_review)
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    publish_dev.execute(args, run_uip=fake_run, run_pack=fake_pack)
+
+    assert review_seen
+    assert review_seen[0][2] == [
+        ["login", "status", "--output", "json"],
+        ["login", "tenant", "list", "--output", "json"],
+    ]
+
+
 def test_discover_dev_robot_packer_finds_standard_candidate_after_wrong_version(monkeypatch, tmp_path):
     wrong = tmp_path / "wrong" / "UiRobot.exe"
     right = tmp_path / "right" / "UiRobot.exe"
