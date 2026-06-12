@@ -191,15 +191,16 @@ def _extract_package_versions(data: Any) -> list[str]:
     return sorted(versions, key=_parse_semver)
 
 
-def _remote_package_versions(
+def _remote_library_versions(
     run_uip: RunUip,
     *,
     package: str,
     dev_tenant: str,
 ) -> list[str]:
     result = run_uip([
-        "or", "packages", "versions", package,
+        "resource", "libraries", "versions", package,
         "--tenant", dev_tenant,
+        "--limit", "1000",
         "--output", "json",
     ])
     data = _envelope_data(result)
@@ -241,7 +242,7 @@ def validate_ccs_packages_against_orchestrator(
     for pkg in sorted(required, key=str.lower):
         declared = required[pkg]
         try:
-            versions = _remote_package_versions(
+            versions = _remote_library_versions(
                 run_uip,
                 package=pkg,
                 dev_tenant=dev_tenant,
@@ -256,7 +257,7 @@ def validate_ccs_packages_against_orchestrator(
                 message=(
                     "CCS_* deve ser validado no Orchestrator durante publish: "
                     f"nao foi possivel consultar {pkg} em {dev_tenant} via "
-                    f"`uip or packages versions`. Erro: {exc}. "
+                    f"`uip resource libraries versions`. Erro: {exc}. "
                     "Nao ha fallback local para .nupkgs no publish."
                 ),
             ))
@@ -271,7 +272,7 @@ def validate_ccs_packages_against_orchestrator(
                 line=1,
                 message=(
                     "CCS_* deve existir no Orchestrator durante publish: "
-                    f"pacote {pkg} nao possui versoes disponiveis em "
+                    f"library {pkg} nao possui versoes disponiveis em "
                     f"{dev_tenant}. Nao ha fallback local para .nupkgs no "
                     "publish."
                 ),

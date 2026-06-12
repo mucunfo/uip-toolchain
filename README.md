@@ -183,7 +183,7 @@ Fluxo:
 2. exige bump explícito `major`, `minor` ou `patch`;
 3. lê a versão atual de `project.json::projectVersion`;
 4. autentica no `uip` e valida acesso ao tenant `RPA_Desenvolvimento`;
-5. no pre-publish, substitui a validação local de `D-1q-CCS-AUTO` por consulta ao Orchestrator (`uip or packages versions <CCS_*> --tenant RPA_Desenvolvimento`); não há fallback para `.nupkgs` local no publish;
+5. no pre-publish, substitui a validação local de `D-1q-CCS-AUTO` por consulta ao feed de Libraries do Orchestrator (`uip resource libraries versions <CCS_*> --tenant RPA_Desenvolvimento`); não há fallback para `.nupkgs` local no publish;
 6. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual de todos os repositórios selecionados antes de qualquer pack/upload;
 7. com commit habilitado, faz `git fetch origin <branch>` e bloqueia se a branch local estiver atrás/divergente do remoto;
 8. grava a próxima versão no `project.json` antes do pack;

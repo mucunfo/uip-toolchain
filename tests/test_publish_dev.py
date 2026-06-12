@@ -329,7 +329,7 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
     assert calls[2] == ["login", "tenant", "list", "--output", "json"]
 
 
-def test_publish_ccs_validation_uses_orchestrator_versions(tmp_path):
+def test_publish_ccs_validation_uses_orchestrator_library_versions(tmp_path):
     project = tmp_path / "Project"
     project.mkdir()
     (project / "project.json").write_text(
@@ -347,7 +347,7 @@ def test_publish_ccs_validation_uses_orchestrator_versions(tmp_path):
 
     def fake_run(command):
         calls.append(command)
-        assert command[:3] == ["or", "packages", "versions"]
+        assert command[:3] == ["resource", "libraries", "versions"]
         package = command[3]
         if package == "CCS_Controle":
             return _result([{"Version": "1.1.0"}])
@@ -364,13 +364,15 @@ def test_publish_ccs_validation_uses_orchestrator_versions(tmp_path):
     assert findings == []
     assert calls == [
         [
-            "or", "packages", "versions", "CCS_Controle",
+            "resource", "libraries", "versions", "CCS_Controle",
             "--tenant", "RPA_Desenvolvimento",
+            "--limit", "1000",
             "--output", "json",
         ],
         [
-            "or", "packages", "versions", "CCS_SipagDirect",
+            "resource", "libraries", "versions", "CCS_SipagDirect",
             "--tenant", "RPA_Desenvolvimento",
+            "--limit", "1000",
             "--output", "json",
         ],
     ]
@@ -456,7 +458,7 @@ def test_publish_ccs_validation_flags_referenced_ccs_without_dependency_using_re
     )
 
     def fake_run(command):
-        assert command[:4] == ["or", "packages", "versions", "CCS_SipagNet"]
+        assert command[:4] == ["resource", "libraries", "versions", "CCS_SipagNet"]
         return _result([{"Version": "2.0.0"}])
 
     findings = publish_dev.validate_ccs_packages_against_orchestrator(
