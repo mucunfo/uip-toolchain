@@ -34,14 +34,14 @@ def test_set_keys_creates_intermediate_subdicts(tmp_path):
     spec = {
         "keys": {
             "designOptions.libraryOptions.includeOriginalXaml": False,
-            "designOptions.modernBehavior": False,
+            "designOptions.modernBehavior": True,
         }
     }
     changed = apply_project_manifest_set_keys(f, spec, dry_run=False)
     assert changed is True
     data = json.loads(f.read_text(encoding="utf-8-sig"))
     assert data["designOptions"]["libraryOptions"]["includeOriginalXaml"] is False
-    assert data["designOptions"]["modernBehavior"] is False
+    assert data["designOptions"]["modernBehavior"] is True
 
 
 def test_set_keys_overrides_existing(tmp_path):
@@ -62,12 +62,12 @@ def test_set_keys_idempotent_when_all_correct(tmp_path):
     f = tmp_path / "project.json"
     _write_json(f, {
         "runtimeOptions": {"mustRestoreAllDependencies": True},
-        "designOptions": {"modernBehavior": False},
+        "designOptions": {"modernBehavior": True},
     })
     spec = {
         "keys": {
             "runtimeOptions.mustRestoreAllDependencies": True,
-            "designOptions.modernBehavior": False,
+            "designOptions.modernBehavior": True,
         }
     }
     changed = apply_project_manifest_set_keys(f, spec, dry_run=False)
@@ -78,7 +78,7 @@ def test_set_keys_preserves_bom(tmp_path):
     """BOM em arquivo original preservado no write."""
     f = tmp_path / "project.json"
     _write_json(f, {"name": "X"}, bom=True)
-    spec = {"keys": {"designOptions.modernBehavior": False}}
+    spec = {"keys": {"designOptions.modernBehavior": True}}
     apply_project_manifest_set_keys(f, spec, dry_run=False)
     raw = f.read_bytes()
     assert raw.startswith(b"\xef\xbb\xbf")
@@ -101,7 +101,7 @@ def test_set_keys_dry_run_no_write(tmp_path):
     f = tmp_path / "project.json"
     _write_json(f, {"name": "X"})
     original = f.read_bytes()
-    spec = {"keys": {"designOptions.modernBehavior": False}}
+    spec = {"keys": {"designOptions.modernBehavior": True}}
     changed = apply_project_manifest_set_keys(f, spec, dry_run=True)
     assert changed is True
     assert f.read_bytes() == original
@@ -111,7 +111,7 @@ def test_set_keys_skip_when_intermediate_collision(tmp_path):
     """Intermediate path é scalar/array → skip esse key, não sobrescrever."""
     f = tmp_path / "project.json"
     _write_json(f, {"designOptions": "STRING_NOT_DICT"})
-    spec = {"keys": {"designOptions.modernBehavior": False}}
+    spec = {"keys": {"designOptions.modernBehavior": True}}
     changed = apply_project_manifest_set_keys(f, spec, dry_run=False)
     # Skipa esse key (designOptions é string, não dict); outros podem aplicar.
     # Spec só tem esse → changed=False.
@@ -163,7 +163,7 @@ def test_env1_detect_emits_only_diverging_keys(tmp_path):
     fc = _fc_from_data(tmp_path, {
         "runtimeOptions": {"mustRestoreAllDependencies": False},
         "designOptions": {
-            "modernBehavior": False,
+            "modernBehavior": True,
             "libraryOptions": {"includeOriginalXaml": False},
         },
     })
@@ -178,7 +178,7 @@ def test_env1_detect_noop_when_all_correct(tmp_path):
     fc = _fc_from_data(tmp_path, {
         "runtimeOptions": {"mustRestoreAllDependencies": True},
         "designOptions": {
-            "modernBehavior": False,
+            "modernBehavior": True,
             "libraryOptions": {"includeOriginalXaml": False},
         },
     })
@@ -228,7 +228,7 @@ def test_env1_end_to_end_detect_then_apply(tmp_path):
     # Verify final state
     data = json.loads(f.read_text(encoding="utf-8-sig"))
     assert data["runtimeOptions"]["mustRestoreAllDependencies"] is True
-    assert data["designOptions"]["modernBehavior"] is False
+    assert data["designOptions"]["modernBehavior"] is True
     assert data["designOptions"]["libraryOptions"]["includeOriginalXaml"] is False
     # Preserved fields
     assert data["name"] == "TestProject"

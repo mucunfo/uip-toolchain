@@ -1247,14 +1247,17 @@ def _cmd_doctor_uipath_cli(args) -> int:
         rpa_tool = None
         if envelope is not None and isinstance(envelope.data, list):
             for item in envelope.data:
-                if isinstance(item, dict) and item.get("commandPrefix") == "rpa":
+                if not isinstance(item, dict):
+                    continue
+                command_prefix = item.get("commandPrefix") or item.get("CommandPrefix")
+                if command_prefix == "rpa":
                     rpa_tool = item
                     break
         if rpa_tool is None:
             errors.append("rpa-tool not installed; run `uip tools update`.")
             print("rpa-tool: NOT FOUND")
         else:
-            print(f"rpa-tool: {rpa_tool.get('version')}")
+            print(f"rpa-tool: {rpa_tool.get('version') or rpa_tool.get('Version')}")
 
     node = _shutil.which("node")
     if node:

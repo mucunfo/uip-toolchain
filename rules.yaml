@@ -1883,7 +1883,7 @@ rules:
       transitive deps de packs UIA 25.x / System 25.x:
 
         runtimeOptions.mustRestoreAllDependencies = true
-        designOptions.modernBehavior = false
+        designOptions.modernBehavior = true
         designOptions.libraryOptions.includeOriginalXaml = false
 
       Sem `mustRestoreAllDependencies=true`, Studio 23.10 lazy-loads assemblies
@@ -1893,8 +1893,9 @@ rules:
       em qualquer XAML que use Dictionary, NetworkCredential, ou outros types
       .NET 6 que Studio 23.10 não pre-resolve.
 
-      `modernBehavior=false` opt-out de Studio 25.x runtime features que 23.10
-      não tem → garante legacy resolution mode em ambos Studios.
+      `modernBehavior=true` força o Modern Design Experience no nível do
+      projeto. Em Studio 23.10, este toggle sobrescreve o default global do
+      Studio, garantindo que projetos abram no modo moderno.
 
       `includeOriginalXaml=false` (libraryOptions) = Sicoob default — não
       embutir source XAML em packs publicados.
@@ -1916,10 +1917,11 @@ rules:
       prose: |
         Aplicar em project.json:
           - runtimeOptions.mustRestoreAllDependencies = true
-          - designOptions.modernBehavior = false
+          - designOptions.modernBehavior = true
           - designOptions.libraryOptions.includeOriginalXaml = false
         Sicoob policy: empresa Studio 23.10 immutable → project.json deve
-        forçar restore total + legacy behavior pra evitar BC30652/BC31424.
+        forçar restore total e Modern Design Experience. O restore total evita
+        BC30652/BC31424; `modernBehavior=true` padroniza o modo moderno.
 
   - id: ENV-3
     severity: ERROR

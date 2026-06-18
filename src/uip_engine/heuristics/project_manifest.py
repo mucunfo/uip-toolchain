@@ -65,10 +65,10 @@ def _dotted_get(data, path):
 #         (Dictionary type missing) + BC31424 (NetworkCredential type forward
 #         fail) em Studio 23.10.
 #
-#   designOptions.modernBehavior = false
-#       → opt-out de Studio 25.x "modern behavior" feature flags. Studio 23.10
-#         não tem modern behavior runtime → key missing = undefined. Forçar
-#         false explicit garante legacy resolution mode em ambos Studios.
+#   designOptions.modernBehavior = true
+#       → força o projeto a abrir no Modern Design Experience. Em Studio 23.10,
+#         esta é a chave project-level do toggle Project Settings > General >
+#         Modern Design Experience; o projeto sobrescreve o default global.
 #
 #   designOptions.libraryOptions.includeOriginalXaml = false
 #       → não embute XAML source dentro de packs gerados. Sicoob default.
@@ -82,7 +82,7 @@ def _dotted_get(data, path):
 
 _ENV1_REQUIRED = {
     "runtimeOptions.mustRestoreAllDependencies": True,
-    "designOptions.modernBehavior": False,
+    "designOptions.modernBehavior": True,
     "designOptions.libraryOptions.includeOriginalXaml": False,
 }
 
