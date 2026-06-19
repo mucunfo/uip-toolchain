@@ -25,6 +25,12 @@ from .official_uip import (
     official_failure_text,
     run_official_uip,
 )
+from .nupkg_audit import (
+    audit_nupkg,
+    raise_for_audit_errors,
+    scrub_nupkg_packaging_artifacts,
+    sha256_file,
+)
 from .publish_readiness import (
     _load_project_json,
     _project_name,
@@ -66,6 +72,12 @@ class _PackerCandidate:
     path: Path
     source: str
     explicit: bool = False
+
+
+@dataclass(frozen=True)
+class _NupkgLayout:
+    frameworks: tuple[str, ...]
+    project_json_frameworks: tuple[str, ...]
 
 
 RunUip = Callable[[list[str]], OfficialUipResult]
@@ -199,7 +211,6 @@ def _remote_library_versions(
 ) -> list[str]:
     result = run_uip([
         "resource", "libraries", "versions", package,
-        "--tenant", dev_tenant,
         "--limit", "1000",
         "--output", "json",
     ])
@@ -354,10 +365,38 @@ def ensure_login(
     missing = sorted(required - tenants)
     if missing:
         available = ", ".join(sorted(tenants)) if tenants else "(none returned)"
+        identity_hint = _login_identity_hint(run_uip)
         raise RuntimeError(
             "logged-in UiPath account cannot see required tenant(s): "
-            f"{', '.join(missing)}. Available tenants: {available}"
+            f"{', '.join(missing)}. Available tenants: {available}. "
+            f"{identity_hint}"
         )
+
+    try:
+        _run_checked(run_uip, ["login", "tenant", "set", dev_tenant, "--output", "json"])
+    except RuntimeError as exc:
+        identity_hint = _login_identity_hint(run_uip)
+        raise RuntimeError(
+            f"logged-in UiPath account can list {dev_tenant}, but "
+            f"`uip login tenant set {dev_tenant}` failed. {identity_hint}"
+        ) from exc
+
+
+def _login_identity_hint(run_uip: RunUip) -> str:
+    try:
+        result = run_uip(["login", "which", "--output", "json"])
+    except Exception as exc:
+        return f"`uip login which` also failed: {exc}"
+    if _uip_success(result):
+        return "`uip login which` returned an active CLI credential."
+    text = official_failure_text(result).strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) > 500:
+        text = text[:497] + "..."
+    if not text:
+        text = "no diagnostic output"
+    return f"`uip login which` did not return reusable CLI credentials: {text}"
+
 
 def _find_nupkg(pack_dir: Path, package_key: str, version: str) -> Path:
     expected = pack_dir / f"{package_key}.{version}.nupkg"
@@ -569,14 +608,17 @@ def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def _nupkg_target_frameworks(nupkg: Path) -> list[str]:
+def _nupkg_layout(nupkg: Path) -> _NupkgLayout:
     frameworks: set[str] = set()
+    project_json_frameworks: set[str] = set()
     try:
         with zipfile.ZipFile(nupkg) as archive:
             for name in archive.namelist():
                 parts = name.replace("\\", "/").split("/")
                 if len(parts) >= 3 and parts[0] == "lib" and parts[1]:
                     frameworks.add(parts[1])
+                    if parts[2].lower() == "project.json":
+                        project_json_frameworks.add(parts[1])
 
             for name in archive.namelist():
                 if not name.endswith(".nuspec"):
@@ -592,12 +634,90 @@ def _nupkg_target_frameworks(nupkg: Path) -> list[str]:
     except ET.ParseError as exc:
         raise RuntimeError(f"generated package has an invalid .nuspec: {nupkg}") from exc
 
-    return sorted(frameworks)
+    return _NupkgLayout(
+        frameworks=tuple(sorted(frameworks)),
+        project_json_frameworks=tuple(sorted(project_json_frameworks)),
+    )
+
+
+def ensure_nupkg_runtime_project_descriptors(nupkg: Path) -> list[str]:
+    layout = _nupkg_layout(nupkg)
+    missing = [
+        framework for framework in layout.frameworks
+        if framework not in set(layout.project_json_frameworks)
+    ]
+    if not missing:
+        return []
+
+    temp = nupkg.with_name(f"{nupkg.name}.tmp")
+    if temp.exists():
+        temp.unlink()
+
+    try:
+        with zipfile.ZipFile(nupkg) as source:
+            entries = source.infolist()
+            names = {entry.filename.replace("\\", "/").lower() for entry in entries}
+            descriptor_name = None
+            for candidate in ("content/project.json", "project.json"):
+                if candidate in names:
+                    descriptor_name = next(
+                        entry.filename
+                        for entry in entries
+                        if entry.filename.replace("\\", "/").lower() == candidate
+                    )
+                    break
+            if descriptor_name is None:
+                missing_text = ", ".join(f"lib/{fw}/project.json" for fw in missing)
+                raise RuntimeError(
+                    "generated package is missing UiPath runtime project descriptor(s): "
+                    f"{missing_text}, and no content/project.json fallback exists to repair it."
+                )
+
+            descriptor_bytes = source.read(descriptor_name)
+            with zipfile.ZipFile(
+                temp,
+                mode="w",
+                compression=zipfile.ZIP_DEFLATED,
+                allowZip64=True,
+            ) as repaired:
+                for entry in entries:
+                    repaired.writestr(entry, source.read(entry.filename))
+                for framework in missing:
+                    repaired.writestr(f"lib/{framework}/project.json", descriptor_bytes)
+    except Exception:
+        if temp.exists():
+            temp.unlink()
+        raise
+
+    temp.replace(nupkg)
+    return [f"lib/{framework}/project.json" for framework in missing]
 
 
 def validate_dev_robot_package_compatibility(nupkg: Path) -> None:
-    frameworks = _nupkg_target_frameworks(nupkg)
-    if any(framework in DEV_ROBOT_COMPATIBLE_TFMS for framework in frameworks):
+    layout = _nupkg_layout(nupkg)
+    frameworks = list(layout.frameworks)
+    project_json_frameworks = set(layout.project_json_frameworks)
+    missing_descriptors = [
+        framework for framework in frameworks
+        if framework not in project_json_frameworks
+    ]
+    if missing_descriptors:
+        missing = ", ".join(
+            f"lib/{framework}/project.json" for framework in missing_descriptors
+        )
+        actual = ", ".join(frameworks) if frameworks else "(none found)"
+        raise RuntimeError(
+            "generated package is missing UiPath runtime project descriptor(s): "
+            f"{missing}. Package target framework(s): {actual}. "
+            "Do not upload this package to DEV; repack it with a UiPath packer "
+            "that writes project.json under every lib/<target-framework>/ folder."
+        )
+
+    incompatible = [
+        framework for framework in frameworks
+        if framework not in DEV_ROBOT_COMPATIBLE_TFMS
+    ]
+    if not incompatible and frameworks:
         return
 
     actual = ", ".join(frameworks) if frameworks else "(none found)"
@@ -608,6 +728,23 @@ def validate_dev_robot_package_compatibility(nupkg: Path) -> None:
         "Do not upload this package to DEV; repack it with a UiPath Studio/Robot "
         "23.10-compatible packer or upgrade the target Robot before publishing."
     )
+
+
+def validate_nupkg_handoff_audit(
+    nupkg: Path,
+    *,
+    package_key: str,
+    version: str,
+    context: str,
+) -> None:
+    result = audit_nupkg(
+        nupkg,
+        expected_id=package_key,
+        expected_version=version,
+        require_dev_compatible=True,
+        compatible_tfms=DEV_ROBOT_COMPATIBLE_TFMS,
+    )
+    raise_for_audit_errors(result, context=context)
 
 
 def run_publish_review_gate(
@@ -811,13 +948,35 @@ def execute(
         pack_runner(project_json, pack_dir, next_version, timeout)
 
         packed_nupkg = _find_nupkg(pack_dir, package_key, next_version)
+        removed_artifacts = scrub_nupkg_packaging_artifacts(packed_nupkg)
+        if removed_artifacts:
+            preview = ", ".join(removed_artifacts[:5])
+            suffix = "" if len(removed_artifacts) <= 5 else f", +{len(removed_artifacts) - 5} more"
+            print(
+                "[PACK] removed package build/source-control artifact(s): "
+                f"{preview}{suffix}",
+                file=sys.stderr,
+            )
+        repaired_descriptors = ensure_nupkg_runtime_project_descriptors(packed_nupkg)
+        if repaired_descriptors:
+            print(
+                "[PACK] repaired package runtime descriptor(s): "
+                f"{', '.join(repaired_descriptors)}",
+                file=sys.stderr,
+            )
         validate_dev_robot_package_compatibility(packed_nupkg)
+        validate_nupkg_handoff_audit(
+            packed_nupkg,
+            package_key=package_key,
+            version=next_version,
+            context="generated package failed full handoff audit before upload; package was not uploaded.",
+        )
+        packed_sha256 = sha256_file(packed_nupkg)
 
         _run_checked(
             runner,
             [
                 "or", "packages", "upload", str(packed_nupkg),
-                "--tenant", args.dev_tenant,
                 "--output", "json",
             ],
         )
@@ -830,13 +989,26 @@ def execute(
             [
                 "or", "packages", "download", f"{package_key}:{next_version}",
                 "--destination", str(downloaded_nupkg),
-                "--tenant", args.dev_tenant,
                 "--output", "json",
             ],
         )
         if not downloaded_nupkg.is_file():
             raise RuntimeError(
                 f"download command completed but file was not found: {downloaded_nupkg}"
+            )
+        validate_dev_robot_package_compatibility(downloaded_nupkg)
+        validate_nupkg_handoff_audit(
+            downloaded_nupkg,
+            package_key=package_key,
+            version=next_version,
+            context="downloaded Orchestrator package failed full handoff audit.",
+        )
+        downloaded_sha256 = sha256_file(downloaded_nupkg)
+        if downloaded_sha256 != packed_sha256:
+            raise RuntimeError(
+                "downloaded Orchestrator package does not match uploaded package bytes. "
+                f"uploaded sha256={packed_sha256}; downloaded sha256={downloaded_sha256}. "
+                "Do not hand off this package until the feed/download path is investigated."
             )
     except Exception:
         project_json.write_bytes(original_project_json)

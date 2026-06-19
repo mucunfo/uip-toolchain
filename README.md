@@ -159,6 +159,15 @@ python tools/batch_uip.py C:\Users\lisan\Desktop\temp\_uip_relacao.txt --workers
 
 # Diagnóstico da CLI oficial UiPath usada pelos gates externos
 python -m uip_engine.cli doctor-uipath-cli
+
+# Auditoria offline de pacote(s) .nupkg de handoff/runtime DEV
+python -m uip_engine.cli audit-nupkg C:\path\to\package.1.2.3.nupkg
+python -m uip_engine.cli audit-nupkg C:\path\to\handoff-folder --recursive
+
+# Auditoria de handoff contra os projetos fonte + bump esperado
+python -m uip_engine.cli audit-publish-handoff patch `
+  "C:\Users\lisan\OneDrive - Sicoob\Projects\4. prod" `
+  C:\path\to\handoff-folder
 ```
 
 Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).
@@ -176,24 +185,34 @@ ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. don
 ccs-uip-publish minor "C:\Users\lisandro.souza\OneDrive - Sicoob\Projects\3. done" `
   --commit-branch "release/nc-179" `
   --commit-message "chore: publish DEV packages"
+
 ```
 
 Fluxo:
 1. varre a pasta informada e permite selecionar os projetos;
 2. exige bump explícito `major`, `minor` ou `patch`;
 3. lê a versão atual de `project.json::projectVersion`;
-4. autentica no `uip` e valida acesso ao tenant `RPA_Desenvolvimento`;
-5. no pre-publish, substitui a validação local de `D-1q-CCS-AUTO` por consulta ao feed de Libraries do Orchestrator (`uip resource libraries versions <CCS_*> --tenant RPA_Desenvolvimento`); não há fallback para `.nupkgs` local no publish;
-6. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual de todos os repositórios selecionados antes de qualquer pack/upload;
-7. com commit habilitado, faz `git fetch origin <branch>` e bloqueia se a branch local estiver atrás/divergente do remoto;
-8. grava a próxima versão no `project.json` antes do pack;
-9. prepara o projeto para o pack (`project.uiproj` derivado de `project.json`);
-10. exige packer `UiRobot.exe` 23.10; a descoberta tenta `UIP_TOOLCHAIN_DEV_ROBOT_PACKER`, `Documents\UiPathStudio23x`, instalações padrão em `%LOCALAPPDATA%`, `%ProgramFiles%` e `PATH`;
-11. remove referências legadas conhecidamente incompatíveis com pack headless e roda `UiRobot.exe pack <project.json> -o <out> -v <version>`;
-12. faz upload do pacote em `RPA_Desenvolvimento`;
-13. valida que o `.nupkg` gerado contém TFM compatível com DEV net6 (`net6.0-windows*`) antes de qualquer upload;
-14. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`;
-15. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
+4. se `--commit-message` e `--commit-branch` forem informados, valida a branch atual e faz `git fetch origin <branch>` para bloquear branch local atrás/divergente antes de qualquer chamada ao UiPath;
+5. autentica no `uip`, valida acesso ao tenant `RPA_Desenvolvimento` e ativa esse tenant com `uip login tenant set RPA_Desenvolvimento`;
+6. obrigatoriamente executa o pre-publish review online de todos os projetos antes de confirmar upload/download; essa etapa consulta o feed de Libraries do Orchestrator ativo (`uip resource libraries versions <CCS_*>`) e não altera `projectVersion`, não empacota, não faz upload e não baixa pacote;
+7. se qualquer projeto falhar no preflight online, nenhum pacote é construído ou enviado; com `--keep-going`, a engine só coleta todos os erros de preflight;
+8. no pre-publish, substitui a validação local de `D-1q-CCS-AUTO` pela consulta online; não há fallback para `.nupkgs` local no publish;
+9. grava a próxima versão no `project.json` antes do pack;
+10. prepara o projeto para o pack (`project.uiproj` derivado de `project.json`);
+11. exige packer `UiRobot.exe` 23.10; a descoberta tenta `UIP_TOOLCHAIN_DEV_ROBOT_PACKER`, `Documents\UiPathStudio23x`, instalações padrão em `%LOCALAPPDATA%`, `%ProgramFiles%` e `PATH`;
+12. remove referências legadas conhecidamente incompatíveis com pack headless e roda `UiRobot.exe pack <project.json> -o <out> -v <version>`;
+13. remove artefatos de build/source-control dentro do `.nupkg` (`content/.git`, `.tmp`, `.local`, `.publish-dev-handoff`, caches);
+14. repara o `.nupkg` quando o packer grava `content/project.json` sem `lib/<tfm>/project.json`, valida descriptor por TFM e exige somente TFMs compatíveis com DEV net6 (`net6.0-windows*`);
+15. executa auditoria completa do pacote antes do upload: ZIP, `.nuspec`, id/versão, TFMs, descriptors, `project.json`, DLL runtime, pins de dependência e artefatos proibidos;
+16. faz upload do pacote em `RPA_Desenvolvimento`;
+17. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`, audita o arquivo baixado e compara SHA-256 com o pacote enviado;
+18. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
+
+Depois que os `.nupkg` forem gerados fora desta sessão, use
+`audit-publish-handoff` para comparar a pasta de handoff contra os projetos
+fonte: o comando recalcula a próxima versão a partir do bump, exige exatamente
+um pacote por projeto, bloqueia pacotes sobrando/faltando/duplicados e roda a
+auditoria completa de cada `.nupkg`.
 
 O batch para no primeiro erro por padrão. Use `--keep-going` apenas quando quiser
 continuar processando os demais projetos mesmo após falhas.

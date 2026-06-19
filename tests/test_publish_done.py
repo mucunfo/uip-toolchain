@@ -50,7 +50,19 @@ def _write_nupkg(path: Path, *, tfm: str = "net6.0-windows7.0") -> None:
     stem = path.name.removesuffix(".nupkg")
     package_id, major, minor, patch = stem.rsplit(".", 3)
     version = ".".join([major, minor, patch])
+    descriptor = {
+        "name": package_id,
+        "projectVersion": version,
+        "targetFramework": "Windows",
+        "designOptions": {"outputType": "Process"},
+        "main": "Main.xaml",
+        "entryPoints": [{"filePath": "Main.xaml"}],
+        "dependencies": {
+            "UiPath.System.Activities": "[23.10.11]",
+        },
+    }
     with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
         archive.writestr(
             f"{package_id}.nuspec",
             "\n".join([
@@ -66,7 +78,20 @@ def _write_nupkg(path: Path, *, tfm: str = "net6.0-windows7.0") -> None:
                 "</package>",
             ]),
         )
+        archive.writestr(
+            f"lib/{tfm}/project.json",
+            json.dumps(descriptor),
+        )
+        archive.writestr("content/Main.xaml", "<Activity />")
         archive.writestr(f"lib/{tfm}/{package_id}.dll", b"")
+
+
+def _copy_uploaded_download(command: list[str], uploaded: Path | None) -> Path:
+    assert uploaded is not None
+    destination = Path(command[command.index("--destination") + 1])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(uploaded.read_bytes())
+    return destination
 
 
 def _review_ok(project: Path) -> None:
@@ -122,11 +147,13 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     calls = []
     pack_calls = []
     answers = iter(["1", "y"])
+    uploaded_nupkg = None
 
     def fake_input(prompt):
         return next(answers)
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
@@ -134,12 +161,13 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
@@ -170,7 +198,9 @@ def test_batch_interactive_selection_logs_in_once_and_runs_selected(tmp_path):
     assert not (tmp_path / "out" / ".work").exists()
     assert calls[0] == ["login", "status", "--output", "json"]
     assert calls[1] == ["login", "tenant", "list", "--output", "json"]
+    assert calls[2] == ["login", "tenant", "set", "RPA_Desenvolvimento", "--output", "json"]
     assert sum(1 for c in calls if c[:2] == ["login", "status"]) == 1
+    assert sum(1 for c in calls if c[:3] == ["login", "tenant", "set"]) == 1
     assert pack_calls == [
         (
             (tmp_path / "RepoA" / "project.json").resolve(),
@@ -241,6 +271,117 @@ def test_batch_dry_run_does_not_call_uip(tmp_path):
     assert results[0].ok
 
 
+def test_batch_publish_runs_online_preflight_before_pack_and_upload(tmp_path):
+    project_a = _project(tmp_path, "RepoA", "ProjectA")
+    project_b = _project(tmp_path, "RepoB", "ProjectB")
+    calls = []
+    reviewed = []
+    pack_calls = []
+    uploaded_nupkg = None
+
+    def fake_run(command):
+        nonlocal uploaded_nupkg
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_calls.append(project_json)
+        project_name = json.loads(project_json.read_text(encoding="utf-8"))["name"]
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / f"{project_name}.{version}.nupkg")
+
+    def fake_review(project: Path) -> None:
+        reviewed.append(project)
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(tmp_path),
+        "--all",
+        "--yes",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    results = publish_done.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=fake_review,
+        check_environment=False,
+    )
+
+    assert [result.ok for result in results] == [True, True]
+    assert reviewed == [project_a.resolve(), project_b.resolve()]
+    assert pack_calls == [project_a / "project.json", project_b / "project.json"]
+    assert calls[:3] == [
+        ["login", "status", "--output", "json"],
+        ["login", "tenant", "list", "--output", "json"],
+        ["login", "tenant", "set", "RPA_Desenvolvimento", "--output", "json"],
+    ]
+    assert any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_batch_mandatory_online_preflight_stops_before_prompt_and_pack(tmp_path):
+    project_a = _project(tmp_path, "RepoA", "ProjectA")
+    _project(tmp_path, "RepoB", "ProjectB")
+    reviewed = []
+    prompted = False
+
+    def fake_run(command):
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_review(project: Path) -> None:
+        reviewed.append(project)
+        raise RuntimeError("remote library missing")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        raise AssertionError("publish must not pack when online preflight fails")
+
+    def fake_input(prompt):
+        nonlocal prompted
+        prompted = True
+        raise AssertionError(prompt)
+
+    args = publish_done.build_parser().parse_args([
+        "patch",
+        str(tmp_path),
+        "--all",
+    ])
+
+    results = publish_done.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=fake_review,
+        input_func=fake_input,
+        check_environment=False,
+    )
+
+    assert len(results) == 1
+    assert not results[0].ok
+    assert "remote library missing" in str(results[0].error)
+    assert reviewed == [project_a.resolve()]
+    assert not prompted
+
+
 def test_batch_stops_on_first_project_failure_by_default(tmp_path):
     _project(tmp_path, "RepoA", "ProjectA")
     _project(tmp_path, "RepoB", "ProjectB")
@@ -253,6 +394,8 @@ def test_batch_stops_on_first_project_failure_by_default(tmp_path):
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         raise AssertionError(f"unexpected command: {command}")
 
     def fake_pack(project_json, pack_dir, version, timeout):
@@ -285,8 +428,10 @@ def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
     _project(tmp_path, "RepoA", "ProjectA", packable=False)
     calls = []
     pack_calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
@@ -294,12 +439,13 @@ def test_batch_syncs_project_uiproj_for_project_json_only_project(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
@@ -367,19 +513,22 @@ def test_batch_commits_publish_changes_on_expected_branch(tmp_path):
     subprocess.run(["git", "-C", str(repo), "push", "-u", "origin", "release/nc-179"], check=True, capture_output=True)
     manual_note.write_text("manual change before publish\n", encoding="utf-8")
     calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 

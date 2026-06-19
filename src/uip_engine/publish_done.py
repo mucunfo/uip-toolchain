@@ -27,6 +27,7 @@ from .publish_dev import (
     discover_dev_robot_packer,
     ensure_login,
     execute as execute_one,
+    run_publish_review_gate,
 )
 
 
@@ -364,6 +365,46 @@ def ensure_dev_robot_packer_for_pack() -> None:
     discover_dev_robot_packer()
 
 
+def run_online_preflight(
+    selected: list[ProjectCandidate],
+    *,
+    run_uip: RunUip,
+    run_review: RunReview | None = None,
+    keep_going: bool = False,
+) -> list[BatchItemResult]:
+    results: list[BatchItemResult] = []
+    total = len(selected)
+    for ordinal, candidate in enumerate(selected, start=1):
+        print(f"\n[preflight {ordinal}/{total}] {candidate.folder_name}")
+        try:
+            if run_review is None:
+                run_publish_review_gate(
+                    candidate.root,
+                    run_uip=run_uip,
+                    dev_tenant=DEV_TENANT,
+                )
+            else:
+                run_review(candidate.root)
+            print("  OK pre-publish review")
+            results.append(BatchItemResult(candidate=candidate, ok=True))
+        except Exception as exc:
+            print(f"  FAIL {exc}")
+            results.append(
+                BatchItemResult(
+                    candidate=candidate,
+                    ok=False,
+                    error=str(exc),
+                )
+            )
+            if not keep_going:
+                print(
+                    "  Stopping after first failure. Use --keep-going to continue.",
+                    file=sys.stderr,
+                )
+                break
+    return results
+
+
 def execute(
     args: argparse.Namespace,
     *,
@@ -388,30 +429,41 @@ def execute(
     print(f"\nBump: {args.bump}")
     print(f"RPA DEV: {DEV_TENANT}", flush=True)
 
-    if args.dry_run:
-        return [
-            BatchItemResult(candidate=candidate, ok=True)
-            for candidate in selected
-        ]
-
-    if check_environment:
-        ensure_dev_robot_packer_for_pack()
-
-    if args.commit_message:
-        preflight_commit_branch(selected, expected_branch=args.commit_branch)
-
-    if not args.yes:
-        confirm = input_func("\nConfirmar upload/download desses repos? [y/N]: ")
-        if confirm.strip().lower() not in {"y", "yes", "s", "sim"}:
-            raise RuntimeError("batch cancelled by user")
-
     timeout = int(args.timeout)
 
     def _default_run_uip(command: list[str]) -> OfficialUipResult:
         return run_official_uip(command, timeout=timeout)
 
     runner = run_uip or _default_run_uip
+
+    if args.dry_run:
+        return [
+            BatchItemResult(candidate=candidate, ok=True)
+            for candidate in selected
+        ]
+
+    if args.commit_message:
+        preflight_commit_branch(selected, expected_branch=args.commit_branch)
+
     ensure_login(runner, dev_tenant=DEV_TENANT)
+    preflight_results = run_online_preflight(
+        selected,
+        run_uip=runner,
+        run_review=run_review,
+        keep_going=args.keep_going,
+    )
+    if any(not result.ok for result in preflight_results):
+        return preflight_results
+
+    if check_environment:
+        ensure_dev_robot_packer_for_pack()
+
+    if not args.yes:
+        confirm = input_func("\nConfirmar upload/download desses repos? [y/N]: ")
+        if confirm.strip().lower() not in {"y", "yes", "s", "sim"}:
+            raise RuntimeError("batch cancelled by user")
+
+    publish_review = (lambda project: None)
 
     out_dir = (
         Path(args.out_dir).resolve()
@@ -435,7 +487,7 @@ def execute(
                     ),
                     run_uip=runner,
                     run_pack=run_pack,
-                    run_review=run_review,
+                    run_review=publish_review,
                     ensure_auth=False,
                 )
                 print(f"  OK {plan.current_version} -> {plan.next_version}")

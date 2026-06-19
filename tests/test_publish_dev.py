@@ -33,11 +33,30 @@ def _result(data, *, code="Ok", returncode=0, result="Success"):
     )
 
 
-def _write_nupkg(path: Path, *, tfm: str = "net6.0-windows7.0") -> None:
+def _write_nupkg(
+    path: Path,
+    *,
+    tfm: str = "net6.0-windows7.0",
+    include_project_json: bool = True,
+    include_content_project_json: bool = False,
+    include_git_metadata: bool = False,
+) -> None:
     stem = path.name.removesuffix(".nupkg")
     package_id, major, minor, patch = stem.rsplit(".", 3)
     version = ".".join([major, minor, patch])
+    descriptor = {
+        "name": package_id,
+        "projectVersion": version,
+        "targetFramework": "Windows",
+        "designOptions": {"outputType": "Process"},
+        "main": "Main.xaml",
+        "entryPoints": [{"filePath": "Main.xaml"}],
+        "dependencies": {
+            "UiPath.System.Activities": "[23.10.11]",
+        },
+    }
     with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
         archive.writestr(
             f"{package_id}.nuspec",
             "\n".join([
@@ -53,7 +72,28 @@ def _write_nupkg(path: Path, *, tfm: str = "net6.0-windows7.0") -> None:
                 "</package>",
             ]),
         )
+        if include_project_json:
+            archive.writestr(
+                f"lib/{tfm}/project.json",
+                json.dumps(descriptor),
+            )
+        if include_content_project_json:
+            archive.writestr(
+                "content/project.json",
+                json.dumps(descriptor),
+            )
+        archive.writestr("content/Main.xaml", "<Activity />")
         archive.writestr(f"lib/{tfm}/{package_id}.dll", b"")
+        if include_git_metadata:
+            archive.writestr("content/.git/HEAD", "ref: refs/heads/main\n")
+
+
+def _copy_uploaded_download(command: list[str], uploaded: Path | None) -> Path:
+    assert uploaded is not None
+    destination = Path(command[command.index("--destination") + 1])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(uploaded.read_bytes())
+    return destination
 
 
 def _review_ok(project: Path) -> None:
@@ -90,8 +130,10 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     )
     calls = []
     pack_calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
@@ -99,12 +141,13 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
@@ -133,26 +176,29 @@ def test_execute_reads_prod_version_uploads_dev_and_downloads(tmp_path):
     assert plan.next_version == "1.0.1"
     assert json.loads((project / "project.json").read_text())["projectVersion"] == "1.0.1"
     assert project / "project.json" in plan.changed_files
-    assert plan.downloaded_nupkg.read_bytes() == b"downloaded"
+    assert plan.downloaded_nupkg.read_bytes() == uploaded_nupkg.read_bytes()
     assert calls[0] == [
         "login", "status", "--output", "json",
     ]
     assert calls[1] == [
         "login", "tenant", "list", "--output", "json",
     ]
+    assert calls[2] == [
+        "login", "tenant", "set", "RPA_Desenvolvimento", "--output", "json",
+    ]
     assert pack_calls == [
         (project / "project.json", tmp_path / "out" / "pack", "1.0.1", 600),
     ]
-    assert calls[2][0:4] == [
+    assert calls[3][0:4] == [
         "or",
         "packages",
         "upload",
         str(tmp_path / "out" / "pack" / "InvoiceProcessing.1.0.1.nupkg"),
     ]
-    assert "--tenant" in calls[2]
-    assert "RPA_Desenvolvimento" in calls[2]
-    assert calls[3][0:4] == ["or", "packages", "download", "InvoiceProcessing:1.0.1"]
-    assert calls[3][calls[3].index("--destination") + 1] == str(
+    assert "--tenant" not in calls[3]
+    assert calls[4][0:4] == ["or", "packages", "download", "InvoiceProcessing:1.0.1"]
+    assert "--tenant" not in calls[4]
+    assert calls[4][calls[4].index("--destination") + 1] == str(
         tmp_path / "downloads" / "InvoiceProcessing.1.0.1.nupkg"
     )
 
@@ -166,13 +212,17 @@ def test_execute_blocks_net8_package_before_upload(tmp_path):
         encoding="utf-8",
     )
     calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         raise AssertionError(f"unexpected command: {command}")
 
     def fake_pack(project_json, pack_dir, version, timeout):
@@ -198,6 +248,237 @@ def test_execute_blocks_net8_package_before_upload(tmp_path):
         )
 
     assert not any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_validate_blocks_mixed_package_missing_net45_project_json(tmp_path):
+    nupkg = tmp_path / "InvoiceProcessing.1.0.1.nupkg"
+    with zipfile.ZipFile(nupkg, "w") as archive:
+        archive.writestr(
+            "InvoiceProcessing.nuspec",
+            "\n".join([
+                '<?xml version="1.0" encoding="utf-8"?>',
+                '<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">',
+                "  <metadata>",
+                "    <id>InvoiceProcessing</id>",
+                "    <version>1.0.1</version>",
+                "    <dependencies>",
+                '      <group targetFramework="net45" />',
+                '      <group targetFramework="net6.0-windows7.0" />',
+                "    </dependencies>",
+                "  </metadata>",
+                "</package>",
+            ]),
+        )
+        archive.writestr(
+            "lib/net6.0-windows7.0/project.json",
+            json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.0.1"}),
+        )
+        archive.writestr("lib/net6.0-windows7.0/InvoiceProcessing.dll", b"")
+        archive.writestr("lib/net45/InvoiceProcessing.dll", b"")
+
+    with pytest.raises(RuntimeError, match=r"lib/net45/project\.json"):
+        publish_dev.validate_dev_robot_package_compatibility(nupkg)
+
+
+def test_validate_blocks_mixed_package_with_legacy_tfm(tmp_path):
+    nupkg = tmp_path / "InvoiceProcessing.1.0.1.nupkg"
+    descriptor = {
+        "name": "InvoiceProcessing",
+        "projectVersion": "1.0.1",
+        "targetFramework": "Windows",
+        "designOptions": {"outputType": "Process"},
+        "main": "Main.xaml",
+        "entryPoints": [{"filePath": "Main.xaml"}],
+    }
+    with zipfile.ZipFile(nupkg, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
+        archive.writestr(
+            "InvoiceProcessing.nuspec",
+            "\n".join([
+                '<?xml version="1.0" encoding="utf-8"?>',
+                '<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">',
+                "  <metadata>",
+                "    <id>InvoiceProcessing</id>",
+                "    <version>1.0.1</version>",
+                "    <dependencies>",
+                '      <group targetFramework="net45" />',
+                '      <group targetFramework="net6.0-windows7.0" />',
+                "    </dependencies>",
+                "  </metadata>",
+                "</package>",
+            ]),
+        )
+        for tfm in ("net45", "net6.0-windows7.0"):
+            archive.writestr(f"lib/{tfm}/project.json", json.dumps(descriptor))
+            archive.writestr(f"lib/{tfm}/InvoiceProcessing.dll", b"")
+
+    with pytest.raises(RuntimeError, match="not compatible with the DEV Robot net6"):
+        publish_dev.validate_dev_robot_package_compatibility(nupkg)
+
+
+def test_execute_repairs_content_project_json_into_lib_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.0.0"}),
+        encoding="utf-8",
+    )
+    calls = []
+    uploaded_nupkg = None
+
+    def fake_run(command):
+        nonlocal uploaded_nupkg
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            uploaded = Path(command[3])
+            uploaded_nupkg = uploaded
+            with zipfile.ZipFile(uploaded) as archive:
+                names = set(archive.namelist())
+                assert "content/project.json" in names
+                assert "lib/net6.0-windows7.0/project.json" in names
+                assert archive.read("lib/net6.0-windows7.0/project.json") == archive.read(
+                    "content/project.json"
+                )
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            include_project_json=False,
+            include_content_project_json=True,
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
+
+    assert any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_removes_git_metadata_from_nupkg_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.0.0"}),
+        encoding="utf-8",
+    )
+    calls = []
+    uploaded_nupkg = None
+
+    def fake_run(command):
+        nonlocal uploaded_nupkg
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
+            with zipfile.ZipFile(uploaded_nupkg) as archive:
+                assert "content/.git/HEAD" not in archive.namelist()
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            include_git_metadata=True,
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    plan = publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
+
+    with zipfile.ZipFile(plan.downloaded_nupkg) as archive:
+        assert "content/.git/HEAD" not in archive.namelist()
+    assert any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_blocks_when_downloaded_package_hash_differs(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({"name": "InvoiceProcessing", "projectVersion": "1.0.0"}),
+        encoding="utf-8",
+    )
+    uploaded_nupkg = None
+
+    def fake_run(command):
+        nonlocal uploaded_nupkg
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
+            with zipfile.ZipFile(destination, "a") as archive:
+                archive.writestr("content/OrchestratorChanged.txt", "changed")
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(pack_dir / "InvoiceProcessing.1.0.1.nupkg")
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError, match="does not match uploaded package bytes"):
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=_review_ok,
+        )
 
 
 def test_execute_blocks_when_pre_publish_review_fails(tmp_path):
@@ -253,6 +534,8 @@ def test_execute_rolls_back_project_version_when_pack_fails(tmp_path):
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         raise AssertionError(f"unexpected command: {command}")
 
     def fake_pack(project_json, pack_dir, version, timeout):
@@ -286,8 +569,10 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
         encoding="utf-8",
     )
     calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Message": "not logged in"}, returncode=1, result="Failure")
@@ -297,12 +582,13 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
@@ -327,6 +613,71 @@ def test_execute_runs_interactive_login_when_status_fails(tmp_path):
     assert calls[0] == ["login", "status", "--output", "json"]
     assert calls[1] == ["login", "--interactive", "--output", "json"]
     assert calls[2] == ["login", "tenant", "list", "--output", "json"]
+    assert calls[3] == ["login", "tenant", "set", "RPA_Desenvolvimento", "--output", "json"]
+
+
+def test_ensure_login_blocks_robot_session_without_dev_tenant():
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"AuthSource": "Robot"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "Default"}])
+        if command[:2] == ["login", "which"]:
+            return _result(
+                {"Message": "No credentials file found"},
+                returncode=1,
+                result="Failure",
+            )
+        raise AssertionError(command)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        publish_dev.ensure_login(fake_run, dev_tenant="RPA_Desenvolvimento")
+
+    message = str(excinfo.value)
+    assert "cannot see required tenant(s): RPA_Desenvolvimento" in message
+    assert "Available tenants: Default" in message
+    assert "`uip login which` did not return reusable CLI credentials" in message
+    assert calls == [
+        ["login", "status", "--output", "json"],
+        ["login", "tenant", "list", "--output", "json"],
+        ["login", "which", "--output", "json"],
+    ]
+
+
+def test_ensure_login_blocks_when_dev_tenant_cannot_be_selected():
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result(
+                {"Message": "tenant set failed"},
+                returncode=1,
+                result="Failure",
+            )
+        if command[:2] == ["login", "which"]:
+            return _result({"Credential": "stored"})
+        raise AssertionError(command)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        publish_dev.ensure_login(fake_run, dev_tenant="RPA_Desenvolvimento")
+
+    message = str(excinfo.value)
+    assert "`uip login tenant set RPA_Desenvolvimento` failed" in message
+    assert "`uip login which` returned an active CLI credential" in message
+    assert calls == [
+        ["login", "status", "--output", "json"],
+        ["login", "tenant", "list", "--output", "json"],
+        ["login", "tenant", "set", "RPA_Desenvolvimento", "--output", "json"],
+        ["login", "which", "--output", "json"],
+    ]
 
 
 def test_publish_ccs_validation_uses_orchestrator_library_versions(tmp_path):
@@ -365,13 +716,11 @@ def test_publish_ccs_validation_uses_orchestrator_library_versions(tmp_path):
     assert calls == [
         [
             "resource", "libraries", "versions", "CCS_Controle",
-            "--tenant", "RPA_Desenvolvimento",
             "--limit", "1000",
             "--output", "json",
         ],
         [
             "resource", "libraries", "versions", "CCS_SipagDirect",
-            "--tenant", "RPA_Desenvolvimento",
             "--limit", "1000",
             "--output", "json",
         ],
@@ -485,19 +834,22 @@ def test_execute_authenticates_before_default_publish_review(monkeypatch, tmp_pa
         encoding="utf-8",
     )
     calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
         if command[:3] == ["login", "tenant", "list"]:
             return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(command)
 
@@ -524,6 +876,7 @@ def test_execute_authenticates_before_default_publish_review(monkeypatch, tmp_pa
     assert review_seen[0][2] == [
         ["login", "status", "--output", "json"],
         ["login", "tenant", "list", "--output", "json"],
+        ["login", "tenant", "set", "RPA_Desenvolvimento", "--output", "json"],
     ]
 
 
@@ -602,8 +955,10 @@ def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
     )
     calls = []
     pack_calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
@@ -611,12 +966,13 @@ def test_execute_syncs_project_uiproj_before_modern_pack(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 
@@ -708,8 +1064,10 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
     )
     calls = []
     pack_calls = []
+    uploaded_nupkg = None
 
     def fake_run(command):
+        nonlocal uploaded_nupkg
         calls.append(command)
         if command[:2] == ["login", "status"]:
             return _result({"Status": "Logged in"})
@@ -717,12 +1075,13 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
             return _result([
                 {"TenantName": "RPA_Desenvolvimento"},
             ])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
         if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
             return _result({"Status": "Uploaded"})
         if command[:3] == ["or", "packages", "download"]:
-            destination = Path(command[command.index("--destination") + 1])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(b"downloaded")
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
             return _result({"SavedTo": str(destination)})
         raise AssertionError(f"unexpected command: {command}")
 

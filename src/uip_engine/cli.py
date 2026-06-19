@@ -444,6 +444,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_pre_migrate_check(args)
     if args.command == "pack-scrub":
         return _cmd_pack_scrub(args)
+    if args.command == "audit-nupkg":
+        return _cmd_audit_nupkg(args)
+    if args.command == "audit-publish-handoff":
+        return _cmd_audit_publish_handoff(args)
     if args.command == "migrate-check":
         return _cmd_migrate_check(args)
     if args.command == "install-skills":
@@ -478,7 +482,7 @@ def ccs_uip_main(argv: list[str] | None = None) -> int:
         "review", "fix", "list", "validate", "docs", "stats", "all",
         "migrate-windows", "phase-out",
         # Phase 7 (2026-05): new standalone subcommands.
-        "pre-migrate-check", "pack-scrub", "migrate-check",
+        "pre-migrate-check", "pack-scrub", "audit-nupkg", "audit-publish-handoff", "migrate-check",
         "install-skills",
         "doctor-uipath-cli",
     }
@@ -694,6 +698,55 @@ def build_parser() -> argparse.ArgumentParser:
     ps.add_argument("--timestamper",
                     default="http://timestamp.digicert.com",
                     help="RFC 3161 timestamp server (usado só se --sign-cert)")
+
+    an = sub.add_parser(
+        "audit-nupkg",
+        help="Audita pacote(s) .nupkg UiPath gerados para handoff/runtime DEV",
+    )
+    an.add_argument(
+        "paths",
+        nargs="+",
+        help="Arquivo .nupkg ou pasta com .nupkg. Pastas usam glob direto por default.",
+    )
+    an.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Quando um path for pasta, procurar .nupkg recursivamente.",
+    )
+    an.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Formato de saída.",
+    )
+    an.add_argument(
+        "--no-dev-runtime",
+        action="store_true",
+        help="Não exigir TFMs compatíveis com Robot DEV net6.",
+    )
+
+    ah = sub.add_parser(
+        "audit-publish-handoff",
+        help="Compara uma pasta de .nupkg de handoff com os projetos fonte esperados.",
+    )
+    ah.add_argument("bump", choices=["major", "minor", "patch"])
+    ah.add_argument("source_root", help="Pasta raiz contendo os projetos UiPath fonte.")
+    ah.add_argument(
+        "handoff_paths",
+        nargs="+",
+        help="Arquivo(s) .nupkg ou pasta(s) com .nupkg de handoff.",
+    )
+    ah.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Quando um handoff path for pasta, procurar .nupkg recursivamente.",
+    )
+    ah.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Formato de saída.",
+    )
 
     # Phase 5 (2026-05): migrate-check subcommand (advisory, opt-in).
     # Reflection-driven Activity Migrator probe — surfaces what GA Migrator
@@ -3559,6 +3612,80 @@ def _cmd_pack_scrub(args) -> int:
         print(f"[SIGN {'OK' if ok else 'FAIL'}] {msg}")
         if not ok:
             return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_audit_nupkg(args) -> int:
+    """Audit generated UiPath .nupkg packages for runtime handoff safety."""
+    from .nupkg_audit import (
+        audit_nupkg,
+        collect_nupkgs,
+        format_audit_summary,
+    )
+
+    targets = collect_nupkgs(
+        [Path(raw) for raw in args.paths],
+        recursive=args.recursive,
+    )
+    if not targets:
+        print("[audit-nupkg] no .nupkg files found", file=sys.stderr)
+        return EXIT_ERROR
+
+    results = [
+        audit_nupkg(
+            target,
+            require_dev_compatible=not args.no_dev_runtime,
+        )
+        for target in targets
+    ]
+
+    if args.format == "json":
+        print(json.dumps(
+            {
+                "summary": {
+                    "total": len(results),
+                    "passed": sum(1 for result in results if result.ok),
+                    "failed": sum(1 for result in results if not result.ok),
+                    "warnings": sum(result.warn_count for result in results),
+                },
+                "packages": [result.to_dict() for result in results],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ))
+    else:
+        print(format_audit_summary(results))
+
+    if any(not result.ok for result in results):
+        return EXIT_ERROR
+    if any(result.warn_count for result in results):
+        return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_audit_publish_handoff(args) -> int:
+    """Audit a DEV publish handoff folder against source projects and bump."""
+    from .handoff_audit import (
+        audit_publish_handoff,
+        format_handoff_audit,
+        handoff_audit_to_json,
+    )
+
+    result = audit_publish_handoff(
+        Path(args.source_root),
+        [Path(raw) for raw in args.handoff_paths],
+        bump=args.bump,
+        recursive=args.recursive,
+    )
+    if args.format == "json":
+        print(handoff_audit_to_json(result))
+    else:
+        print(format_handoff_audit(result))
+
+    if not result.ok:
+        return EXIT_ERROR
+    if result.warn_count:
+        return EXIT_WARN
     return EXIT_OK
 
 
