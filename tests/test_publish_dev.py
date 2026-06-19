@@ -40,6 +40,7 @@ def _write_nupkg(
     include_project_json: bool = True,
     include_content_project_json: bool = False,
     include_git_metadata: bool = False,
+    system_activities_version: str = "[23.10.11]",
 ) -> None:
     stem = path.name.removesuffix(".nupkg")
     package_id, major, minor, patch = stem.rsplit(".", 3)
@@ -52,7 +53,7 @@ def _write_nupkg(
         "main": "Main.xaml",
         "entryPoints": [{"filePath": "Main.xaml"}],
         "dependencies": {
-            "UiPath.System.Activities": "[23.10.11]",
+            "UiPath.System.Activities": system_activities_version,
         },
     }
     with zipfile.ZipFile(path, "w") as archive:
@@ -375,6 +376,59 @@ def test_execute_repairs_content_project_json_into_lib_before_upload(tmp_path):
     )
 
     assert any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_blocks_source_descriptor_drift_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "dependencies": {
+                "UiPath.System.Activities": "[23.10.11]",
+            },
+        }),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            raise AssertionError("upload should not be called")
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            system_activities_version="[99.0.0]",
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError, match="HANDOFF-SOURCE-DESCRIPTOR-MISMATCH"):
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=_review_ok,
+        )
+
+    assert not any(command[:3] == ["or", "packages", "upload"] for command in calls)
 
 
 def test_execute_removes_git_metadata_from_nupkg_before_upload(tmp_path):
@@ -1108,7 +1162,10 @@ def test_execute_scrubs_stale_python_assembly_refs_before_modern_pack(tmp_path):
         assert "<AssemblyReference>UiPath.Word.Activities</AssemblyReference>" not in text
         assert "<AssemblyReference>UiPath.Word.Activities.Design</AssemblyReference>" not in text
         pack_dir.mkdir(parents=True, exist_ok=True)
-        _write_nupkg(pack_dir / "InvoiceProcessing.1.2.4.nupkg")
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.2.4.nupkg",
+            system_activities_version="[25.10.1]",
+        )
 
     args = publish_dev.build_parser().parse_args([
         str(project),

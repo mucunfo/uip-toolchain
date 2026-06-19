@@ -747,6 +747,34 @@ def validate_nupkg_handoff_audit(
     raise_for_audit_errors(result, context=context)
 
 
+def validate_nupkg_source_descriptor(
+    nupkg: Path,
+    *,
+    project_root: Path,
+    package_key: str,
+    current_version: str,
+    version: str,
+    context: str,
+) -> None:
+    from .handoff_audit import ExpectedHandoffPackage, _audit_source_descriptor_match
+
+    expected = ExpectedHandoffPackage(
+        folder_name=project_root.name,
+        project_root=project_root,
+        package_id=package_key,
+        current_version=current_version,
+        expected_version=version,
+    )
+    issues = _audit_source_descriptor_match(nupkg, expected)
+    if not issues:
+        return
+    details = "\n".join(
+        f"  - {issue.severity} {issue.code}: {issue.message}"
+        for issue in issues
+    )
+    raise RuntimeError(f"{context}\n{details}")
+
+
 def run_publish_review_gate(
     project_root: Path,
     *,
@@ -971,6 +999,17 @@ def execute(
             version=next_version,
             context="generated package failed full handoff audit before upload; package was not uploaded.",
         )
+        validate_nupkg_source_descriptor(
+            packed_nupkg,
+            project_root=project_root,
+            package_key=package_key,
+            current_version=current_version,
+            version=next_version,
+            context=(
+                "generated package descriptor does not match source project.json; "
+                "package was not uploaded."
+            ),
+        )
         packed_sha256 = sha256_file(packed_nupkg)
 
         _run_checked(
@@ -1002,6 +1041,14 @@ def execute(
             package_key=package_key,
             version=next_version,
             context="downloaded Orchestrator package failed full handoff audit.",
+        )
+        validate_nupkg_source_descriptor(
+            downloaded_nupkg,
+            project_root=project_root,
+            package_key=package_key,
+            current_version=current_version,
+            version=next_version,
+            context="downloaded Orchestrator package descriptor differs from source project.json.",
         )
         downloaded_sha256 = sha256_file(downloaded_nupkg)
         if downloaded_sha256 != packed_sha256:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -191,6 +192,8 @@ def audit_publish_handoff(
             expected_version=item.expected_version,
             require_dev_compatible=True,
         )
+        if package_audit.ok:
+            issues.extend(_audit_source_descriptor_match(matches[0], item))
         packages.append(HandoffPackageAudit(
             expected=item,
             path=matches[0],
@@ -233,6 +236,241 @@ def audit_publish_handoff(
         unexpected=unexpected,
         issues=tuple(issues),
     )
+
+
+_DESCRIPTOR_COMPARE_KEYS = (
+    "name",
+    "projectVersion",
+    "main",
+    "targetFramework",
+    "expressionLanguage",
+    "schemaVersion",
+    "studioVersion",
+    "dependencies",
+    "runtimeOptions",
+    "designOptions",
+    "arguments",
+    "entryPoints",
+    "isTemplate",
+)
+
+
+def _audit_source_descriptor_match(
+    nupkg: Path,
+    expected: ExpectedHandoffPackage,
+) -> list[HandoffAuditIssue]:
+    try:
+        source_descriptor = json.loads(
+            (expected.project_root / "project.json").read_text(encoding="utf-8-sig")
+        )
+    except Exception as exc:
+        return [HandoffAuditIssue(
+            ERROR,
+            "HANDOFF-SOURCE-DESCRIPTOR",
+            f"could not read source project.json: {exc}",
+            path=expected.project_root / "project.json",
+            folder_name=expected.folder_name,
+        )]
+    if not isinstance(source_descriptor, dict):
+        return [HandoffAuditIssue(
+            ERROR,
+            "HANDOFF-SOURCE-DESCRIPTOR",
+            "source project.json root must be an object",
+            path=expected.project_root / "project.json",
+            folder_name=expected.folder_name,
+        )]
+
+    source_descriptor = dict(source_descriptor)
+    source_descriptor["projectVersion"] = expected.expected_version
+
+    try:
+        package_member, package_descriptor = _read_primary_package_descriptor(nupkg)
+    except Exception as exc:
+        return [HandoffAuditIssue(
+            ERROR,
+            "HANDOFF-PACKAGE-DESCRIPTOR",
+            f"could not read package project.json descriptor: {exc}",
+            path=nupkg,
+            folder_name=expected.folder_name,
+        )]
+
+    expected_view = _descriptor_compare_view(source_descriptor)
+    actual_view = _descriptor_compare_view(package_descriptor)
+    diffs = _diff_descriptor_values(expected_view, actual_view)
+    if not diffs:
+        return []
+    preview = ", ".join(diffs[:12])
+    if len(diffs) > 12:
+        preview += f", +{len(diffs) - 12} more"
+    return [HandoffAuditIssue(
+        ERROR,
+        "HANDOFF-SOURCE-DESCRIPTOR-MISMATCH",
+        (
+            f"package descriptor {package_member} does not match source "
+            f"project.json after version bump; changed fields: {preview}"
+        ),
+        path=nupkg,
+        folder_name=expected.folder_name,
+    )]
+
+
+def _read_primary_package_descriptor(nupkg: Path) -> tuple[str, dict[str, Any]]:
+    with zipfile.ZipFile(nupkg) as archive:
+        names = [
+            (name.replace("\\", "/").lstrip("/"), name)
+            for name in archive.namelist()
+        ]
+        lib_descriptors = sorted(
+            (normalized, original)
+            for normalized, original in names
+            if normalized.lower().startswith("lib/")
+            and normalized.lower().endswith("/project.json")
+        )
+        candidates = [item for item in lib_descriptors]
+        lower_to_original = {normalized.lower(): (normalized, original) for normalized, original in names}
+        if not candidates and "content/project.json" in lower_to_original:
+            candidates = [lower_to_original["content/project.json"]]
+        if not candidates:
+            raise ValueError("no lib/<tfm>/project.json descriptor found")
+        member, original_member = candidates[0]
+        descriptor = json.loads(archive.read(original_member).decode("utf-8-sig"))
+    if not isinstance(descriptor, dict):
+        raise ValueError(f"{member} root must be an object")
+    return member, descriptor
+
+
+def _descriptor_compare_view(descriptor: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: _normalize_descriptor_value(key, descriptor.get(key))
+        for key in _DESCRIPTOR_COMPARE_KEYS
+        if key in descriptor
+    }
+
+
+def _normalize_descriptor_value(key: str, value: Any) -> Any:
+    if key == "arguments":
+        return _normalize_arguments(value)
+    if key == "entryPoints":
+        return _normalize_entry_points(value)
+    if key == "dependencies":
+        return _normalize_dependencies(value)
+    return _normalize_json_value(value)
+
+
+def _normalize_dependencies(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        str(name): _normalize_dependency_version(version)
+        for name, version in sorted(value.items(), key=lambda item: str(item[0]).lower())
+    }
+
+
+def _normalize_dependency_version(value: Any) -> str:
+    text = str(value).strip()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1].strip()
+    return text
+
+
+def _normalize_arguments(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    normalized: dict[str, Any] = {}
+    for direction in ("input", "output"):
+        items = value.get(direction)
+        if isinstance(items, list):
+            normalized[direction] = sorted(
+                (_normalize_argument(item) for item in items if isinstance(item, dict)),
+                key=lambda item: item.get("name") or "",
+            )
+    return normalized
+
+
+def _normalize_entry_points(value: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list):
+        return None
+    entries: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        entry = {
+            "filePath": _string_or_none(item.get("filePath")),
+            "uniqueId": _string_or_none(item.get("uniqueId")),
+            "input": sorted(
+                (
+                    _normalize_argument(arg)
+                    for arg in item.get("input", [])
+                    if isinstance(arg, dict)
+                ),
+                key=lambda arg: arg.get("name") or "",
+            ),
+            "output": sorted(
+                (
+                    _normalize_argument(arg)
+                    for arg in item.get("output", [])
+                    if isinstance(arg, dict)
+                ),
+                key=lambda arg: arg.get("name") or "",
+            ),
+        }
+        entries.append(entry)
+    return sorted(entries, key=lambda item: item.get("filePath") or "")
+
+
+def _normalize_argument(value: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {
+        "name": _string_or_none(value.get("name")),
+        "type": _normalize_type_name(value.get("type")),
+    }
+    for key in ("required", "hasDefault"):
+        if key in value:
+            normalized[key] = value.get(key)
+    return normalized
+
+
+def _normalize_type_name(value: Any) -> str | None:
+    text = _string_or_none(value)
+    if text is None:
+        return None
+    return text.split(",", 1)[0].strip()
+
+
+def _normalize_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _normalize_json_value(child)
+            for key, child in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, list):
+        return [_normalize_json_value(item) for item in value]
+    return value
+
+
+def _diff_descriptor_values(expected: Any, actual: Any, prefix: str = "") -> list[str]:
+    if expected == actual:
+        return []
+    label = prefix or "descriptor"
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        diffs: list[str] = []
+        # The source project is the contract. Packer-added fields are tolerated,
+        # but every field declared by the source must survive unchanged.
+        for key in sorted(expected):
+            child_prefix = f"{label}.{key}" if prefix else str(key)
+            diffs.extend(_diff_descriptor_values(
+                expected.get(key),
+                actual.get(key),
+                child_prefix,
+            ))
+        return diffs
+    return [label]
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def format_handoff_audit(result: HandoffAuditResult) -> str:

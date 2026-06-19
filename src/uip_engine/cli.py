@@ -448,6 +448,14 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_audit_nupkg(args)
     if args.command == "audit-publish-handoff":
         return _cmd_audit_publish_handoff(args)
+    if args.command == "audit-orchestrator-readiness":
+        return _cmd_audit_orchestrator_readiness(args)
+    if args.command == "build-orchestrator-manifest":
+        return _cmd_build_orchestrator_manifest(args)
+    if args.command == "sync-orchestrator-processes":
+        return _cmd_sync_orchestrator_processes(args)
+    if args.command == "orchestrator-smoke":
+        return _cmd_orchestrator_smoke(args)
     if args.command == "migrate-check":
         return _cmd_migrate_check(args)
     if args.command == "install-skills":
@@ -482,7 +490,9 @@ def ccs_uip_main(argv: list[str] | None = None) -> int:
         "review", "fix", "list", "validate", "docs", "stats", "all",
         "migrate-windows", "phase-out",
         # Phase 7 (2026-05): new standalone subcommands.
-        "pre-migrate-check", "pack-scrub", "audit-nupkg", "audit-publish-handoff", "migrate-check",
+        "pre-migrate-check", "pack-scrub", "audit-nupkg", "audit-publish-handoff",
+        "audit-orchestrator-readiness", "build-orchestrator-manifest",
+        "sync-orchestrator-processes", "orchestrator-smoke", "migrate-check",
         "install-skills",
         "doctor-uipath-cli",
     }
@@ -742,6 +752,196 @@ def build_parser() -> argparse.ArgumentParser:
         help="Quando um handoff path for pasta, procurar .nupkg recursivamente.",
     )
     ah.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Formato de saída.",
+    )
+
+    ar = sub.add_parser(
+        "audit-orchestrator-readiness",
+        help="Audita feed/processo/recursos/runtimes no Orchestrator após publish.",
+    )
+    ar.add_argument(
+        "manifest",
+        help="JSON com packageId, packageVersion, processKey, folderPath/folderKey e runtimeType.",
+    )
+    ar.add_argument(
+        "--tenant",
+        default=None,
+        help="Tenant esperado. Default: manifest.tenant ou RPA_Desenvolvimento.",
+    )
+    ar.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Formato de saída.",
+    )
+    ar.add_argument(
+        "--skip-packages",
+        action="store_true",
+        help="Não validar se packageVersion está visível no feed do tenant.",
+    )
+    ar.add_argument(
+        "--skip-resources",
+        action="store_true",
+        help="Não validar Package Requirements/process resources.",
+    )
+    ar.add_argument(
+        "--skip-runtimes",
+        action="store_true",
+        help="Não validar runtime conectado/disponível da pasta.",
+    )
+    ar.add_argument(
+        "--skip-machines",
+        action="store_true",
+        help="Não validar máquinas atribuídas à pasta.",
+    )
+    ar.add_argument(
+        "--skip-sessions",
+        action="store_true",
+        help="Não validar sessões unattended disponíveis na pasta.",
+    )
+    ar.add_argument(
+        "--resolve-config-assets",
+        action="store_true",
+        help=(
+            "Lê o valor do asset ArquivoConfiguracao_* e, se o arquivo existir "
+            "nesta máquina, valida recursos dinâmicos indicados por runtimeResourceHints."
+        ),
+    )
+    ar.add_argument(
+        "--allow-busy-runtime",
+        action="store_true",
+        help="Aceita runtime conectado mas ocupado; default exige Available > 0.",
+    )
+
+    bm = sub.add_parser(
+        "build-orchestrator-manifest",
+        help="Gera manifesto readiness/smoke a partir de .nupkg e processos Orchestrator.",
+    )
+    bm.add_argument(
+        "handoff_paths",
+        nargs="+",
+        help="Arquivo(s) .nupkg ou pasta(s) de handoff publicados.",
+    )
+    bm.add_argument(
+        "--tenant",
+        default="RPA_Desenvolvimento",
+        help="Tenant esperado. Default: RPA_Desenvolvimento.",
+    )
+    bm.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Quando um handoff path for pasta, procurar .nupkg recursivamente.",
+    )
+    bm.add_argument(
+        "--runtime-type",
+        default="Unattended",
+        help="Runtime type a gravar no manifesto. Default: Unattended.",
+    )
+    bm.add_argument(
+        "--source-root",
+        default=None,
+        help=(
+            "Raiz dos projetos fonte. Quando informado, infere requiredResources "
+            "bootstrap, hints de recursos dinâmicos e requiredInputArguments."
+        ),
+    )
+    bm.add_argument(
+        "--allow-multiple",
+        action="store_true",
+        help="Permite múltiplos processos para o mesmo pacote/versão.",
+    )
+    bm.add_argument(
+        "--out",
+        default=None,
+        help="Arquivo JSON de saída. Se omitido, imprime o manifesto no stdout.",
+    )
+    bm.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Formato de saída do relatório.",
+    )
+
+    sp = sub.add_parser(
+        "sync-orchestrator-processes",
+        help="MUTATING: sincroniza processos Orchestrator para as versões dos .nupkg.",
+    )
+    sp.add_argument(
+        "handoff_paths",
+        nargs="+",
+        help="Arquivo(s) .nupkg ou pasta(s) de handoff publicados.",
+    )
+    sp.add_argument(
+        "--tenant",
+        default="RPA_Desenvolvimento",
+        help="Tenant esperado. Default: RPA_Desenvolvimento.",
+    )
+    sp.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Quando um handoff path for pasta, procurar .nupkg recursivamente.",
+    )
+    sp.add_argument(
+        "--execute",
+        action="store_true",
+        help="Obrigatório para chamar uip or processes update-version.",
+    )
+    sp.add_argument(
+        "--allow-multiple",
+        action="store_true",
+        help="Permite atualizar múltiplos processos para o mesmo pacote.",
+    )
+    sp.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Formato de saída.",
+    )
+
+    osmk = sub.add_parser(
+        "orchestrator-smoke",
+        help="MUTATING: dispara smoke jobs controlados e valida conclusão/logs.",
+    )
+    osmk.add_argument(
+        "manifest",
+        help="Mesmo manifesto do audit-orchestrator-readiness, com campos opcionais de job.",
+    )
+    osmk.add_argument(
+        "--tenant",
+        default=None,
+        help="Tenant esperado. Default: manifest.tenant ou RPA_Desenvolvimento.",
+    )
+    osmk.add_argument(
+        "--execute",
+        action="store_true",
+        help="Obrigatório para iniciar jobs. Sem isso o comando só mostra dry-run.",
+    )
+    osmk.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout por job em segundos, salvo override timeoutSeconds no manifesto.",
+    )
+    osmk.add_argument(
+        "--poll-interval",
+        type=int,
+        default=5,
+        help="Intervalo de polling do jobs start --wait-for-completion.",
+    )
+    osmk.add_argument(
+        "--skip-readiness",
+        action="store_true",
+        help="Não rodar audit-orchestrator-readiness antes dos jobs.",
+    )
+    osmk.add_argument(
+        "--skip-error-logs",
+        action="store_true",
+        help="Não consultar logs Error após cada job.",
+    )
+    osmk.add_argument(
         "--format",
         choices=["text", "json"],
         default="text",
@@ -3682,6 +3882,226 @@ def _cmd_audit_publish_handoff(args) -> int:
     else:
         print(format_handoff_audit(result))
 
+    if not result.ok:
+        return EXIT_ERROR
+    if result.warn_count:
+        return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_audit_orchestrator_readiness(args) -> int:
+    """Audit published package bindings and execution prerequisites in Orchestrator."""
+    from .official_uip import run_official_uip
+    from .orchestrator_readiness import (
+        audit_orchestrator_readiness,
+        format_readiness_result,
+        readiness_result_to_json,
+    )
+
+    try:
+        result = audit_orchestrator_readiness(
+            Path(args.manifest),
+            run_uip=run_official_uip,
+            tenant=args.tenant,
+            check_packages=not args.skip_packages,
+            check_resources=not args.skip_resources,
+            check_runtimes=not args.skip_runtimes,
+            check_machines=not args.skip_machines,
+            check_sessions=not args.skip_sessions,
+            resolve_config_assets=args.resolve_config_assets,
+            require_available_runtime=not args.allow_busy_runtime,
+        )
+    except Exception as exc:
+        if args.format == "json":
+            print(json.dumps(
+                {
+                    "summary": {"ok": False, "errors": 1, "warnings": 0},
+                    "issues": [{
+                        "code": "ORCH-READINESS-INTERNAL",
+                        "severity": "ERROR",
+                        "subject": str(args.manifest),
+                        "message": str(exc),
+                    }],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ))
+        else:
+            print(f"ORCHESTRATOR readiness: FAIL; errors=1; warnings=0")
+            print(f"  - ERROR ORCH-READINESS-INTERNAL {args.manifest}: {exc}")
+        return EXIT_ERROR
+
+    if args.format == "json":
+        print(readiness_result_to_json(result))
+    else:
+        print(format_readiness_result(result))
+
+    if not result.ok:
+        return EXIT_ERROR
+    if result.warn_count:
+        return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_build_orchestrator_manifest(args) -> int:
+    """Generate readiness/smoke manifest from packages and Orchestrator processes."""
+    from .official_uip import run_official_uip
+    from .orchestrator_manifest import (
+        build_orchestrator_manifest,
+        format_manifest_build,
+        manifest_build_to_json,
+    )
+
+    try:
+        result = build_orchestrator_manifest(
+            [Path(raw) for raw in args.handoff_paths],
+            run_uip=run_official_uip,
+            tenant=args.tenant,
+            recursive=args.recursive,
+            runtime_type=args.runtime_type,
+            allow_multiple=args.allow_multiple,
+            output_path=Path(args.out) if args.out else None,
+            source_root=Path(args.source_root) if args.source_root else None,
+        )
+    except Exception as exc:
+        if args.format == "json":
+            print(json.dumps(
+                {
+                    "summary": {"ok": False, "errors": 1, "warnings": 0},
+                    "issues": [{
+                        "code": "MANIFEST-INTERNAL",
+                        "severity": "ERROR",
+                        "subject": ", ".join(args.handoff_paths),
+                        "message": str(exc),
+                    }],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ))
+        else:
+            print("ORCHESTRATOR manifest: FAIL; errors=1; warnings=0")
+            print(
+                "  - ERROR MANIFEST-INTERNAL "
+                f"{', '.join(args.handoff_paths)}: {exc}"
+            )
+        return EXIT_ERROR
+
+    if args.format == "json":
+        print(manifest_build_to_json(result))
+    else:
+        print(format_manifest_build(result))
+
+    if not result.ok:
+        return EXIT_ERROR
+    if result.warn_count:
+        return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_sync_orchestrator_processes(args) -> int:
+    """Synchronize Orchestrator process versions to published packages."""
+    from .official_uip import run_official_uip
+    from .orchestrator_sync import (
+        format_sync_result,
+        sync_orchestrator_process_versions,
+        sync_result_to_json,
+    )
+
+    try:
+        result = sync_orchestrator_process_versions(
+            [Path(raw) for raw in args.handoff_paths],
+            run_uip=run_official_uip,
+            tenant=args.tenant,
+            recursive=args.recursive,
+            execute=args.execute,
+            allow_multiple=args.allow_multiple,
+        )
+    except Exception as exc:
+        if args.format == "json":
+            print(json.dumps(
+                {
+                    "executed": bool(args.execute),
+                    "summary": {"ok": False, "errors": 1, "warnings": 0},
+                    "issues": [{
+                        "code": "SYNC-INTERNAL",
+                        "severity": "ERROR",
+                        "subject": ", ".join(args.handoff_paths),
+                        "message": str(exc),
+                    }],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ))
+        else:
+            print("ORCHESTRATOR sync: FAIL; errors=1; warnings=0")
+            print(
+                "  - ERROR SYNC-INTERNAL "
+                f"{', '.join(args.handoff_paths)}: {exc}"
+            )
+        return EXIT_ERROR
+
+    if args.format == "json":
+        print(sync_result_to_json(result))
+    else:
+        print(format_sync_result(result))
+
+    if not result.ok:
+        return EXIT_ERROR
+    if not result.executed:
+        return EXIT_WARN
+    if result.warn_count:
+        return EXIT_WARN
+    return EXIT_OK
+
+
+def _cmd_orchestrator_smoke(args) -> int:
+    """Run controlled smoke jobs in Orchestrator when explicitly requested."""
+    from .official_uip import run_official_uip
+    from .orchestrator_smoke import (
+        format_smoke_result,
+        run_orchestrator_smoke,
+        smoke_result_to_json,
+    )
+
+    try:
+        result = run_orchestrator_smoke(
+            Path(args.manifest),
+            run_uip=run_official_uip,
+            tenant=args.tenant,
+            execute=args.execute,
+            timeout_seconds=args.timeout,
+            poll_interval_seconds=args.poll_interval,
+            run_readiness=not args.skip_readiness,
+            check_error_logs=not args.skip_error_logs,
+        )
+    except Exception as exc:
+        if args.format == "json":
+            print(json.dumps(
+                {
+                    "executed": bool(args.execute),
+                    "summary": {"ok": False, "errors": 1, "warnings": 0},
+                    "issues": [{
+                        "code": "SMOKE-INTERNAL",
+                        "severity": "ERROR",
+                        "subject": str(args.manifest),
+                        "message": str(exc),
+                    }],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ))
+        else:
+            print("ORCHESTRATOR smoke: FAIL; errors=1; warnings=0")
+            print(f"  - ERROR SMOKE-INTERNAL {args.manifest}: {exc}")
+        return EXIT_ERROR
+
+    if args.format == "json":
+        print(smoke_result_to_json(result))
+    else:
+        print(format_smoke_result(result))
+
+    if not result.executed:
+        return EXIT_WARN
     if not result.ok:
         return EXIT_ERROR
     if result.warn_count:

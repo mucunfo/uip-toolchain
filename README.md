@@ -168,6 +168,18 @@ python -m uip_engine.cli audit-nupkg C:\path\to\handoff-folder --recursive
 python -m uip_engine.cli audit-publish-handoff patch `
   "C:\Users\lisan\OneDrive - Sicoob\Projects\4. prod" `
   C:\path\to\handoff-folder
+
+# Auditoria read-only do Orchestrator depois do publish
+python -m uip_engine.cli sync-orchestrator-processes C:\path\to\handoff-folder
+python -m uip_engine.cli sync-orchestrator-processes C:\path\to\handoff-folder --execute
+python -m uip_engine.cli build-orchestrator-manifest C:\path\to\handoff-folder `
+  --source-root "C:\Users\lisan\OneDrive - Sicoob\Projects\4. prod" `
+  --out .tmp\orchestrator-readiness.json
+python -m uip_engine.cli audit-orchestrator-readiness .tmp\orchestrator-readiness.json `
+  --resolve-config-assets
+
+# Smoke controlado no Orchestrator real (MUTATING; default sem --execute é dry-run)
+python -m uip_engine.cli orchestrator-smoke .tmp\orchestrator-readiness.json --execute --timeout 600
 ```
 
 Exit codes: 0 (OK), 1 (WARN), 2 (ERROR), 3 (HALT), ≥10 (INTERNAL).
@@ -204,15 +216,179 @@ Fluxo:
 13. remove artefatos de build/source-control dentro do `.nupkg` (`content/.git`, `.tmp`, `.local`, `.publish-dev-handoff`, caches);
 14. repara o `.nupkg` quando o packer grava `content/project.json` sem `lib/<tfm>/project.json`, valida descriptor por TFM e exige somente TFMs compatíveis com DEV net6 (`net6.0-windows*`);
 15. executa auditoria completa do pacote antes do upload: ZIP, `.nuspec`, id/versão, TFMs, descriptors, `project.json`, DLL runtime, pins de dependência e artefatos proibidos;
-16. faz upload do pacote em `RPA_Desenvolvimento`;
-17. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`, audita o arquivo baixado e compara SHA-256 com o pacote enviado;
-18. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
+16. compara o `project.json` embalado contra o fonte com a versão bumped e bloqueia drift em dependências, argumentos, entrypoints, runtimeOptions ou designOptions antes do upload;
+17. faz upload do pacote em `RPA_Desenvolvimento`;
+18. baixa os `.nupkg` finais soltos em `<path>\.publish-dev-handoff\`, audita o arquivo baixado, repete a comparação contra o fonte e compara SHA-256 com o pacote enviado;
+19. se commit estiver habilitado, commita todas as alterações existentes no repositório Git do projeto e faz `git push -u origin HEAD:<branch>`.
 
 Depois que os `.nupkg` forem gerados fora desta sessão, use
 `audit-publish-handoff` para comparar a pasta de handoff contra os projetos
 fonte: o comando recalcula a próxima versão a partir do bump, exige exatamente
 um pacote por projeto, bloqueia pacotes sobrando/faltando/duplicados e roda a
-auditoria completa de cada `.nupkg`.
+auditoria completa de cada `.nupkg`. Ele também compara o `project.json`
+embalado em `lib/<tfm>/project.json` contra o `project.json` fonte com a versão
+esperada do bump, normalizando apenas diferenças esperadas de tipo .NET
+assembly-qualified. Diferenças em dependências, argumentos, entrypoints,
+runtimeOptions ou designOptions bloqueiam o handoff.
+
+Depois do upload, sincronize os processos reais do Orchestrator para as versões
+dos pacotes publicados. Esse comando é dry-run por padrão e só altera releases
+com `--execute`:
+
+```powershell
+python -m uip_engine.cli sync-orchestrator-processes C:\path\to\handoff-folder
+python -m uip_engine.cli sync-orchestrator-processes C:\path\to\handoff-folder --execute
+```
+
+No dry-run, ele audita os `.nupkg`, encontra processos por `uip or processes
+list --all-folders --name <packageId>` e mostra o plano. Com `--execute`, chama
+`uip or processes update-version <process-key> --package-version <version>` e
+verifica com `uip or processes get`. O comando falha se não encontrar processo,
+se houver múltiplos matches sem `--allow-multiple`, se o update falhar ou se a
+verificação pós-update não retornar a versão esperada.
+
+Depois, gere o manifesto a partir dos pacotes publicados e dos processos reais
+do Orchestrator:
+
+```powershell
+python -m uip_engine.cli build-orchestrator-manifest C:\path\to\handoff-folder `
+  --out .tmp\orchestrator-readiness.json
+```
+
+Esse comando é read-only: audita cada `.nupkg`, consulta `uip or processes list
+--all-folders --name <packageId>`, exige que exista um processo apontando para
+a versão publicada, e falha se não encontrar vínculo ou se houver ambiguidade.
+Use `--allow-multiple` somente quando todos os processos encontrados para o
+mesmo pacote/versão devem ser validados e executados. O manifesto também copia
+do descriptor embalado em `lib/<tfm>/project.json` o `targetFramework` e o
+entry point esperado, para detectar processo Orchestrator ainda preso em
+Windows-Legacy/net45 ou apontando para outro XAML.
+
+Com `--source-root`, ele também tenta casar cada pacote com seu `project.json`
+fonte, infere o asset bootstrap `ArquivoConfiguracao_*` como `requiredResources`
+e grava `runtimeResourceHints` para chaves dinâmicas como
+`OrchestratorQueueName` e `NomeCredencialDB2`. Esses hints não provam os
+recursos finais; eles mostram quais valores reais do arquivo de configuração
+devem virar `requiredResources` antes da aprovação final.
+
+O mesmo enriquecimento lê `project.json` e grava `requiredInputArguments` quando
+houver argumento de entrada marcado como obrigatório. O readiness bloqueia o
+manifesto se esses nomes não estiverem presentes em `inputArguments`; quando a
+entrada vem de `inputFile`, o readiness retorna WARN e a prova passa para o
+smoke executado.
+
+Quando o asset `ArquivoConfiguracao_*` aponta para um `.xlsx`/`.xlsm` acessível
+na máquina atual, rode `audit-orchestrator-readiness --resolve-config-assets`.
+Esse modo usa `uip resource assets get-asset-value`, abre a planilha, resolve
+os valores das chaves listadas em `runtimeResourceHints`, lê também as abas
+`Assets` e `Credentials`, e valida os assets/credenciais/filas resultantes no Orchestrator. Se
+o caminho do arquivo não existir nessa máquina ou a chave não existir na
+planilha, o gate falha.
+
+Em seguida, use `audit-orchestrator-readiness` com esse manifesto. Esse gate é
+read-only e valida:
+
+- a versão do pacote no feed do tenant com `uip or packages versions`;
+- os entry points e schema de argumentos publicados com
+  `uip or packages entry-points`;
+- o processo/release por `processKey` com `uip or processes get`;
+- a versão do processo contra o `packageVersion` esperado;
+- tipo/status do processo quando o Orchestrator expõe esses campos, bloqueando
+  processo não-RPA, desabilitado ou indisponível;
+- o `TargetFramework` e `EntryPointPath` do processo contra o descriptor do
+  pacote, quando esses campos estão no manifesto;
+- os Package Requirements/recursos de pasta com `uip or processes resources`;
+- recursos de runtime declarados no manifesto (`requiredResources`) com
+  `uip resource assets|queues|buckets|bucket-files` e calendários tenant-scoped
+  com `uip or calendars list`;
+- runtime total/conectado/disponível na pasta com `uip or folders runtimes`.
+- máquinas atribuídas à pasta com `uip or machines list --folder-path/--folder-key`;
+- sessões unattended utilizáveis com `uip or sessions unattended list
+  --runtime-type <runtimeType>`.
+
+Flags como `--skip-runtimes`, `--skip-machines` e `--skip-sessions` existem
+para diagnóstico, mas não devem ser usadas como aprovação final.
+
+Exemplo de manifesto:
+
+```json
+{
+  "tenant": "RPA_Desenvolvimento",
+  "items": [
+    {
+      "packageId": "MarcacaoTransacoesFraudulentasRiskCenter_Performer",
+      "packageVersion": "2.1.0",
+      "processKey": "11111111-1111-1111-1111-111111111111",
+      "folderPath": "Shared",
+      "runtimeType": "Unattended",
+      "processName": "MarcacaoTransacoesFraudulentasRiskCenter Performer",
+      "targetFramework": "Windows",
+      "entryPointPath": "Main.xaml",
+      "requiredResources": [
+        {
+          "type": "asset",
+          "name": "ArquivoConfiguracao_Performer",
+          "valueType": "Text"
+        },
+        {
+          "type": "credential",
+          "name": "CredencialDB2"
+        },
+        {
+          "type": "queue",
+          "name": "Fila de Transacoes"
+        },
+        {
+          "type": "bucket",
+          "name": "Anexos"
+        },
+        {
+          "type": "bucketFile",
+          "bucketName": "Anexos",
+          "path": "input/config.xlsx"
+        },
+        {
+          "type": "calendar",
+          "name": "Calendario DEV"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`requiredResources` é opcional, mas deve ser preenchido quando o nome real de
+asset/credencial/fila/bucket/calendário vem de configuração dinâmica. O CLI oficial trata
+assets, queues e buckets como recursos de pasta; por isso cada item herda o
+`folderPath`/`folderKey` do processo, ou pode sobrescrever com seu próprio
+`folderPath`/`folderKey`. Para `type: credential`, o gate valida um asset do
+tipo `Credential`. O filtro `--name` do `uip resource` é tratado como contains,
+então a toolchain ainda faz comparação exata do nome retornado. Calendários são
+tenant-scoped e são validados por nome exato no retorno de `uip or calendars list`.
+
+Esse comando reduz o risco operacional antes do play, mas não executa o
+processo. Para prova de runtime, rode um smoke controlado por processo no mesmo
+folder/conta/máquina. A toolchain expõe isso como comando separado e
+mutável:
+
+```powershell
+python -m uip_engine.cli orchestrator-smoke .tmp\orchestrator-readiness.json --execute --timeout 600
+```
+
+Sem `--execute`, o comando é dry-run e retorna WARN para não ser confundido com
+prova executada. Com `--execute`, ele roda `audit-orchestrator-readiness` antes
+dos jobs, chama `uip or jobs start <process-key> --jobs-count 1 --runtime-type
+<runtimeType> --wait-for-completion`, exige estado final `Successful`, e consulta
+`uip or jobs logs <job-key> --level Error --limit 1`. Qualquer job faulted,
+stopped, timeout ou log Error bloqueia a aprovação.
+
+Campos opcionais por item do manifesto para smoke: `inputArguments`,
+`inputFile`, `attachments`, `attachmentIds`, `environmentVariables`,
+`userKeys`, `machineKeys`, `runAsMe`, `healingAgent`, `jobPriority`,
+`reference`, `timeoutSeconds` e `pollIntervalSeconds`.
+Quando `requiredInputArguments` existir, prefira declarar `inputArguments`
+explicitamente para que o readiness consiga bloquear antes do job; `inputFile`
+é aceito pelo smoke, mas só pode ser validado durante a execução.
 
 O batch para no primeiro erro por padrão. Use `--keep-going` apenas quando quiser
 continuar processando os demais projetos mesmo após falhas.
