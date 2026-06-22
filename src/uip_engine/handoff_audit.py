@@ -377,13 +377,32 @@ def _normalize_arguments(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     normalized: dict[str, Any] = {}
-    for direction in ("input", "output"):
-        items = value.get(direction)
-        if isinstance(items, list):
-            normalized[direction] = sorted(
-                (_normalize_argument(item) for item in items if isinstance(item, dict)),
-                key=lambda item: item.get("name") or "",
-            )
+    input_items = value.get("input")
+    if isinstance(input_items, list):
+        normalized["input"] = sorted(
+            (
+                _normalize_argument_contract(item)
+                for item in input_items
+                if isinstance(item, dict)
+            ),
+            key=lambda item: item.get("name") or "",
+        )
+    output_items = value.get("output")
+    if isinstance(output_items, list):
+        normalized["output"] = sorted(
+            (_normalize_argument(item) for item in output_items if isinstance(item, dict)),
+            key=lambda item: item.get("name") or "",
+        )
+    return normalized
+
+
+def _normalize_argument_contract(value: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {
+        "name": _string_or_none(value.get("name")),
+        "type": _normalize_type_name(value.get("type")),
+    }
+    if _is_truthy(value.get("required")):
+        normalized["required"] = True
     return normalized
 
 

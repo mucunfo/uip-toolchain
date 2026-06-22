@@ -42,6 +42,7 @@ def _write_nupkg(
     include_git_metadata: bool = False,
     system_activities_version: str = "[23.10.11]",
     entry_points: list[dict] | None = None,
+    arguments: dict | None = None,
 ) -> None:
     stem = path.name.removesuffix(".nupkg")
     package_id, major, minor, patch = stem.rsplit(".", 3)
@@ -52,6 +53,7 @@ def _write_nupkg(
         "targetFramework": "Windows",
         "designOptions": {"outputType": "Process"},
         "main": "Main.xaml",
+        "arguments": arguments if arguments is not None else {"input": [], "output": []},
         "entryPoints": entry_points or [{"filePath": "Main.xaml"}],
         "dependencies": {
             "UiPath.System.Activities": system_activities_version,
@@ -446,6 +448,215 @@ def test_execute_accepts_canonicalized_optional_entrypoints_before_upload(tmp_pa
     )
 
     assert any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_accepts_canonicalized_optional_argument_metadata_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "targetFramework": "Windows",
+            "designOptions": {"outputType": "Process"},
+            "main": "Main.xaml",
+            "arguments": {
+                "input": [{
+                    "name": "in_OptionalQueueName",
+                    "type": "System.String",
+                    "required": False,
+                    "hasDefault": False,
+                }],
+                "output": [],
+            },
+            "entryPoints": [{"filePath": "Main.xaml"}],
+            "dependencies": {
+                "UiPath.System.Activities": "[23.10.11]",
+            },
+        }),
+        encoding="utf-8",
+    )
+    calls = []
+    uploaded_nupkg = None
+
+    def fake_run(command):
+        nonlocal uploaded_nupkg
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            uploaded_nupkg = Path(command[3])
+            return _result({"Status": "Uploaded"})
+        if command[:3] == ["or", "packages", "download"]:
+            destination = _copy_uploaded_download(command, uploaded_nupkg)
+            return _result({"SavedTo": str(destination)})
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            arguments={
+                "input": [{
+                    "name": "in_OptionalQueueName",
+                    "type": "System.String",
+                }],
+                "output": [],
+            },
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    publish_dev.execute(
+        args,
+        run_uip=fake_run,
+        run_pack=fake_pack,
+        run_review=_review_ok,
+    )
+
+    assert any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_blocks_missing_optional_argument_input_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "targetFramework": "Windows",
+            "designOptions": {"outputType": "Process"},
+            "main": "Main.xaml",
+            "arguments": {
+                "input": [{
+                    "name": "in_OptionalQueueName",
+                    "type": "System.String",
+                    "required": False,
+                    "hasDefault": False,
+                }],
+                "output": [],
+            },
+            "entryPoints": [{"filePath": "Main.xaml"}],
+            "dependencies": {
+                "UiPath.System.Activities": "[23.10.11]",
+            },
+        }),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            raise AssertionError("upload should not be called")
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            arguments={"input": [], "output": []},
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError, match="HANDOFF-SOURCE-DESCRIPTOR-MISMATCH"):
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=_review_ok,
+        )
+
+    assert not any(command[:3] == ["or", "packages", "upload"] for command in calls)
+
+
+def test_execute_blocks_missing_required_argument_input_before_upload(tmp_path):
+    project = tmp_path / "Project"
+    project.mkdir()
+    (project / "project.uiproj").write_text("{}", encoding="utf-8")
+    (project / "project.json").write_text(
+        json.dumps({
+            "name": "InvoiceProcessing",
+            "projectVersion": "1.0.0",
+            "targetFramework": "Windows",
+            "designOptions": {"outputType": "Process"},
+            "main": "Main.xaml",
+            "arguments": {
+                "input": [{
+                    "name": "in_RequiredTicket",
+                    "type": "System.String",
+                    "required": True,
+                    "hasDefault": False,
+                }],
+                "output": [],
+            },
+            "entryPoints": [{"filePath": "Main.xaml"}],
+            "dependencies": {
+                "UiPath.System.Activities": "[23.10.11]",
+            },
+        }),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[:2] == ["login", "status"]:
+            return _result({"Status": "Logged in"})
+        if command[:3] == ["login", "tenant", "list"]:
+            return _result([{"TenantName": "RPA_Desenvolvimento"}])
+        if command[:3] == ["login", "tenant", "set"]:
+            return _result({"TenantName": command[3]})
+        if command[:3] == ["or", "packages", "upload"]:
+            raise AssertionError("upload should not be called")
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_pack(project_json, pack_dir, version, timeout):
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        _write_nupkg(
+            pack_dir / "InvoiceProcessing.1.0.1.nupkg",
+            arguments={"input": [], "output": []},
+        )
+
+    args = publish_dev.build_parser().parse_args([
+        str(project),
+        "patch",
+        "--out-dir",
+        str(tmp_path / "out"),
+    ])
+
+    with pytest.raises(RuntimeError, match="HANDOFF-SOURCE-DESCRIPTOR-MISMATCH"):
+        publish_dev.execute(
+            args,
+            run_uip=fake_run,
+            run_pack=fake_pack,
+            run_review=_review_ok,
+        )
+
+    assert not any(command[:3] == ["or", "packages", "upload"] for command in calls)
 
 
 def test_execute_blocks_missing_required_entrypoint_input_before_upload(tmp_path):

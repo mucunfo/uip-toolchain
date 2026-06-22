@@ -768,6 +768,123 @@ def test_cli_audit_publish_handoff_treats_null_entrypoint_input_as_optional(tmp_
     assert "HANDOFF audit: 1/1 expected packages passed" in proc.stdout
 
 
+def test_cli_audit_publish_handoff_accepts_canonicalized_optional_argument_metadata(tmp_path):
+    source = tmp_path / "source"
+    handoff = tmp_path / "handoff"
+    source.mkdir()
+    handoff.mkdir()
+    _write_project(source, "RepoA", "ProjectA")
+    _write_process_nupkg(
+        handoff / "ProjectA.1.0.1.nupkg",
+        descriptor_overrides={
+            "arguments": {
+                "input": [{
+                    "name": "in_RequiredTicket",
+                    "type": "System.String",
+                }],
+                "output": [],
+            }
+        },
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "uip_engine.cli",
+            "audit-publish-handoff",
+            "patch",
+            str(source),
+            str(handoff),
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert proc.returncode == cli.EXIT_OK
+    assert "HANDOFF audit: 1/1 expected packages passed" in proc.stdout
+
+
+def test_cli_audit_publish_handoff_blocks_missing_optional_argument_input(tmp_path):
+    source = tmp_path / "source"
+    handoff = tmp_path / "handoff"
+    source.mkdir()
+    handoff.mkdir()
+    _write_project(source, "RepoA", "ProjectA")
+    _write_process_nupkg(
+        handoff / "ProjectA.1.0.1.nupkg",
+        descriptor_overrides={"arguments": {"input": [], "output": []}},
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "uip_engine.cli",
+            "audit-publish-handoff",
+            "patch",
+            str(source),
+            str(handoff),
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert proc.returncode == cli.EXIT_ERROR
+    assert "HANDOFF-SOURCE-DESCRIPTOR-MISMATCH" in proc.stdout
+    assert "arguments.input" in proc.stdout
+
+
+def test_cli_audit_publish_handoff_blocks_missing_required_argument_input(tmp_path):
+    source = tmp_path / "source"
+    handoff = tmp_path / "handoff"
+    source.mkdir()
+    handoff.mkdir()
+    project = _write_project(source, "RepoA", "ProjectA")
+    descriptor = _project_descriptor("ProjectA", "1.0.0")
+    descriptor["arguments"] = {
+        "input": [{
+            "name": "in_RequiredTicket",
+            "type": "System.String",
+            "required": True,
+            "hasDefault": False,
+        }],
+        "output": [],
+    }
+    (project / "project.json").write_text(json.dumps(descriptor), encoding="utf-8")
+    _write_process_nupkg(
+        handoff / "ProjectA.1.0.1.nupkg",
+        descriptor_overrides={"arguments": {"input": [], "output": []}},
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "uip_engine.cli",
+            "audit-publish-handoff",
+            "patch",
+            str(source),
+            str(handoff),
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert proc.returncode == cli.EXIT_ERROR
+    assert "HANDOFF-SOURCE-DESCRIPTOR-MISMATCH" in proc.stdout
+    assert "arguments.input" in proc.stdout
+
+
 def test_cli_audit_publish_handoff_blocks_missing_required_entrypoint_input(tmp_path):
     source = tmp_path / "source"
     handoff = tmp_path / "handoff"
