@@ -394,26 +394,22 @@ def _normalize_entry_points(value: Any) -> list[dict[str, Any]] | None:
     for item in value:
         if not isinstance(item, dict):
             continue
+        input_items = item.get("input")
+        if not isinstance(input_items, list):
+            input_items = []
+        required_inputs = sorted(
+            (
+                _normalize_argument(arg)
+                for arg in input_items
+                if isinstance(arg, dict) and _is_truthy(arg.get("required"))
+            ),
+            key=lambda arg: arg.get("name") or "",
+        )
         entry = {
-            "filePath": _string_or_none(item.get("filePath")),
-            "uniqueId": _string_or_none(item.get("uniqueId")),
-            "input": sorted(
-                (
-                    _normalize_argument(arg)
-                    for arg in item.get("input", [])
-                    if isinstance(arg, dict)
-                ),
-                key=lambda arg: arg.get("name") or "",
-            ),
-            "output": sorted(
-                (
-                    _normalize_argument(arg)
-                    for arg in item.get("output", [])
-                    if isinstance(arg, dict)
-                ),
-                key=lambda arg: arg.get("name") or "",
-            ),
+            "filePath": _normalize_entry_point_path(item.get("filePath")),
         }
+        if required_inputs:
+            entry["requiredInput"] = required_inputs
         entries.append(entry)
     return sorted(entries, key=lambda item: item.get("filePath") or "")
 
@@ -434,6 +430,21 @@ def _normalize_type_name(value: Any) -> str | None:
     if text is None:
         return None
     return text.split(",", 1)[0].strip()
+
+
+def _normalize_entry_point_path(value: Any) -> str | None:
+    text = _string_or_none(value)
+    if text is None:
+        return None
+    return text.replace("\\", "/").lstrip("/")
+
+
+def _is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return False
 
 
 def _normalize_json_value(value: Any) -> Any:
