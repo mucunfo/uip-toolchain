@@ -449,10 +449,20 @@ def detect_n10_log_anticipatory(rule, fc, pc):
             # primeiro filho NAO eh antecipatorio, eh logging de reacao ao evento
             # que disparou ActivityAction. Skip N-10 nesse contexto.
             parent_is_reactive = (parent[0] == "ActivityAction")
+            # StateMachine é event-driven (states/transitions), não fluxo
+            # sequencial: a convenção Sicoob Activity→Log pressupõe fluxo
+            # linear. Dentro de uma SM, um LogMessage sem activity executável
+            # antes documenta a decisão de state/transition (ex: Transition.Action
+            # logando o motivo da parada), não uma intenção antecipatória.
+            # Isenta toda a subárvore da StateMachine.
+            in_state_machine = any(
+                _n10_local_name(fr[0]) == "StateMachine" for fr in stack
+            )
             if is_log:
                 # check predecessor (skip se auto-insert — by-construction OK,
-                # ou se parent é ActivityAction reativo)
-                if not parent[1] and not is_auto_insert and not parent_is_reactive:
+                # se parent é ActivityAction reativo, ou dentro de StateMachine)
+                if (not parent[1] and not is_auto_insert
+                        and not parent_is_reactive and not in_state_machine):
                     log_line = _line_for(content, m.start())
                     fix_mech_spec = {
                         "type": "remove_anticipatory_log",

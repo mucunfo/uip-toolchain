@@ -81,19 +81,22 @@ def test_s3_dead_lookahead_removed():
 
 def test_a13_matches_escaped_quote_form():
     pat = re.compile(RULES["A-13"]["detect"]["pattern"])
-    # BAD: the ONLY form that occurs on disk (&quot;-escaped) now matches
-    bad_escaped = 'Exception="[New Exception(&quot;hardcoded message&quot;)]"'
+    # BAD: hardcoded BUSINESS message (BusinessRuleException), &quot;-escaped —
+    # the only form that occurs on disk. Namespace-qualified must match.
+    bad_escaped = ('Exception="[New UiPath.Core.BusinessRuleException'
+                   '(&quot;hardcoded message&quot;)]"')
     assert pat.search(bad_escaped)
     m = pat.search(bad_escaped)
     assert m.group(1) == "hardcoded message"
-    # the raw-quote form still matches (belt-and-suspenders)
-    bad_raw = 'Exception="[New Exception("hardcoded message")]"'
+    # the raw-quote form (and bare BusinessRuleException) still matches
+    bad_raw = 'Exception="[New BusinessRuleException("hardcoded message")]"'
     assert pat.search(bad_raw)
 
 
 def test_a13_does_not_flag_in_config_variable_arg():
     pat = re.compile(RULES["A-13"]["detect"]["pattern"])
-    good = 'Exception="[New Exception(in_Config(&quot;Chave&quot;).ToString)]"'
+    good = ('Exception="[New UiPath.Core.BusinessRuleException'
+            '(in_Config(&quot;Chave&quot;).ToString)]"')
     assert not pat.search(good)
 
 
