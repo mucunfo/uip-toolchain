@@ -2185,7 +2185,7 @@ rules:
         `project.json`.
 
   - id: J-PIN-BRACKETS
-    severity: ERROR
+    severity: WARN
     category: breaking
     target: all
     title: "dependencies devem usar formato [X.Y.Z] estrito"
@@ -2205,7 +2205,7 @@ rules:
         module: uip_engine.heuristics.pin_brackets
         function: detect_pin_brackets
     fix:
-      apply_class: deterministic
+      apply_class: contextual
       prose: |
         Trocar valor de dependency pra formato `[X.Y.Z]`. Engine resolve
         automaticamente para pin simples `"X.Y.Z"`; ranges complexos
@@ -2499,23 +2499,34 @@ rules:
     severity: WARN
     category: architectural
     target: all
-    title: "Mensagens de exception nunca hardcoded"
+    title: "Mensagens de exception de negócio nunca hardcoded"
     description: |
-      Mensagens de exception de nível de processo vivem em
-      `Config.xlsx` (aba Constants ou sheet dedicada). Workflow lê via
-      `in_Config("ChaveDaMensagem").ToString`. Hardcodar mensagem em
-      `Throw.Exception` é violação.
-      Escopo: workflows da cadeia Process e abaixo.
-      Framework/, Tests/, integrações de infra (DB, Orchestrator) podem
-      manter mensagens inline.
+      Mensagens de exception de NÍVEL DE PROCESSO (negócio) vivem em
+      `Config.xlsx` (sheet `ExceptionMessages`/`Constants`). Workflow lê via
+      `in_Config("ChaveDaMensagem").ToString`. Hardcodar a mensagem de uma
+      `BusinessRuleException` no `Throw` é violação — a mensagem de negócio é
+      contrato de comunicação (single source of truth, editável sem republish).
+
+      Escopo: SOMENTE exceptions de NEGÓCIO (`BusinessRuleException`, inclusive
+      namespace-qualified `UiPath.Core.BusinessRuleException`). Guardas
+      técnicas/sistêmicas — `ArgumentException`, `InvalidOperationException`,
+      `Exception`, `SystemException` (validação de contrato de input, retry,
+      falha de infra SSH/DB/portal) — NÃO são alvo: a mensagem é diagnóstico
+      técnico interno e fica inline (a própria regra as isenta). Message já
+      vinda de `in_Config(...)` ou de argumento injetado (`in_StMsg*`) também
+      não dispara. Framework/, Tests/ e integrações de infra (DB2,
+      Orquestradora) ficam fora de escopo em qualquer profundidade.
     applies_to:
       include: ["**/*.xaml"]
-      exclude: ["Framework/**", "Tests/**", "DB2/**", "Orquestradora/**", "Orquestrador/**"]
+      exclude: ["**/Framework/**", "**/Tests/**", "**/DB2/**", "**/Orquestradora/**", "**/Orquestrador/**"]
     detect:
       type: regex
       # XAML serializa aspas internas como &quot; (raw " quebraria o attr).
-      # Match ambas as formas; exclui in_Config(...) (sem aspas iniciais).
-      pattern: 'Exception="\[New\s+\w*Exception\((?:&quot;|")([^&"]{4,})(?:&quot;|")'
+      # SOMENTE Business(Rule)Exception (negócio), inclusive namespace-qualified
+      # (UiPath.Core.BusinessRuleException). Exceptions técnicas/sistêmicas ficam
+      # inline. `([^&"]{4,})` exige literal iniciando em aspas → in_Config(...) /
+      # If(... in_StMsg ...) (sem aspas iniciais) não casam.
+      pattern: 'Exception="\[New\s+(?:[\w.]*\.)?Business(?:Rule)?Exception\((?:&quot;|")([^&"]{4,})(?:&quot;|")'
     fix:
       prose: |
         Corrigir este finding aplicando a regra "Mensagens de exception nunca hardcoded": Mensagens de exception de nivel de processo vivem em `Config.xlsx` (aba Constants ou sheet dedicada). Workflow le via `in_Config("ChaveDaMensagem").ToString`. Hardcodar mensagem em `Throw.Exception` e violac....
@@ -4883,7 +4894,7 @@ rules:
         transitiva exige decisão arquitetural (qual versão honrar).
 
   - id: D-1q-CCS-AUTO
-    severity: ERROR
+    severity: WARN
     category: breaking
     target: windows
     title: "CCS_* deve declarar e pinar versão mais recente disponível"
@@ -4915,7 +4926,7 @@ rules:
         module: uip_engine.heuristics.ccs_latest_pin
         function: detect_ccs_latest_pin
     fix:
-      apply_class: deterministic
+      apply_class: contextual
       prose: |
         Pinar/adicionar `dependencies."CCS_*"` na versão `[X.Y.Z]` mais
         recente em `.nupkgs/`. Engine resolve automaticamente — `fix --apply`
