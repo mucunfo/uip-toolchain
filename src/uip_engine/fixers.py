@@ -2372,8 +2372,16 @@ _POOR_DN_DEFAULTS = {"Log Message", "Log", "LogMessage", "Message", "Write Line"
 def _is_poor_log_displayname(dn: str) -> bool:
     if not dn:
         return True
-    if dn.strip() in _POOR_DN_DEFAULTS:
+    d = dn.strip()
+    if d in _POOR_DN_DEFAULTS:
         return True
+    # Convenção Sicoob boa: 'Log Message - <contexto>' (mesma regra do detector
+    # em heuristics/logs.py). Sem este early-exit o fixer trata o PRÓPRIO output
+    # como pobre (via startswith "log ") e re-prefixa a cada iteração do
+    # fixpoint loop → 'Log Message - Log Message - ...'.
+    m = re.match(r'^Log Message -\s*(.*)$', d)
+    if m:
+        return m.group(1).strip() == ""
     for p in _POOR_DN_PREFIXES:
         if dn.startswith(p):
             return True
@@ -3033,10 +3041,17 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
     safe_trace_disp = (trace_display.replace("&", "&amp;")
                        .replace("<", "&lt;").replace(">", "&gt;")
                        .replace('"', "&quot;"))
+    # sap/sap2010 são cosméticos (designer viewstate). Emitir só quando o
+    # prefixo existe no documento — senão o insert gera XML unbound prefix
+    # (ex.: XAML Studio moderno declara só sap2010, sem sap).
+    sap_attr = ('sap:VirtualizedContainerService.HintSize="334,91" '
+                if 'xmlns:sap="' in content else '')
+    sap2010_attr = (f'sap2010:WorkflowViewState.IdRef="{idref}" '
+                    if 'xmlns:sap2010="' in content else '')
     log_tag = (
         f'<ui:LogMessage DisplayName="{safe_trace_disp}" '
-        f'sap:VirtualizedContainerService.HintSize="334,91" '
-        f'sap2010:WorkflowViewState.IdRef="{idref}" '
+        f'{sap_attr}'
+        f'{sap2010_attr}'
         f'Level="{trace_level}" '
         f'{msg_attr} />'
     )

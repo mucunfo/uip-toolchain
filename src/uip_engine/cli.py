@@ -1983,6 +1983,7 @@ def _run_official_build_gate(result, project_path: str, timeout: int = 180,
     """
     import tempfile
     import shutil as _shutil
+    from ._types import Finding
     from .official_uip import (
         diagnose_official_uip_failure,
         discover_official_uip,

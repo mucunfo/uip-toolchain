@@ -9,7 +9,10 @@ from unittest.mock import patch
 import pytest
 
 from uip_engine._types import Rule, Severity
+from uip_engine.classify import get_apply_class
 from uip_engine.context import FileContext, ProjectContext
+from uip_engine.detectors import REGISTRY as DETECTORS
+from uip_engine.fixers import REGISTRY as FIXERS
 from uip_engine.heuristics.ccs_latest_pin import (
     _parse_semver,
     _scan_latest,
@@ -17,6 +20,10 @@ from uip_engine.heuristics.ccs_latest_pin import (
     detect_ccs_latest_pin,
 )
 from uip_engine.heuristics.pin_brackets import detect_pin_brackets
+from uip_engine.loader import load_rules
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 # ---------- helpers ----------
@@ -39,6 +46,18 @@ def _mk_pc(tmp_path: Path, project_json: dict) -> ProjectContext:
     proj.mkdir(exist_ok=True)
     (proj / "project.json").write_text(json.dumps(project_json), encoding="utf-8")
     return ProjectContext(root=proj, project_json=project_json)
+
+
+def test_dependency_pin_rules_are_temporarily_advisory():
+    rules = load_rules(
+        ROOT / "rules.yaml",
+        registered_detectors=set(DETECTORS.keys()),
+        registered_fixers=set(FIXERS.keys()),
+    )
+    for rid in ["J-PIN-BRACKETS", "D-1q-CCS-AUTO"]:
+        rule = next(r for r in rules if r.id == rid)
+        assert rule.severity == Severity.WARN
+        assert get_apply_class(rule) == "contextual"
 
 
 # ---------- D-1q-CCS-AUTO ----------

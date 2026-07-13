@@ -58,11 +58,12 @@ def _clear_cache():
 
 
 def test_pin_alert_flags_when_pin_below_introduced(tmp_path):
-    """UIA pinado [25.10.8] + XAML usa RetryScope.LogRetriedExceptions
-    (introduzido em 25.10.21) -> 1 finding ERROR."""
+    """System pinado [25.4.4] + XAML usa RetryScope.LogRetriedExceptions
+    (introduzido em 25.8.1, pacote UiPath.System.Activities — catálogo
+    corrigido 2026-07-03) -> 1 finding ERROR."""
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+        {"UiPath.System.Activities": "[25.4.4]"},
     )
     body = (
         '  <ui:RetryScope RetryScope.LogRetriedExceptions="True" '
@@ -76,15 +77,15 @@ def test_pin_alert_flags_when_pin_below_introduced(tmp_path):
     # Pattern aparece com regex escape (`\.`); checar fragmentos significativos.
     assert "RetryScope" in findings[0].message
     assert "LogRetriedExceptions" in findings[0].message
-    assert "25.10.21" in findings[0].message
-    assert "25.10.8" in findings[0].message
+    assert "25.8.1" in findings[0].message
+    assert "25.4.4" in findings[0].message
     assert findings[0].fix_prose  # tem prose explicando fix
 
 
 def test_pin_alert_dotted_attribute_mechanical_fix_applies(tmp_path):
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+        {"UiPath.System.Activities": "[25.4.4]"},
     )
     fc = _write_xaml(
         proj,
@@ -131,10 +132,8 @@ def test_pin_alert_silent_when_xaml_clean(tmp_path):
 
 def test_pin_alert_silent_when_package_not_in_deps(tmp_path):
     """Pacote não declarado em deps -> 0 findings (não aplicável)."""
-    proj, pc = _mk_project(tmp_path, {"UiPath.System.Activities": "[25.4.4]"})
-    body = (
-        '  <ui:RetryScope RetryScope.LogRetriedExceptions="True"/>\n'
-    )
+    proj, pc = _mk_project(tmp_path, {"UiPath.Excel.Activities": "[3.1.2]"})
+    body = '  <uix:NWindowOperation DisplayName="Janela"/>\n'
     fc = _write_xaml(proj, body)
     assert detect_pin_alert(_mk_rule(), fc, pc) == []
 
@@ -158,10 +157,11 @@ def test_pin_alert_uses_canonical_pin_when_package_assembly_is_in_xaml(tmp_path)
 
 
 def test_pin_alert_flags_copyfile_destinationresource(tmp_path):
-    """CopyFile.DestinationResource é outro pattern listado."""
+    """CopyFile.DestinationResource é outro pattern listado (System,
+    introduzido 23.10.6 — pin abaixo disso dispara)."""
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+        {"UiPath.System.Activities": "[23.10.2]"},
     )
     body = (
         '  <ui:CopyFile CopyFile.DestinationResource="x" DisplayName="cp"/>\n'
@@ -176,7 +176,7 @@ def test_pin_alert_flags_copyfile_destinationresource(tmp_path):
 def test_pin_alert_flags_movefile_resource_attrs(tmp_path):
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+        {"UiPath.System.Activities": "[23.10.2]"},
     )
     body = (
         '  <ui:MoveFile DestinationResource="{x:Null}" '
@@ -285,47 +285,33 @@ def test_pin_alert_flags_sendmail_connectionmode(tmp_path):
     }
 
 
-def test_pin_alert_flags_office365_scope_folder_on_2_7_pin(tmp_path):
+def test_pin_alert_does_not_flag_office365_scope_folder_on_current_pins(tmp_path):
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.MicrosoftOffice365.Activities": "[2.7.24]"},
+        {"UiPath.MicrosoftOffice365.Activities": "[3.2.11]"},
     )
     body = '  <uma:Office365ApplicationScope Folder="{x:Null}"/>\n'
     fc = _write_xaml(proj, body)
     findings = detect_pin_alert(_mk_rule(), fc, pc)
-    assert len(findings) == 1
-    assert "Office365ApplicationScope" in findings[0].message
-    assert "Folder" in findings[0].message
-    assert findings[0].fix_mechanical == {
-        "type": "strip_xml_attribute",
-        "attribute": "Folder",
-        "element": "uma:Office365ApplicationScope",
-    }
+    assert findings == []
 
 
-def test_pin_alert_flags_office365_scope_datastorelocation_on_2_7_pin(tmp_path):
+def test_pin_alert_does_not_flag_office365_scope_datastorelocation_on_current_pins(tmp_path):
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.MicrosoftOffice365.Activities": "[2.7.24]"},
+        {"UiPath.MicrosoftOffice365.Activities": "[3.2.11]"},
     )
     body = '  <uma:Office365ApplicationScope DataStoreLocation="DISK"/>\n'
     fc = _write_xaml(proj, body)
     findings = detect_pin_alert(_mk_rule(), fc, pc)
-    assert len(findings) == 1
-    assert "Office365ApplicationScope" in findings[0].message
-    assert "DataStoreLocation" in findings[0].message
-    assert findings[0].fix_mechanical == {
-        "type": "strip_xml_attribute",
-        "attribute": "DataStoreLocation",
-        "element": "uma:Office365ApplicationScope",
-    }
+    assert findings == []
 
 
 def test_pin_alert_multiple_matches_same_xaml(tmp_path):
     """Múltiplas violations no mesmo XAML -> múltiplos findings."""
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+        {"UiPath.System.Activities": "[23.10.2]"},
     )
     body = (
         '  <ui:RetryScope RetryScope.LogRetriedExceptions="True"/>\n'
@@ -358,7 +344,7 @@ def test_pin_alert_line_number_reported(tmp_path):
     """Finding aponta para linha correta do match no XAML."""
     proj, pc = _mk_project(
         tmp_path,
-        {"UiPath.UIAutomation.Activities": "[25.10.8]"},
+        {"UiPath.System.Activities": "[25.4.4]"},
     )
     body = (
         '  <ui:Sequence DisplayName="Top"/>\n'

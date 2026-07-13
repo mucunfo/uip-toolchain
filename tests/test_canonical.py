@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from uip_engine._types import Severity
 from uip_engine.canonical import (
     canonical_pin_for,
     canonical_studio_version,
     load_canonical,
     synthesize_canonical_rules,
 )
+from uip_engine.classify import get_apply_class
 from uip_engine.context import FileContext, ProjectContext
 from uip_engine.detectors import detect_nuget_version_check
 from uip_engine.detectors import REGISTRY as DETECTORS
@@ -75,6 +77,18 @@ def test_synthesis_emits_d1_and_studio_rules():
     assert "J-1" in ids  # studio pin
     for letter in "abcdefghijklmnop":
         assert f"D-1{letter}" in ids, f"missing D-1{letter}"
+
+
+def test_canonical_pin_rules_are_temporarily_advisory():
+    rules_loaded = load_rules(
+        RULES_YAML,
+        registered_detectors=set(DETECTORS.keys()),
+        registered_fixers=set(FIXERS.keys()),
+    )
+    for rid in ["J-1", "D-1a", "D-1b", "D-1j"]:
+        rule = next(r for r in rules_loaded if r.id == rid)
+        assert rule.severity == Severity.WARN
+        assert get_apply_class(rule) == "contextual"
 
 
 def test_mail_pin_is_required_when_mail_assembly_is_referenced(tmp_path):

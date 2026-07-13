@@ -149,6 +149,38 @@ def test_s11_no_mech_for_unpinned_assembly(tmp_path):
     assert findings[0].fix_mechanical is None
 
 
+def test_s11_no_finding_when_assembly_transitively_restored(tmp_path):
+    """Assembly no graph transitivo (.local/AllDependencies.json) -> sem finding.
+
+    Caso real: `Microsoft.Graph` chega via `UiPath.MicrosoftOffice365.Activities`
+    — resolve no Studio/runtime sem declaração direta em project.json.
+    """
+    _reset_cache()
+    (tmp_path / "project.json").write_text(
+        '{"name": "Proj", "dependencies": '
+        '{"UiPath.MicrosoftOffice365.Activities": "[3.2.11]"}}',
+        encoding="utf-8",
+    )
+    local = tmp_path / ".local"
+    local.mkdir()
+    (local / "AllDependencies.json").write_text(
+        '{"libraries": {"Microsoft.Graph/4.54.0": '
+        '{"files": ["lib/netstandard2.0/Microsoft.Graph.dll"]}}}',
+        encoding="utf-8",
+    )
+    xaml = (
+        '<Activity xmlns:mg="clr-namespace:Microsoft.Graph;'
+        'assembly=Microsoft.Graph">\n'
+        '  <Variable x:TypeArguments="mg:DriveItem" Name="v" />\n'
+        "</Activity>"
+    )
+    fc = _make_fc(tmp_path / "Main.xaml", xaml)
+    pc = _make_pc(tmp_path)
+
+    findings = t.detect_s11_xmlns_assembly_missing(_make_rule(), fc, pc)
+    assert findings == []
+
+
 def test_s11_no_finding_when_assembly_declared(tmp_path):
     """If the pinned assembly IS declared in deps, no finding at all."""
     _reset_cache()

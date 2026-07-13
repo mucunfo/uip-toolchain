@@ -99,6 +99,43 @@ def _load_d1_pinned_versions() -> dict[str, str]:
     return versions
 
 
+# (path, mtime) → set de ids/assemblies transitivos lowercase
+_TRANSITIVE_CACHE: dict[tuple[str, float], set[str]] = {}
+
+
+def _transitive_available(proj_json) -> set[str]:
+    """Packages + assemblies (.dll stems) do graph NuGet restaurado.
+
+    Fonte: `.local/AllDependencies.json` (formato project.assets.json,
+    gerado pelo restore oficial). Assembly presente no graph transitivo
+    resolve no Studio/runtime mesmo sem declaração direta em
+    `project.json::dependencies` — ex.: `Microsoft.Graph` via
+    `UiPath.MicrosoftOffice365.Activities`. Sem o arquivo (restore nunca
+    rodou), retorna vazio e S-11 mantém o comportamento estrito.
+    """
+    assets = proj_json.parent / ".local" / "AllDependencies.json"
+    try:
+        key = (str(assets), assets.stat().st_mtime)
+    except OSError:
+        return set()
+    cached = _TRANSITIVE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    names: set[str] = set()
+    try:
+        import json
+        data = json.loads(assets.read_text(encoding="utf-8-sig"))
+        for lib_key, lib in (data.get("libraries") or {}).items():
+            names.add(lib_key.split("/", 1)[0].lower())
+            for f in (lib or {}).get("files") or ():
+                if f.lower().endswith(".dll"):
+                    names.add(f.rsplit("/", 1)[-1][:-4].lower())
+    except Exception:
+        names = set()
+    _TRANSITIVE_CACHE[key] = names
+    return names
+
+
 def detect_s11_xmlns_assembly_missing(rule, fc, pc):
     p = rule.detect.get("params", {}) or {}
     # Normalize case — XAML pode usar `UiPath.UiAutomation.Activities` (Ui mixed)
@@ -119,7 +156,8 @@ def detect_s11_xmlns_assembly_missing(rule, fc, pc):
         return []
     deps_raw = _project_dependencies(proj_json)
     deps_lc = {d.lower() for d in deps_raw}
-    available = deps_lc | whitelist  # both already lowercase
+    # deps + whitelist + graph transitivo restaurado — tudo lowercase
+    available = deps_lc | whitelist | _transitive_available(proj_json)
     pinned = _load_d1_pinned_versions()
     pinned_lc = {k.lower(): v for k, v in pinned.items()}
 

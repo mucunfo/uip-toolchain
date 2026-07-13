@@ -29,53 +29,63 @@
 #       where: xaml_attribute|xaml_element  # informativo (não muda matching)
 #       fix: 'texto curto pt-BR'        # prose fix no finding
 
-UiPath.UIAutomation.Activities:
+UiPath.System.Activities:
   apis:
     # Patterns precisam matchar XAML actual form. Studio analyzer reporta como
     # `RetryScope.LogRetriedExceptions` (dotted), mas no XAML aparece como
     # `<ui:RetryScope ... LogRetriedExceptions="..."`. Pattern detecta XAML form.
+    #
+    # RetryScope classic (UiPath.Core.Activities.RetryScope) e CopyFile/MoveFile
+    # classic são UiPath.System.Activities — NÃO UIAutomation. Verificado
+    # empiricamente (2026-07-03) via grep no metadata de
+    # uipath.system.activities.runtime.windows/<ver>/lib/net6.0-windows7.0/UiPath.System.Activities.dll:
+    #   LogRetriedExceptions/RetriedExceptionsLogLevel: ausente 25.6.1, presente 25.8.1+
+    #   DestinationResource/PathResource: presente desde <= 23.10.6 (mais antigo em cache)
     - pattern: '<ui:RetryScope\b[^>]*\bLogRetriedExceptions\s*='
-      introduced_in: '25.10.21'
+      introduced_in: '25.8.1'
       where: xaml_attribute
-      fix: 'Remover atributo LogRetriedExceptions (não existe em UIA pin Sicoob 25.10.8).'
+      fix: 'Remover atributo LogRetriedExceptions (não existe em UiPath.System.Activities pin Sicoob 25.4.4).'
       mechanical:
         type: strip_xml_attribute
         attribute: LogRetriedExceptions
     - pattern: '<ui:RetryScope\b[^>]*\bRetriedExceptionsLogLevel\s*='
-      introduced_in: '25.10.21'
+      introduced_in: '25.8.1'
       where: xaml_attribute
-      fix: 'Remover atributo RetriedExceptionsLogLevel (não existe em UIA pin Sicoob 25.10.8).'
+      fix: 'Remover atributo RetriedExceptionsLogLevel (não existe em UiPath.System.Activities pin Sicoob 25.4.4).'
       mechanical:
         type: strip_xml_attribute
         attribute: RetriedExceptionsLogLevel
     - pattern: '<ui:CopyFile\b[^>]*\bDestinationResource\s*='
-      introduced_in: '25.10.21'
+      introduced_in: '23.10.6'
       where: xaml_attribute
       fix: 'Remover atributo DestinationResource. Usar Destination (path local).'
       mechanical:
         type: strip_xml_attribute
         attribute: DestinationResource
     - pattern: '<ui:CopyFile\b[^>]*\bPathResource\s*='
-      introduced_in: '25.10.21'
+      introduced_in: '23.10.6'
       where: xaml_attribute
       fix: 'Remover atributo PathResource. Usar Path (path local).'
       mechanical:
         type: strip_xml_attribute
         attribute: PathResource
     - pattern: '<ui:MoveFile\b[^>]*\bDestinationResource\s*='
-      introduced_in: '25.10.21'
+      introduced_in: '23.10.6'
       where: xaml_attribute
       fix: 'Remover atributo DestinationResource. Usar Destination (path local).'
       mechanical:
         type: strip_xml_attribute
         attribute: DestinationResource
     - pattern: '<ui:MoveFile\b[^>]*\bPathResource\s*='
-      introduced_in: '25.10.21'
+      introduced_in: '23.10.6'
       where: xaml_attribute
       fix: 'Remover atributo PathResource. Usar Path (path local).'
       mechanical:
         type: strip_xml_attribute
         attribute: PathResource
+
+UiPath.UIAutomation.Activities:
+  apis:
     - pattern: '<uix:NWindowOperation\b'
       introduced_in: '25.10.21'
       where: xaml_element
@@ -132,26 +142,3 @@ UiPath.Mail.Activities:
       mechanical:
         type: strip_xml_attribute
         attribute: ConnectionMode
-
-# Removed APIs: attrs/elements REMOVIDOS em versão >= removed_in.
-# Caso típico: Activity Migrator UiPath upgrade pacote 1.x→3.x mas deixa
-# attrs obsoletos no XAML legacy migrado → Studio load-fail.
-UiPath.MicrosoftOffice365.Activities:
-  removed_apis:
-    # Office365ApplicationScope.Folder não existe nos pins modernos Sicoob
-    # observados (2.7.x/3.x). Migrator deixa `Folder="{x:Null}"` órfão.
-    # REF: contestacao-de-compras-coleta-anexos-performer (2026-05-25).
-    - pattern: '<uma:Office365ApplicationScope\b[^>]*\bFolder\s*='
-      removed_in: '2.0.0'
-      where: xaml_attribute
-      fix: 'Remover atributo Folder (não existe em UiPath.MicrosoftOffice365.Activities >= 3.0.0). Usar MailFolder na child GetMail/MoveMail.'
-      mechanical:
-        type: strip_xml_attribute
-        attribute: Folder
-    - pattern: '<uma:Office365ApplicationScope\b[^>]*\bDataStoreLocation\s*='
-      removed_in: '2.0.0'
-      where: xaml_attribute
-      fix: 'Remover atributo DataStoreLocation de Office365ApplicationScope (não existe no pin Sicoob observado).'
-      mechanical:
-        type: strip_xml_attribute
-        attribute: DataStoreLocation

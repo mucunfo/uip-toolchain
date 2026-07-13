@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 from uip_engine import cli as cli_mod  # noqa: E402
 from uip_engine._types import Finding, Severity  # noqa: E402
+from uip_engine.official_uip import OfficialUipResult  # noqa: E402
 
 
 def _make_project(tmp_path: Path) -> Path:
@@ -124,6 +125,30 @@ def test_review_exit_error_when_pack_gate_adds_error(tmp_path, monkeypatch):
         rc = cli_mod._cmd_review(args)
 
     assert rc == cli_mod.EXIT_ERROR
+
+
+def test_build_gate_reports_fallback_error_without_name_error(tmp_path):
+    proj = _make_project(tmp_path)
+    result = cli_mod.ValidationResult()
+    fake_result = OfficialUipResult(
+        argv=["uip", "rpa", "build"],
+        returncode=1,
+        stdout="",
+        stderr="plain build failure",
+        envelope=None,
+    )
+
+    with patch.object(cli_mod, "_check_official_uip_compatibility", return_value=True), \
+         patch.object(cli_mod, "_parse_pack_output_and_inject", return_value=0), \
+         patch("uip_engine.official_uip.discover_official_uip", return_value=Path("uip.cmd")), \
+         patch("uip_engine.official_uip.run_official_uip", return_value=fake_result), \
+         patch("uip_engine.official_uip.iter_analyzer_records", return_value=[]), \
+         patch("uip_engine.official_uip.diagnose_official_uip_failure", return_value=[]):
+        cli_mod._run_official_build_gate(result, str(proj))
+
+    assert result.error_count == 1
+    assert result.findings[0].rule_id == "UIPATH:BUILD"
+    assert "official uip rpa build returned exit 1" in result.findings[0].message
 
 
 def test_review_restore_block_skips_analyzer_build_and_pack(tmp_path, monkeypatch):

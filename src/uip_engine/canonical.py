@@ -23,6 +23,11 @@ _DEFAULT_RATIONALE = (
     "pin canonical."
 )
 
+# 2026-07-02: pins ficam advisory enquanto projetos reais validam dependências
+# já declaradas. D-PINALERT continua cobrindo incompatibilidade XAML x versão.
+_PIN_RULE_SEVERITY = "WARN"
+_PIN_RULE_APPLY_CLASS = "contextual"
+
 
 def _assets_dir() -> Path:
     """Repo-root/assets. `canonical.py` mora em `src/uip_engine/`."""
@@ -80,7 +85,7 @@ def _synthesize_d1_rule(entry: dict[str, Any]) -> dict[str, Any]:
         detect_params["required_when_xaml_patterns"] = required_when_xaml_patterns
     return {
         "id": entry["id"],
-        "severity": "ERROR",
+        "severity": _PIN_RULE_SEVERITY,
         "category": "breaking",
         "target": "windows",
         "title": f"{pkg} == [{ver}]",
@@ -91,7 +96,7 @@ def _synthesize_d1_rule(entry: dict[str, Any]) -> dict[str, Any]:
             "params": detect_params,
         },
         "fix": {
-            "apply_class": "deterministic",
+            "apply_class": _PIN_RULE_APPLY_CLASS,
             "mechanical": {
                 "type": "set_dependency_pin",
                 "package": pkg,
@@ -111,7 +116,7 @@ def _synthesize_studio_pin_rule(studio_version: str) -> dict[str, Any]:
     """
     return {
         "id": "J-1",
-        "severity": "ERROR",
+        "severity": _PIN_RULE_SEVERITY,
         "category": "breaking",
         "target": "windows",
         "title": f"project.json::studioVersion == {studio_version}",
@@ -130,7 +135,7 @@ def _synthesize_studio_pin_rule(studio_version: str) -> dict[str, Any]:
             },
         },
         "fix": {
-            "apply_class": "deterministic",
+            "apply_class": _PIN_RULE_APPLY_CLASS,
             "mechanical": {
                 "type": "set_json_field",
                 "path": "studioVersion",

@@ -130,37 +130,28 @@ def _make_pc(deps: dict):
     return SimpleNamespace(project_json={"dependencies": deps})
 
 
-def test_detector_scopes_removed_api_folder_to_office365_element():
-    """removed_apis Folder case (the high-severity data-loss case)."""
+def test_detector_does_not_flag_current_office365_scope_folder():
+    """Office365 3.2.11 still exposes Folder on Office365ApplicationScope."""
     _reset_cache_for_tests()
-    # pin AT/ABOVE removed_in 3.0.0 (Migrator post-bump) so the removed_api
-    # alert fires on the orphaned legacy Folder attr (logic: pinned_v >= rem_v)
-    deps = {"UiPath.MicrosoftOffice365.Activities": "[3.1.0]"}
+    deps = {"UiPath.MicrosoftOffice365.Activities": "[3.2.11]"}
     content = (
         '<uma:Office365ApplicationScope Folder="{x:Null}">'
         "</uma:Office365ApplicationScope>"
     )
     findings = detect_pin_alert(_make_rule(), _make_fc(content), _make_pc(deps))
-    assert findings, "expected a D-PINALERT finding for orphaned Folder attr"
-    folder_findings = [
-        f for f in findings
-        if isinstance(f.fix_mechanical, dict)
-        and f.fix_mechanical.get("attribute") == "Folder"
-    ]
-    assert folder_findings, "no strip_xml_attribute(Folder) mech emitted"
-    mech = folder_findings[0].fix_mechanical
-    assert mech["type"] == "strip_xml_attribute"
-    # THE FIX: element scope is present so the fixer won't strip Folder
-    # off unrelated activities (e.g. CreateDirectory) file-wide.
-    assert mech["element"] == "uma:Office365ApplicationScope"
+    assert findings == []
     _reset_cache_for_tests()
 
 
 def test_detector_scopes_copyfile_destination_resource():
-    """apis (introduced_in) CopyFile.DestinationResource case."""
+    """apis (introduced_in) CopyFile.DestinationResource case.
+
+    CopyFile é UiPath.System.Activities (catálogo corrigido 2026-07-03);
+    DestinationResource existe desde 23.10.6 — pin abaixo disso dispara.
+    """
     _reset_cache_for_tests()
-    # pin below introduced_in 25.10.21 so the alert fires
-    deps = {"UiPath.UIAutomation.Activities": "[25.10.8]"}
+    # pin below introduced_in 23.10.6 so the alert fires
+    deps = {"UiPath.System.Activities": "[23.10.2]"}
     content = '<ui:CopyFile DestinationResource="x" DisplayName="cp" />'
     findings = detect_pin_alert(_make_rule(), _make_fc(content), _make_pc(deps))
     dr = [
@@ -194,17 +185,21 @@ def test_detector_does_not_scope_nwindow_operation_element_mech():
 def test_detector_does_not_mutate_cached_catalog():
     """Two consecutive runs must not see element leak into the cache."""
     _reset_cache_for_tests()
-    deps = {"UiPath.MicrosoftOffice365.Activities": "[3.1.0]"}
-    content = '<uma:Office365ApplicationScope Folder="{x:Null}" />'
+    deps = {"UiPath.System.Activities": "[23.10.2]"}
+    content = '<ui:CopyFile DestinationResource="x" />'
     rule, fc, pc = _make_rule(), _make_fc(content), _make_pc(deps)
     first = detect_pin_alert(rule, fc, pc)
     second = detect_pin_alert(rule, fc, pc)
     # both runs produce identical scoped mechs; cache dict never gained
     # an 'element' key in place (would corrupt other shared consumers).
     from uip_engine.heuristics import pin_alert as pa
-    cached = pa._CACHE["UiPath.MicrosoftOffice365.Activities"]
-    cached_mech = cached["removed_apis"][0]["mechanical"]
+    cached = pa._CACHE["UiPath.System.Activities"]
+    cached_mech = next(
+        api["mechanical"]
+        for api in cached["apis"]
+        if api["mechanical"]["attribute"] == "DestinationResource"
+    )
     assert "element" not in cached_mech, "cached catalog mech was mutated!"
-    assert first[0].fix_mechanical["element"] == "uma:Office365ApplicationScope"
-    assert second[0].fix_mechanical["element"] == "uma:Office365ApplicationScope"
+    assert first[0].fix_mechanical["element"] == "ui:CopyFile"
+    assert second[0].fix_mechanical["element"] == "ui:CopyFile"
     _reset_cache_for_tests()
