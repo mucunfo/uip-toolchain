@@ -57,8 +57,35 @@ def test_insert_trace_log_basic_assign(tmp_path):
     out = f.read_text(encoding="utf-8")
     assert '<ui:LogMessage' in out
     assert 'Level="Trace"' in out
-    # Bracketed Message form (compile-safe).
-    assert '[&quot;Concluído: Soma&quot;]' in out
+    # N-5 contextual: Assign expõe variável + valor (não mais "Concluído: X" genérico).
+    assert ('[&quot;vResult = &quot; &amp; '
+            'Microsoft.VisualBasic.Left(Convert.ToString(vResult), 200)]') in out
+
+
+def test_n5_contextual_message_by_type():
+    """N-5 builder contextual por tipo: Assign var+valor, secret mascarado,
+    Invoke arquivo, Click DisplayName do target, fallback."""
+    from uip_engine.fixers import _n5_context_expr as ctx
+    # Assign simples -> expõe variável + valor
+    a = ctx('Assign', '<Assign To="[vStPedido]" Value="[x]" DisplayName="A"/>', 'A')
+    assert 'vStPedido = ' in a and 'Convert.ToString(vStPedido)' in a
+    # Assign com nome de segredo -> mascarado, SEM expor valor
+    s = ctx('Assign', '<Assign To="[vSStClientSecret]" DisplayName="S"/>', 'S')
+    assert '(oculto)' in s and 'Convert.ToString' not in s
+    # Assign com To complexo (aspas) -> VB-escapado (aspas dobradas)
+    c = ctx('Assign', '<Assign To="[dict(&quot;k&quot;)]" DisplayName="D"/>', 'D')
+    assert 'dict(&quot;&quot;k&quot;&quot;)' in c
+    # InvokeWorkflowFile -> nome do arquivo
+    assert 'Invocado X.xaml' in ctx(
+        'ui:InvokeWorkflowFile',
+        '<ui:InvokeWorkflowFile WorkflowFileName="Workflows\\Rede\\X.xaml"/>', 'I')
+    # Click -> DisplayName do target (não da activity)
+    assert 'Clicou em: Botao Salvar' in ctx(
+        'ui:NClick',
+        '<ui:NClick DisplayName="c"><ui:NClick.Target>'
+        '<ui:Target DisplayName="Botao Salvar"/></ui:NClick.Target></ui:NClick>', 'c')
+    # tipo sem template -> fallback "Concluído: {DisplayName}"
+    assert 'Concluído: L' in ctx('ui:LogMessage', '<ui:LogMessage DisplayName="L"/>', 'L')
 
 
 def test_insert_trace_log_skips_assign_to_property(tmp_path):

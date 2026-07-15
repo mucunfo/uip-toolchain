@@ -1659,6 +1659,128 @@ def _n5_unique_display_name(content: str, base: str) -> str:
         n += 1
 
 
+# ---------------------------------------------------------------------------
+# N-5 contextual message builder. Em vez de "Concluído: {DisplayName}" genérico,
+# gera log com contexto por tipo de activity:
+#   - Assign             -> "{var} = " & Left(Convert.ToString(var), 200)
+#   - InvokeWorkflowFile -> "Invocado {arquivo}"
+#   - UI (Click/Type/...)-> "{verbo}: {DisplayName do target}"
+#   - HttpClient         -> "HTTP {Method} {EndPoint}"
+#   - fallback           -> "Concluído: {DisplayName}"
+# GUARD segurança (banco): NÃO expõe VALOR de variável cujo nome sugira
+# segredo/PII -> loga "(oculto)". Valor exposto só p/ referência simples
+# (identificador), truncado a 200 chars. Saída: expressão VB já XML-escapada.
+# ---------------------------------------------------------------------------
+_N5_SECRET_VAR_RE = re.compile(
+    r'(?i)(password|senha|secret|token|credential|credencial|api[_-]?key|'
+    r'client[_-]?secret|securestring|sstring|s_st|\bpwd\b|\bcpf\b|\bcnpj\b)'
+)
+_N5_UI_VERBS = {
+    "Click": "Clicou em", "NClick": "Clicou em",
+    "TypeInto": "Digitou em", "NTypeInto": "Digitou em",
+    "CheckState": "Verificou estado de", "NCheckState": "Verificou estado de",
+    "SelectItem": "Selecionou em", "NSelectItem": "Selecionou em",
+    "GetText": "Leu texto de", "NGetText": "Leu texto de",
+    "GetAttribute": "Leu atributo de", "Check": "Marcou", "NCheck": "Marcou",
+    "HoverElement": "Passou o mouse em", "SetText": "Definiu texto em",
+    "ExtractData": "Extraiu dados de",
+}
+
+
+def _n5_xesc(s: str) -> str:
+    """XML-attr escape p/ embutir literal na expressão VB dentro de Message."""
+    return (s.replace("&", "&amp;").replace("<", "&lt;")
+             .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _n5_unescape(s: str) -> str:
+    """XML-unescape p/ obter texto plano do valor extraído do XAML."""
+    return (s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+             .replace("&apos;", "'").replace("&amp;", "&"))
+
+
+def _n5_vb_literal(plain: str) -> str:
+    """Literal string VB (aspas internas dobradas p/ VB) já XML-escapado, com os
+    &quot; externos. Ex: dict(\"k\") -> &quot;dict(&quot;&quot;k&quot;&quot;)&quot;."""
+    return '&quot;' + _n5_xesc(plain.replace('"', '""')) + '&quot;'
+
+
+def _n5_attr(xml: str, name: str):
+    m = re.search(rf'\b{re.escape(name)}="([^"]*)"', xml)
+    return m.group(1) if m else None
+
+
+def _n5_assign_to_expr(activity_xml: str):
+    """Expressão-alvo (To) de <Assign>: atributo To="[expr]" OU child
+    <Assign.To><OutArgument>[expr]</OutArgument>. Devolve expr sem colchetes."""
+    head_end = activity_xml.find(">")
+    head = activity_xml[:head_end + 1] if head_end != -1 else activity_xml
+    m = re.search(r'\bTo="\[([^"]+?)\]"', head)
+    if m:
+        return m.group(1).strip()
+    m = re.search(
+        r'<Assign\.To\b[^>]*>\s*<(?:[\w]+:)?OutArgument\b[^>]*>\s*'
+        r'\[?(.+?)\]?\s*</(?:[\w]+:)?OutArgument>',
+        activity_xml, re.DOTALL)
+    return m.group(1).strip() if m else None
+
+
+def _n5_target_displayname(activity_xml: str):
+    """DisplayName do TARGET de UI activity (child <...Target DisplayName=...>),
+    NÃO o da própria activity."""
+    head_end = activity_xml.find(">")
+    body = activity_xml[head_end + 1:] if head_end != -1 else activity_xml
+    m = re.search(r'<(?:[\w]+:)?[\w.]*Target\b[^>]*\bDisplayName="([^"]*)"', body)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r'\bDisplayName="([^"]*)"', body)
+    return m.group(1).strip() if m else None
+
+
+def _n5_context_expr(activity_name: str, activity_xml: str, display: str) -> str:
+    """Corpo da expressão VB (já XML-escapado) pro Message do N-5, contextual
+    por tipo. `display` = DisplayName em texto PLANO (fallback)."""
+    local = activity_name.split(":", 1)[-1]
+    fallback = _n5_vb_literal("Concluído: " + display)
+
+    if local == "Assign":
+        to_raw = _n5_assign_to_expr(activity_xml)
+        if to_raw:
+            to = _n5_unescape(to_raw)
+            if _N5_SECRET_VAR_RE.search(to):
+                return _n5_vb_literal(to + " = (oculto)")
+            if re.match(r'^[A-Za-z_]\w*$', to):  # referência simples -> expõe valor
+                return (_n5_vb_literal(to + " = ")
+                        + ' &amp; Microsoft.VisualBasic.Left(Convert.ToString('
+                        + to + '), 200)')
+            return _n5_vb_literal("Atribuiu " + to)
+        return fallback
+
+    if local == "InvokeWorkflowFile":
+        wf_raw = _n5_attr(activity_xml, "WorkflowFileName")
+        if wf_raw:
+            base = _n5_unescape(wf_raw).replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+            return _n5_vb_literal("Invocado " + base)
+        return fallback
+
+    if local in _N5_UI_VERBS:
+        verb = _N5_UI_VERBS[local]
+        tgt_raw = _n5_target_displayname(activity_xml)
+        if tgt_raw:
+            return _n5_vb_literal(verb + ": " + _n5_unescape(tgt_raw))
+        return _n5_vb_literal(verb + " (target sem DisplayName)")
+
+    if local == "HttpClient":
+        method = _n5_unescape(_n5_attr(activity_xml, "Method") or "")
+        ep = _n5_unescape(_n5_attr(activity_xml, "EndPoint") or "").replace("[", "").replace("]", "")
+        combo = ("HTTP " + method + " " + ep).replace("  ", " ").strip()
+        if combo != "HTTP":
+            return _n5_vb_literal(combo)
+        return fallback
+
+    return fallback
+
+
 _INVOKE_ARGUMENTS_BLOCK_RE = re.compile(
     r'(<ui:InvokeWorkflowFile\.Arguments\s*>)(.*?)(</ui:InvokeWorkflowFile\.Arguments\s*>)',
     re.DOTALL,
@@ -3019,13 +3141,12 @@ def apply_insert_trace_log(file: Path, spec: dict, dry_run: bool = True,
     # Message DEVE ser VB expression form `[...]` em Studio Windows target.
     # Literal sem brackets é parseado por VB compiler como código → erros
     # BC30109/BC30451 (`'Assign' is a class type`, identifiers undeclared).
+    core_expr = _n5_context_expr(
+        activity_name, content[activity_offset:end_offset], display)
     if has_prefixo:
-        msg_attr = (
-            f'Message="[in_StPrefixoLog + &quot;Concluído: '
-            f'{safe_disp}&quot;]"'
-        )
+        msg_attr = f'Message="[in_StPrefixoLog + {core_expr}]"'
     else:
-        msg_attr = f'Message="[&quot;Concluído: {safe_disp}&quot;]"'
+        msg_attr = f'Message="[{core_expr}]"'
     # DisplayName usa verbo infinitivo (Sicoob N-15) + sanitized activity context.
     # Strip prefixes ruins do source DisplayName (`Trace:`, `Log -`, `Log Message`).
     # Evita ST-MRD-002 (default "Log Message") + ST-NMG-004 (DisplayName repetido).
